@@ -25,6 +25,7 @@ class ExecutionStatus(str, Enum):
     PROPOSAL_RECEIVED = "proposal_received"
     EVALUATING = "evaluating"
     COUNTER_PENDING = "counter_pending"
+    PENDING_APPROVAL = "pending_approval"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
     DEAL_CREATED = "deal_created"

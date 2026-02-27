@@ -23,6 +23,8 @@ from ..models.flow_state import (
 )
 from ..models.core import DealType, ExecutionOrderStatus
 from ..clients import UnifiedClient, Protocol, get_ad_server_client
+from ..events.helpers import emit_event
+from ..events.models import EventType
 
 
 class ExecutionState(SellerFlowState):
@@ -252,6 +254,19 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
         """Finalize the execution flow."""
         self.state.status = ExecutionStatus.COMPLETED
         self.state.completed_at = datetime.utcnow()
+
+        # Emit deal.synced event
+        await emit_event(
+            event_type=EventType.DEAL_SYNCED,
+            flow_id=self.state.flow_id,
+            flow_type=self.state.flow_type,
+            deal_id=self.state.deal_id,
+            payload={
+                "sync_status": self.state.sync_status,
+                "ad_server_entity_id": self.state.ad_server_entity_id,
+                "execution_type": self.state.execution_type,
+            },
+        )
 
     def activate(
         self,

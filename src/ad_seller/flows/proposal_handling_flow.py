@@ -28,6 +28,8 @@ from ..models.ucp import AudienceCapability, SignalType
 from ..clients.ucp_client import UCPClient
 from ..crews import create_proposal_review_crew
 from ..config import get_settings
+from ..events.helpers import emit_event
+from ..events.models import EventType
 
 
 class ProposalState(SellerFlowState):
@@ -309,6 +311,18 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             else:
                 self.state.recommendation = "reject"
 
+            # Emit proposal.evaluated event
+            await emit_event(
+                event_type=EventType.PROPOSAL_EVALUATED,
+                flow_id=self.state.flow_id,
+                flow_type=self.state.flow_type,
+                proposal_id=self.state.proposal_id,
+                payload={
+                    "recommendation": self.state.recommendation,
+                    "evaluation": self.state.evaluation.model_dump() if self.state.evaluation else None,
+                },
+            )
+
         except Exception as e:
             self.state.warnings.append(f"Crew evaluation failed: {e}")
             # Fall back to rule-based evaluation
@@ -382,7 +396,27 @@ class ProposalHandlingFlow(Flow[ProposalState]):
 
     @listen(or_(generate_counter_terms, identify_upsell))
     async def execute_decision(self) -> None:
-        """Execute the proposal decision."""
+        """Execute the proposal decision, with optional approval gate."""
+        settings = get_settings()
+
+        # Check if approval gate is enabled for proposal decisions
+        approval_enabled = (
+            getattr(settings, "approval_gate_enabled", False)
+            and "proposal_decision"
+            in getattr(settings, "approval_required_flows", "").split(",")
+        )
+
+        if approval_enabled and self.state.recommendation in ("accept", "counter"):
+            # Gate: mark as pending approval and return
+            self.state.status = ExecutionStatus.PENDING_APPROVAL
+            self.state.completed_at = datetime.utcnow()
+            return
+
+        # No gate — execute immediately (original behavior)
+        self._finalize_decision()
+
+    def _finalize_decision(self) -> None:
+        """Apply the recommendation."""
         if self.state.recommendation == "accept":
             self.state.accepted_proposals.append(self.state.proposal_id)
             self.state.status = ExecutionStatus.ACCEPTED
@@ -420,7 +454,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         # Run the flow
         self.kickoff()
 
-        return {
+        result = {
             "proposal_id": proposal_id,
             "recommendation": self.state.recommendation,
             "status": self.state.status.value,
@@ -430,3 +464,12 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             "errors": self.state.errors,
             "warnings": self.state.warnings,
         }
+
+        # If pending approval, include state snapshot for the API to create
+        # an ApprovalRequest with (handle_proposal is sync, storage is async)
+        if self.state.status == ExecutionStatus.PENDING_APPROVAL:
+            result["pending_approval"] = True
+            result["flow_id"] = self.state.flow_id
+            result["_flow_state_snapshot"] = self.state.model_dump(mode="json")
+
+        return result

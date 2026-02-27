@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     programmatic_floor_multiplier: float = 1.2
     preferred_deal_discount_max: float = 0.15
 
+    # Event Bus / Human-in-the-Loop Configuration
+    event_bus_enabled: bool = True
+    approval_gate_enabled: bool = False  # Default off, opt-in
+    approval_timeout_hours: int = 24
+    approval_required_flows: str = ""  # Comma-separated gate names: "proposal_decision,deal_registration"
+
 
 @lru_cache
 def get_settings() -> Settings:

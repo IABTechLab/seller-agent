@@ -23,6 +23,8 @@ from ..models.flow_state import (
 from ..models.core import DealType, PricingModel
 from ..clients import UnifiedClient, Protocol
 from ..config import get_settings
+from ..events.helpers import emit_event
+from ..events.models import EventType
 
 
 class DealGenerationState(SellerFlowState):
@@ -206,6 +208,19 @@ class DealGenerationFlow(Flow[DealGenerationState]):
                     self.state.deal_output.ad_server_deal_id = result.data.get(
                         "executionorderid"
                     )
+
+                # Emit deal.registered event
+                await emit_event(
+                    event_type=EventType.DEAL_REGISTERED,
+                    flow_id=self.state.flow_id,
+                    flow_type=self.state.flow_type,
+                    proposal_id=self.state.proposal_id,
+                    deal_id=self.state.deal_output.deal_id,
+                    payload={
+                        "deal_type": self.state.deal_output.deal_type.value,
+                        "price": self.state.deal_output.price,
+                    },
+                )
         except Exception as e:
             self.state.warnings.append(f"Failed to register deal with server: {e}")
 
