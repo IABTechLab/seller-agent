@@ -100,3 +100,62 @@ class StorageBackend(ABC):
             if deal:
                 deals.append(deal)
         return deals
+
+    # Session operations
+
+    async def get_session(self, session_id: str) -> Optional[dict]:
+        """Get a session by ID."""
+        return await self.get(f"session:{session_id}")
+
+    async def set_session(
+        self, session_id: str, session_data: dict, ttl: Optional[int] = None
+    ) -> None:
+        """Store a session with optional TTL."""
+        await self.set(f"session:{session_id}", session_data, ttl=ttl)
+
+    async def delete_session(self, session_id: str) -> bool:
+        """Delete a session."""
+        return await self.delete(f"session:{session_id}")
+
+    async def list_sessions(self) -> list[dict]:
+        """List all sessions."""
+        keys = await self.keys("session:*")
+        sessions = []
+        for key in keys:
+            if key.startswith("session_index:"):
+                continue
+            session = await self.get(key)
+            if session:
+                sessions.append(session)
+        return sessions
+
+    async def get_buyer_sessions(self, buyer_pricing_key: str) -> list[dict]:
+        """Get all sessions for a buyer identity."""
+        index_key = f"session_index:buyer:{buyer_pricing_key}"
+        session_ids = await self.get(index_key) or []
+        sessions = []
+        for sid in session_ids:
+            session = await self.get(f"session:{sid}")
+            if session:
+                sessions.append(session)
+        return sessions
+
+    async def add_session_to_buyer_index(
+        self, session_id: str, buyer_pricing_key: str
+    ) -> None:
+        """Add a session to the buyer index."""
+        index_key = f"session_index:buyer:{buyer_pricing_key}"
+        existing = await self.get(index_key) or []
+        if session_id not in existing:
+            existing.append(session_id)
+            await self.set(index_key, existing)
+
+    async def remove_session_from_buyer_index(
+        self, session_id: str, buyer_pricing_key: str
+    ) -> None:
+        """Remove a session from the buyer index."""
+        index_key = f"session_index:buyer:{buyer_pricing_key}"
+        existing = await self.get(index_key) or []
+        if session_id in existing:
+            existing.remove(session_id)
+            await self.set(index_key, existing)

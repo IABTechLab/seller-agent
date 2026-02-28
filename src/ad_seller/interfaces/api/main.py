@@ -373,6 +373,21 @@ async def discovery_query(request: DiscoveryRequest):
 # =============================================================================
 
 
+class CreateSessionRequest(BaseModel):
+    """Request to create a new session."""
+
+    seat_id: Optional[str] = None
+    agency_id: Optional[str] = None
+    advertiser_id: Optional[str] = None
+    is_authenticated: bool = False
+
+
+class SessionMessageRequest(BaseModel):
+    """Request to send a message within a session."""
+
+    message: str
+
+
 class ApprovalDecisionRequest(BaseModel):
     """Request to submit an approval decision."""
 
@@ -391,13 +406,14 @@ class ApprovalDecisionRequest(BaseModel):
 async def list_events(
     flow_id: Optional[str] = None,
     event_type: Optional[str] = None,
+    session_id: Optional[str] = None,
     limit: int = 50,
 ):
-    """List events, optionally filtered by flow_id or event_type."""
+    """List events, optionally filtered by flow_id, event_type, or session_id."""
     from ...events.bus import get_event_bus
     bus = await get_event_bus()
     events = await bus.list_events(
-        flow_id=flow_id, event_type=event_type, limit=limit
+        flow_id=flow_id, event_type=event_type, session_id=session_id, limit=limit
     )
     return {"events": [e.model_dump(mode="json") for e in events]}
 
@@ -556,3 +572,148 @@ async def _resume_proposal_flow(request, response):
         "counter_terms": flow.state.counter_terms,
         "resumed_from_approval": request.approval_id,
     }
+
+
+# =============================================================================
+# Session Endpoints
+# =============================================================================
+
+
+@app.post("/sessions")
+async def create_session(request: CreateSessionRequest):
+    """Create a new buyer conversation session."""
+    from ...interfaces.chat.main import ChatInterface
+    from ...models.buyer_identity import BuyerContext, BuyerIdentity
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+
+    identity = BuyerIdentity(
+        seat_id=request.seat_id,
+        agency_id=request.agency_id,
+        advertiser_id=request.advertiser_id,
+    )
+    context = BuyerContext(
+        identity=identity,
+        is_authenticated=request.is_authenticated,
+    )
+
+    chat = ChatInterface(storage=storage)
+    await chat.initialize()
+    session = await chat.start_session(buyer_context=context)
+
+    return {
+        "session_id": session.session_id,
+        "status": session.status.value,
+        "buyer_pricing_key": session.get_buyer_pricing_key(),
+        "expires_at": session.expires_at.isoformat() if session.expires_at else None,
+    }
+
+
+@app.get("/sessions")
+async def list_sessions(
+    buyer_key: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """List sessions, optionally filtered by buyer identity or status."""
+    from ...models.session import Session, SessionStatus
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+
+    if buyer_key:
+        sessions_data = await storage.get_buyer_sessions(buyer_key)
+    else:
+        sessions_data = await storage.list_sessions()
+
+    results = []
+    for data in sessions_data:
+        s = Session(**data)
+        # Lazy expiration check
+        if s.is_expired() and s.status != SessionStatus.EXPIRED:
+            s.status = SessionStatus.EXPIRED
+            await storage.set_session(s.session_id, s.model_dump(mode="json"))
+        # Apply status filter
+        if status and s.status.value != status:
+            continue
+        results.append({
+            "session_id": s.session_id,
+            "status": s.status.value,
+            "buyer_pricing_key": s.get_buyer_pricing_key(),
+            "message_count": len(s.messages),
+            "negotiation_stage": s.negotiation.stage,
+            "created_at": s.created_at.isoformat(),
+            "updated_at": s.updated_at.isoformat(),
+        })
+
+    return {"sessions": results}
+
+
+@app.get("/sessions/{session_id}")
+async def get_session(session_id: str):
+    """Get session details and conversation history."""
+    from ...models.session import Session
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    data = await storage.get_session(session_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = Session(**data)
+    return {
+        "session_id": session.session_id,
+        "status": session.status.value,
+        "buyer_pricing_key": session.get_buyer_pricing_key(),
+        "negotiation": session.negotiation.model_dump(),
+        "messages": [m.model_dump(mode="json") for m in session.messages],
+        "linked_flow_ids": session.linked_flow_ids,
+        "created_at": session.created_at.isoformat(),
+        "updated_at": session.updated_at.isoformat(),
+        "expires_at": session.expires_at.isoformat() if session.expires_at else None,
+    }
+
+
+@app.post("/sessions/{session_id}/messages")
+async def send_session_message(session_id: str, body: SessionMessageRequest):
+    """Send a message within a session and get a response."""
+    from ...interfaces.chat.main import ChatInterface
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+
+    chat = ChatInterface(storage=storage)
+    await chat.initialize()
+
+    try:
+        await chat.resume_session(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    response = await chat.process_message_async(
+        message=body.message,
+        session_id=session_id,
+    )
+
+    session = chat._current_session
+    return {
+        "session_id": session_id,
+        "text": response.get("text", ""),
+        "type": response.get("type", "general"),
+        "message_count": len(session.messages) if session else 0,
+        "negotiation_stage": session.negotiation.stage if session else "unknown",
+    }
+
+
+@app.post("/sessions/{session_id}/close")
+async def close_session_endpoint(session_id: str):
+    """Close a session."""
+    from ...interfaces.chat.main import ChatInterface
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+
+    chat = ChatInterface(storage=storage)
+    await chat.close_session(session_id)
+
+    return {"session_id": session_id, "status": "closed"}

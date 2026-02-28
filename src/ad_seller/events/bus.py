@@ -88,6 +88,7 @@ class InMemoryEventBus(EventBus):
         self,
         flow_id: Optional[str] = None,
         event_type: Optional[str] = None,
+        session_id: Optional[str] = None,
         limit: int = 50,
     ) -> list[Event]:
         results = self._events
@@ -95,6 +96,8 @@ class InMemoryEventBus(EventBus):
             results = [e for e in results if e.flow_id == flow_id]
         if event_type:
             results = [e for e in results if e.event_type.value == event_type]
+        if session_id:
+            results = [e for e in results if e.session_id == session_id]
         return results[-limit:]
 
 
@@ -125,6 +128,13 @@ class StorageEventBus(EventBus):
         existing = await self._storage.get(type_key) or []
         existing.append(event.event_id)
         await self._storage.set(type_key, existing)
+
+        # Index by session_id
+        if event.session_id:
+            session_key = f"event_index:session:{event.session_id}"
+            existing = await self._storage.get(session_key) or []
+            existing.append(event.event_id)
+            await self._storage.set(session_key, existing)
 
         logger.info("Event persisted: %s (id=%s)", event.event_type, event.event_id)
 
@@ -163,9 +173,12 @@ class StorageEventBus(EventBus):
         self,
         flow_id: Optional[str] = None,
         event_type: Optional[str] = None,
+        session_id: Optional[str] = None,
         limit: int = 50,
     ) -> list[Event]:
-        if flow_id:
+        if session_id:
+            ids = await self._storage.get(f"event_index:session:{session_id}") or []
+        elif flow_id:
             ids = await self._storage.get(f"event_index:flow:{flow_id}") or []
         elif event_type:
             ids = await self._storage.get(f"event_index:type:{event_type}") or []

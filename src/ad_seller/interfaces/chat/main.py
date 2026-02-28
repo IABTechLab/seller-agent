@@ -9,10 +9,12 @@ Enables natural language conversations with buyers for:
 - Non-agentic DSP workflows
 """
 
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from ...flows import DiscoveryInquiryFlow, NonAgenticDSPFlow, ProductSetupFlow
 from ...models.buyer_identity import BuyerContext, BuyerIdentity, AccessTier
+from ...models.session import Session, SessionStatus
 
 
 class ChatInterface:
@@ -23,20 +25,37 @@ class ChatInterface:
     - Pricing inquiries with tiered responses
     - Deal creation for non-agentic DSPs
     - Negotiation workflows
+    - Persistent multi-turn sessions (when storage is provided)
 
-    Example:
+    Example (stateless):
         chat = ChatInterface()
         response = chat.process_message(
             "What CTV inventory do you have available?",
             buyer_context=context,
         )
+
+    Example (session-persistent):
+        chat = ChatInterface(storage=storage)
+        await chat.initialize()
+        session = await chat.start_session(buyer_context=context)
+        response = await chat.process_message_async(
+            "What CTV inventory do you have?",
+            session_id=session.session_id,
+        )
     """
 
-    def __init__(self) -> None:
-        """Initialize the chat interface."""
+    def __init__(self, storage: Any = None) -> None:
+        """Initialize the chat interface.
+
+        Args:
+            storage: Optional storage backend for session persistence.
+                     When None, operates in stateless mode (backward compatible).
+        """
         self._products: dict[str, Any] = {}
         self._conversation_history: list[dict[str, str]] = []
         self._buyer_context: Optional[BuyerContext] = None
+        self._storage = storage
+        self._current_session: Optional[Session] = None
 
     async def initialize(self) -> None:
         """Initialize products and resources."""
@@ -51,6 +70,156 @@ class ChatInterface:
             context: Buyer identity and authentication context
         """
         self._buyer_context = context
+
+    # =========================================================================
+    # Session management
+    # =========================================================================
+
+    async def start_session(
+        self, buyer_context: Optional[BuyerContext] = None
+    ) -> Session:
+        """Create a new persistent session.
+
+        Args:
+            buyer_context: Buyer context for the session.
+
+        Returns:
+            The created Session.
+
+        Raises:
+            RuntimeError: If no storage backend is configured.
+        """
+        if not self._storage:
+            raise RuntimeError("Storage backend required for session persistence")
+
+        from ...config import get_settings
+        settings = get_settings()
+
+        session = Session(
+            buyer_identity=buyer_context.identity if buyer_context else BuyerIdentity(),
+            buyer_context=buyer_context,
+            expires_at=datetime.utcnow() + timedelta(seconds=settings.session_ttl_seconds),
+        )
+        self._current_session = session
+        self._buyer_context = buyer_context
+
+        await self._save_session(session)
+
+        # Index by buyer
+        await self._storage.add_session_to_buyer_index(
+            session.session_id, session.get_buyer_pricing_key()
+        )
+
+        # Emit event
+        from ...events.helpers import emit_event
+        from ...events.models import EventType
+        await emit_event(
+            event_type=EventType.SESSION_CREATED,
+            session_id=session.session_id,
+            payload={
+                "buyer_pricing_key": session.get_buyer_pricing_key(),
+                "expires_at": session.expires_at.isoformat() if session.expires_at else None,
+            },
+        )
+
+        return session
+
+    async def resume_session(self, session_id: str) -> Session:
+        """Resume an existing session.
+
+        Args:
+            session_id: The session to resume.
+
+        Returns:
+            The loaded Session.
+
+        Raises:
+            RuntimeError: If no storage backend is configured.
+            ValueError: If session is not found, expired, or closed.
+        """
+        if not self._storage:
+            raise RuntimeError("Storage backend required for session persistence")
+
+        data = await self._storage.get_session(session_id)
+        if not data:
+            raise ValueError(f"Session not found: {session_id}")
+
+        session = Session(**data)
+
+        if session.is_expired():
+            session.status = SessionStatus.EXPIRED
+            await self._save_session(session)
+            raise ValueError(f"Session expired: {session_id}")
+
+        if session.status == SessionStatus.CLOSED:
+            raise ValueError(f"Session closed: {session_id}")
+
+        # Restore in-memory state
+        self._current_session = session
+        self._buyer_context = session.buyer_context
+        self._conversation_history = [
+            {"role": m.role, "content": m.content}
+            for m in session.messages
+        ]
+
+        # Emit event
+        from ...events.helpers import emit_event
+        from ...events.models import EventType
+        await emit_event(
+            event_type=EventType.SESSION_RESUMED,
+            session_id=session.session_id,
+            payload={"message_count": len(session.messages)},
+        )
+
+        return session
+
+    async def close_session(self, session_id: Optional[str] = None) -> None:
+        """Close a session.
+
+        Args:
+            session_id: Session to close. Uses current session if None.
+        """
+        sid = session_id or (
+            self._current_session.session_id if self._current_session else None
+        )
+        if not sid or not self._storage:
+            return
+
+        data = await self._storage.get_session(sid)
+        if data:
+            session = Session(**data)
+            session.status = SessionStatus.CLOSED
+            session.closed_at = datetime.utcnow()
+            await self._save_session(session)
+
+            from ...events.helpers import emit_event
+            from ...events.models import EventType
+            await emit_event(
+                event_type=EventType.SESSION_CLOSED,
+                session_id=sid,
+                payload={"total_messages": len(session.messages)},
+            )
+
+        if self._current_session and self._current_session.session_id == sid:
+            self._current_session = None
+
+    async def _save_session(self, session: Session) -> None:
+        """Persist a session to storage with TTL."""
+        if not self._storage:
+            return
+
+        from ...config import get_settings
+        settings = get_settings()
+
+        await self._storage.set_session(
+            session.session_id,
+            session.model_dump(mode="json"),
+            ttl=settings.session_ttl_seconds,
+        )
+
+    # =========================================================================
+    # Message processing
+    # =========================================================================
 
     def process_message(
         self,
@@ -94,6 +263,65 @@ class ChatInterface:
         })
 
         return response
+
+    async def process_message_async(
+        self,
+        message: str,
+        buyer_context: Optional[BuyerContext] = None,
+        session_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Process a chat message, optionally within a persistent session.
+
+        Args:
+            message: The buyer's message.
+            buyer_context: Optional buyer context.
+            session_id: Optional session ID for persistence.
+
+        Returns:
+            Response dict with text and structured data.
+        """
+        # Load session if specified
+        if session_id and self._storage:
+            if not self._current_session or self._current_session.session_id != session_id:
+                await self.resume_session(session_id)
+
+        # Delegate to existing synchronous logic
+        response = self.process_message(message, buyer_context=buyer_context)
+
+        # Persist to session if active
+        if self._current_session and self._storage:
+            self._current_session.add_message(
+                role="user",
+                content=message,
+                message_type=response.get("type"),
+            )
+            self._current_session.add_message(
+                role="assistant",
+                content=response.get("text", ""),
+                message_type=response.get("type"),
+            )
+
+            # Update negotiation state based on response type
+            resp_type = response.get("type")
+            if resp_type == "pricing":
+                self._current_session.negotiation.stage = "pricing"
+                self._current_session.negotiation.last_intent = "pricing_inquiry"
+            elif resp_type == "availability":
+                self._current_session.negotiation.last_intent = "availability_inquiry"
+            elif resp_type == "deal":
+                self._current_session.negotiation.stage = "deal"
+                self._current_session.negotiation.last_intent = "deal_request"
+                deal_id = response.get("deal", {}).get("deal_id") if response.get("deal") else None
+                if deal_id:
+                    self._current_session.negotiation.active_deal_ids.append(deal_id)
+
+            await self._save_session(self._current_session)
+
+        return response
+
+    # =========================================================================
+    # Intent detection and handlers (unchanged)
+    # =========================================================================
 
     def _default_context(self) -> BuyerContext:
         """Create default anonymous buyer context."""

@@ -53,6 +53,12 @@ from .buyer_identity import (
     BuyerIdentity,
     IdentityLevel,
 )
+from .session import (
+    NegotiationState,
+    Session,
+    SessionMessage,
+    SessionStatus,
+)
 from .pricing_tiers import (
     PricingRule,
     PricingTier,
@@ -150,6 +156,11 @@ __all__ = [
     "BuyerContext",
     "AccessTier",
     "IdentityLevel",
+    # Session
+    "Session",
+    "SessionStatus",
+    "SessionMessage",
+    "NegotiationState",
     # Pricing tiers
     "PricingTier",
     "PricingRule",
