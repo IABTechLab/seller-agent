@@ -40,6 +40,11 @@ class EventType(str, Enum):
     SESSION_RESUMED = "session.resumed"
     SESSION_CLOSED = "session.closed"
 
+    # Package lifecycle
+    PACKAGE_CREATED = "package.created"
+    PACKAGE_UPDATED = "package.updated"
+    PACKAGE_SYNCED = "package.synced"
+
 
 class Event(BaseModel):
     """An event emitted by the system."""

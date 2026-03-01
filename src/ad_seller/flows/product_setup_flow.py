@@ -10,6 +10,7 @@ This flow handles:
 - Setting commercial terms (deal types, pricing models)
 """
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Any, Optional
@@ -22,8 +23,16 @@ from ..models.flow_state import (
     SellerFlowState,
 )
 from ..models.core import DealType, PricingModel
+from ..models.media_kit import (
+    Package,
+    PackageLayer,
+    PackagePlacement,
+    PackageStatus,
+)
 from ..clients import UnifiedClient, Protocol
 from ..config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class ProductSetupState(SellerFlowState):
@@ -97,15 +106,211 @@ class ProductSetupFlow(Flow[ProductSetupState]):
     async def sync_from_ad_server(self) -> None:
         """Sync inventory from ad server if configured.
 
-        This step is optional and only runs if ad server is configured.
+        When an ad server is configured, imports inventory via
+        AdServerClient.list_inventory() and creates Layer 1 synced packages.
+        Otherwise, creates mock synced packages for development.
         """
-        # Check if ad server sync is configured
         if not self._settings.gam_network_code and not self._settings.freewheel_api_url:
-            self.state.warnings.append("No ad server configured, skipping inventory sync")
+            self.state.warnings.append("No ad server configured, creating mock synced packages")
+            await self._create_mock_synced_packages()
             return
 
-        # TODO: Implement GAM inventory sync when GAM client is available
-        pass
+        try:
+            from ..clients.ad_server_base import get_ad_server_client
+            from ..storage.factory import get_storage
+
+            storage = await get_storage()
+            client = get_ad_server_client()
+            async with client:
+                items = await client.list_inventory()
+
+            # Group items by inferred type and create packages
+            grouped: dict[str, list] = {}
+            for item in items:
+                inv_type = self._classify_inventory_type(item)
+                grouped.setdefault(inv_type, []).append(item)
+
+            for inv_type, inv_items in grouped.items():
+                ad_formats = self._classify_ad_formats_from_type(inv_type)
+                device_types = self._classify_device_types_from_type(inv_type)
+                base_cpm = self._estimate_base_cpm(inv_type)
+
+                package = Package(
+                    package_id=f"pkg-{uuid.uuid4().hex[:8]}",
+                    name=f"{inv_type.replace('_', ' ').title()} - Synced",
+                    description=f"Synced {inv_type} inventory ({len(inv_items)} ad units)",
+                    layer=PackageLayer.SYNCED,
+                    status=PackageStatus.ACTIVE,
+                    placements=[
+                        PackagePlacement(
+                            product_id=item.id,
+                            product_name=item.name,
+                            ad_formats=ad_formats,
+                            device_types=device_types,
+                        )
+                        for item in inv_items
+                    ],
+                    ad_formats=ad_formats,
+                    device_types=device_types,
+                    cat=["IAB1"],
+                    cattax=2,
+                    base_price=base_cpm,
+                    floor_price=round(base_cpm * 0.7, 2),
+                    ad_server_source=client.ad_server_type.value,
+                    is_featured=inv_type == "ctv",
+                )
+
+                await storage.set_package(package.package_id, package.model_dump(mode="json"))
+                self.state.synced_segments.append(package.package_id)
+
+            logger.info("Synced %d packages from ad server", len(grouped))
+
+        except Exception as e:
+            self.state.warnings.append(f"Ad server sync failed, using mocks: {e}")
+            await self._create_mock_synced_packages()
+
+    async def _create_mock_synced_packages(self) -> None:
+        """Create mock Layer 1 packages for development without ad server creds."""
+        from ..storage.factory import get_storage
+
+        storage = await get_storage()
+
+        mock_packages = [
+            Package(
+                package_id=f"pkg-{uuid.uuid4().hex[:8]}",
+                name="Display Network Bundle",
+                description="Standard and high-impact display across web and mobile web",
+                layer=PackageLayer.SYNCED,
+                status=PackageStatus.ACTIVE,
+                placements=[
+                    PackagePlacement(
+                        product_id="prod-display-hp",
+                        product_name="Premium Display - Homepage",
+                        ad_formats=["banner"],
+                        device_types=[2, 4, 5],
+                    ),
+                    PackagePlacement(
+                        product_id="prod-display-ros",
+                        product_name="Standard Display - ROS",
+                        ad_formats=["banner"],
+                        device_types=[2, 4, 5],
+                    ),
+                ],
+                ad_formats=["banner"],
+                device_types=[2, 4, 5],  # PC, Phone, Tablet
+                cat=["IAB1", "IAB3", "IAB19"],  # Arts, Business, Sports
+                cattax=2,
+                audience_segment_ids=["3", "4", "5", "6", "7"],  # Age 18-34 (AT 1.1)
+                geo_targets=["US"],
+                base_price=12.0,
+                floor_price=8.0,
+                tags=["display", "standard", "high-impact"],
+                is_featured=False,
+            ),
+            Package(
+                package_id=f"pkg-{uuid.uuid4().hex[:8]}",
+                name="Video Suite",
+                description="Pre-roll and mid-roll video across desktop and mobile",
+                layer=PackageLayer.SYNCED,
+                status=PackageStatus.ACTIVE,
+                placements=[
+                    PackagePlacement(
+                        product_id="prod-video-preroll",
+                        product_name="Pre-Roll Video",
+                        ad_formats=["video"],
+                        device_types=[2, 4, 5],
+                    ),
+                ],
+                ad_formats=["video"],
+                device_types=[2, 4, 5],  # PC, Phone, Tablet
+                cat=["IAB1"],  # Arts & Entertainment
+                cattax=2,
+                audience_segment_ids=["3", "4", "5", "6", "49", "50"],  # Age 18-34, Gender
+                geo_targets=["US"],
+                base_price=25.0,
+                floor_price=18.0,
+                tags=["video", "pre-roll", "in-stream"],
+                is_featured=False,
+            ),
+            Package(
+                package_id=f"pkg-{uuid.uuid4().hex[:8]}",
+                name="CTV Premium Bundle",
+                description="Connected TV inventory on premium streaming apps",
+                layer=PackageLayer.SYNCED,
+                status=PackageStatus.ACTIVE,
+                placements=[
+                    PackagePlacement(
+                        product_id="prod-ctv-premium",
+                        product_name="CTV Premium Streaming",
+                        ad_formats=["video"],
+                        device_types=[3, 7],
+                    ),
+                ],
+                ad_formats=["video"],
+                device_types=[3, 7],  # CTV, Set Top Box
+                cat=["IAB1", "IAB19"],  # Arts & Entertainment, Sports
+                cattax=2,
+                audience_segment_ids=["3", "4", "5", "6", "7", "8"],  # Age 18-44
+                geo_targets=["US"],
+                base_price=35.0,
+                floor_price=28.0,
+                tags=["ctv", "premium", "streaming", "living room"],
+                is_featured=True,
+            ),
+        ]
+
+        for pkg in mock_packages:
+            await storage.set_package(pkg.package_id, pkg.model_dump(mode="json"))
+            self.state.synced_segments.append(pkg.package_id)
+
+        logger.info("Created %d mock synced packages", len(mock_packages))
+
+    @staticmethod
+    def _classify_inventory_type(item: Any) -> str:
+        """Classify an ad server inventory item into an inventory type string."""
+        name_lower = item.name.lower() if hasattr(item, "name") else ""
+        if "ctv" in name_lower or "ott" in name_lower or "connected" in name_lower:
+            return "ctv"
+        if "video" in name_lower or "preroll" in name_lower or "midroll" in name_lower:
+            return "video"
+        if "native" in name_lower or "feed" in name_lower:
+            return "native"
+        if "app" in name_lower or "mobile" in name_lower:
+            return "mobile_app"
+        return "display"
+
+    @staticmethod
+    def _classify_ad_formats_from_type(inv_type: str) -> list[str]:
+        """Map inventory type to OpenRTB ad format names."""
+        return {
+            "display": ["banner"],
+            "video": ["video"],
+            "ctv": ["video"],
+            "mobile_app": ["banner", "video"],
+            "native": ["native"],
+        }.get(inv_type, ["banner"])
+
+    @staticmethod
+    def _classify_device_types_from_type(inv_type: str) -> list[int]:
+        """Map inventory type to AdCOM DeviceType integers."""
+        return {
+            "display": [2, 4, 5],
+            "video": [2, 4, 5],
+            "ctv": [3, 7],
+            "mobile_app": [4, 5],
+            "native": [2, 4, 5],
+        }.get(inv_type, [2])
+
+    @staticmethod
+    def _estimate_base_cpm(inv_type: str) -> float:
+        """Estimate base CPM for an inventory type."""
+        return {
+            "display": 12.0,
+            "video": 25.0,
+            "ctv": 35.0,
+            "mobile_app": 18.0,
+            "native": 10.0,
+        }.get(inv_type, 10.0)
 
     @listen(sync_from_ad_server)
     async def create_default_products(self) -> None:

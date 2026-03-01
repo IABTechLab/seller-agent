@@ -100,6 +100,41 @@ class DiscoveryRequest(BaseModel):
     agency_id: Optional[str] = None
 
 
+class PackageCreateRequest(BaseModel):
+    """Request to create a curated package."""
+
+    name: str
+    description: Optional[str] = None
+    product_ids: list[str] = []
+    cat: list[str] = []
+    cattax: int = 2
+    audience_segment_ids: list[str] = []
+    device_types: list[int] = []
+    ad_formats: list[str] = []
+    geo_targets: list[str] = []
+    base_price: float
+    floor_price: float
+    tags: list[str] = []
+    is_featured: bool = False
+    seasonal_label: Optional[str] = None
+
+
+class DynamicPackageRequest(BaseModel):
+    """Request to assemble a dynamic package from product IDs."""
+
+    name: str
+    product_ids: list[str]
+
+
+class MediaKitSearchRequest(BaseModel):
+    """Request to search packages."""
+
+    query: str
+    buyer_tier: str = "public"
+    agency_id: Optional[str] = None
+    advertiser_id: Optional[str] = None
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -717,3 +752,305 @@ async def close_session_endpoint(session_id: str):
     await chat.close_session(session_id)
 
     return {"session_id": session_id, "status": "closed"}
+
+
+# =============================================================================
+# Helper: build buyer context from tier params
+# =============================================================================
+
+
+def _build_buyer_context(
+    buyer_tier: str = "public",
+    agency_id: Optional[str] = None,
+    advertiser_id: Optional[str] = None,
+):
+    """Build a BuyerContext from query params."""
+    from ...models.buyer_identity import BuyerContext, BuyerIdentity, AccessTier
+
+    tier_map = {
+        "public": AccessTier.PUBLIC,
+        "seat": AccessTier.SEAT,
+        "agency": AccessTier.AGENCY,
+        "advertiser": AccessTier.ADVERTISER,
+    }
+    access_tier = tier_map.get(buyer_tier.lower(), AccessTier.PUBLIC)
+    identity = BuyerIdentity(agency_id=agency_id, advertiser_id=advertiser_id)
+    return BuyerContext(
+        identity=identity,
+        is_authenticated=access_tier != AccessTier.PUBLIC,
+    )
+
+
+async def _get_media_kit_service():
+    """Create a MediaKitService with storage and pricing engine."""
+    from ...engines.media_kit_service import MediaKitService
+    from ...engines.pricing_rules_engine import PricingRulesEngine
+    from ...models.pricing_tiers import TieredPricingConfig
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    config = TieredPricingConfig(seller_organization_id="default")
+    pricing = PricingRulesEngine(config)
+    return MediaKitService(storage, pricing)
+
+
+# =============================================================================
+# Media Kit Endpoints (Public — no auth required)
+# =============================================================================
+
+
+@app.get("/media-kit")
+async def media_kit_overview():
+    """Public media kit catalog overview."""
+    service = await _get_media_kit_service()
+    packages = await service.list_packages_public()
+    featured = [p for p in packages if p.is_featured]
+
+    return {
+        "total_packages": len(packages),
+        "featured_count": len(featured),
+        "featured": [p.model_dump() for p in featured],
+        "all_packages": [p.model_dump() for p in packages],
+    }
+
+
+@app.get("/media-kit/packages")
+async def list_media_kit_packages(
+    layer: Optional[str] = None,
+    featured_only: bool = False,
+):
+    """List packages with public view (price ranges, no exact pricing)."""
+    from ...models.media_kit import PackageLayer
+
+    pkg_layer = None
+    if layer:
+        try:
+            pkg_layer = PackageLayer(layer)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid layer: {layer}")
+
+    service = await _get_media_kit_service()
+    packages = await service.list_packages_public(layer=pkg_layer, featured_only=featured_only)
+    return {"packages": [p.model_dump() for p in packages]}
+
+
+@app.get("/media-kit/packages/{package_id}")
+async def get_media_kit_package(package_id: str):
+    """Get a single package with public view."""
+    service = await _get_media_kit_service()
+    package = await service.get_package_public(package_id)
+    if not package:
+        raise HTTPException(status_code=404, detail="Package not found")
+    return package.model_dump()
+
+
+@app.post("/media-kit/search")
+async def search_media_kit(request: MediaKitSearchRequest):
+    """Search packages by keyword. Authenticated buyers get richer results."""
+    context = None
+    if request.buyer_tier != "public":
+        context = _build_buyer_context(
+            request.buyer_tier, request.agency_id, request.advertiser_id
+        )
+
+    service = await _get_media_kit_service()
+    results = await service.search_packages(request.query, buyer_context=context)
+    return {"results": [r.model_dump() for r in results]}
+
+
+# =============================================================================
+# Package Endpoints (Authenticated / Admin)
+# =============================================================================
+
+
+@app.get("/packages")
+async def list_packages(
+    buyer_tier: str = "public",
+    agency_id: Optional[str] = None,
+    advertiser_id: Optional[str] = None,
+    layer: Optional[str] = None,
+):
+    """List packages with tier-gated view."""
+    from ...models.media_kit import PackageLayer
+
+    pkg_layer = None
+    if layer:
+        try:
+            pkg_layer = PackageLayer(layer)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid layer: {layer}")
+
+    service = await _get_media_kit_service()
+
+    if buyer_tier == "public":
+        packages = await service.list_packages_public(layer=pkg_layer)
+    else:
+        context = _build_buyer_context(buyer_tier, agency_id, advertiser_id)
+        packages = await service.list_packages_authenticated(context, layer=pkg_layer)
+
+    return {"packages": [p.model_dump() for p in packages]}
+
+
+@app.get("/packages/{package_id}")
+async def get_package(
+    package_id: str,
+    buyer_tier: str = "public",
+    agency_id: Optional[str] = None,
+    advertiser_id: Optional[str] = None,
+):
+    """Get a single package with tier-gated view."""
+    service = await _get_media_kit_service()
+
+    if buyer_tier == "public":
+        package = await service.get_package_public(package_id)
+    else:
+        context = _build_buyer_context(buyer_tier, agency_id, advertiser_id)
+        package = await service.get_package_authenticated(package_id, context)
+
+    if not package:
+        raise HTTPException(status_code=404, detail="Package not found")
+    return package.model_dump()
+
+
+@app.post("/packages")
+async def create_package(request: PackageCreateRequest):
+    """Create a curated package (Layer 2)."""
+    import uuid as _uuid
+    from ...models.media_kit import Package, PackageLayer, PackagePlacement, PackageStatus
+    from ...storage.factory import get_storage
+    from ...events.helpers import emit_event
+    from ...events.models import EventType
+
+    storage = await get_storage()
+
+    # Build placements from product_ids
+    placements = []
+    for pid in request.product_ids:
+        prod_data = await storage.get_product(pid)
+        if prod_data:
+            from ...models.flow_state import ProductDefinition
+            prod = ProductDefinition(**prod_data)
+            placements.append(PackagePlacement(
+                product_id=prod.product_id,
+                product_name=prod.name,
+                ad_formats=request.ad_formats or _default_ad_formats(prod.inventory_type),
+                device_types=request.device_types or _default_device_types(prod.inventory_type),
+            ))
+
+    package = Package(
+        package_id=f"pkg-{_uuid.uuid4().hex[:8]}",
+        name=request.name,
+        description=request.description,
+        layer=PackageLayer.CURATED,
+        status=PackageStatus.ACTIVE,
+        placements=placements,
+        cat=request.cat,
+        cattax=request.cattax,
+        audience_segment_ids=request.audience_segment_ids,
+        device_types=request.device_types,
+        ad_formats=request.ad_formats,
+        geo_targets=request.geo_targets,
+        base_price=request.base_price,
+        floor_price=request.floor_price,
+        tags=request.tags,
+        is_featured=request.is_featured,
+        seasonal_label=request.seasonal_label,
+    )
+
+    service = await _get_media_kit_service()
+    created = await service.create_package(package)
+
+    await emit_event(
+        event_type=EventType.PACKAGE_CREATED,
+        payload={"package_id": created.package_id, "name": created.name, "layer": "curated"},
+    )
+
+    return created.model_dump(mode="json")
+
+
+@app.put("/packages/{package_id}")
+async def update_package(package_id: str, updates: dict[str, Any]):
+    """Update an existing package."""
+    from ...events.helpers import emit_event
+    from ...events.models import EventType
+
+    service = await _get_media_kit_service()
+    package = await service.update_package(package_id, updates)
+    if not package:
+        raise HTTPException(status_code=404, detail="Package not found")
+
+    await emit_event(
+        event_type=EventType.PACKAGE_UPDATED,
+        payload={"package_id": package_id, "updated_fields": list(updates.keys())},
+    )
+
+    return package.model_dump(mode="json")
+
+
+@app.delete("/packages/{package_id}")
+async def delete_package(package_id: str):
+    """Archive a package (soft delete)."""
+    service = await _get_media_kit_service()
+    deleted = await service.delete_package(package_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Package not found")
+    return {"package_id": package_id, "status": "archived"}
+
+
+@app.post("/packages/assemble")
+async def assemble_package(request: DynamicPackageRequest):
+    """Assemble a dynamic package (Layer 3) from product IDs."""
+    service = await _get_media_kit_service()
+    package = await service.assemble_dynamic_package(request.name, request.product_ids)
+    if not package:
+        raise HTTPException(status_code=400, detail="No valid products found for assembly")
+    return package.model_dump(mode="json")
+
+
+@app.post("/packages/sync")
+async def sync_packages():
+    """Trigger ad server inventory sync (Layer 1)."""
+    from ...flows import ProductSetupFlow
+    from ...events.helpers import emit_event
+    from ...events.models import EventType
+
+    flow = ProductSetupFlow()
+    await flow.kickoff()
+
+    await emit_event(
+        event_type=EventType.PACKAGE_SYNCED,
+        payload={"synced_count": len(flow.state.synced_segments)},
+    )
+
+    return {
+        "status": "synced",
+        "synced_packages": flow.state.synced_segments,
+        "warnings": flow.state.warnings,
+    }
+
+
+# =============================================================================
+# Package endpoint helpers
+# =============================================================================
+
+
+def _default_ad_formats(inventory_type: str) -> list[str]:
+    """Default ad formats for an inventory type."""
+    return {
+        "display": ["banner"],
+        "video": ["video"],
+        "ctv": ["video"],
+        "mobile_app": ["banner", "video"],
+        "native": ["native"],
+    }.get(inventory_type, ["banner"])
+
+
+def _default_device_types(inventory_type: str) -> list[int]:
+    """Default AdCOM device types for an inventory type."""
+    return {
+        "display": [2, 4, 5],
+        "video": [2, 4, 5],
+        "ctv": [3, 7],
+        "mobile_app": [4, 5],
+        "native": [2, 4, 5],
+    }.get(inventory_type, [2])

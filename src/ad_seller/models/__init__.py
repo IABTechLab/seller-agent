@@ -78,6 +78,14 @@ from .ucp import (
     UCPEmbedding,
     UCPModelDescriptor,
 )
+from .media_kit import (
+    AuthenticatedPackageView,
+    Package,
+    PackageLayer,
+    PackagePlacement,
+    PackageStatus,
+    PublicPackageView,
+)
 from .gam import (
     AudienceSegmentMapping,
     GAMAdUnit,
@@ -178,6 +186,13 @@ __all__ = [
     "UCPContextDescriptor",
     "UCPEmbedding",
     "UCPModelDescriptor",
+    # Media kit
+    "Package",
+    "PackageLayer",
+    "PackageStatus",
+    "PackagePlacement",
+    "PublicPackageView",
+    "AuthenticatedPackageView",
     # GAM models
     "GAMAdUnit",
     "GAMAdUnitSize",

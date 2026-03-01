@@ -159,3 +159,35 @@ class StorageBackend(ABC):
         if session_id in existing:
             existing.remove(session_id)
             await self.set(index_key, existing)
+
+    # Package operations
+
+    async def get_package(self, package_id: str) -> Optional[dict]:
+        """Get a package by ID."""
+        return await self.get(f"package:{package_id}")
+
+    async def set_package(self, package_id: str, package_data: dict) -> None:
+        """Store a package."""
+        await self.set(f"package:{package_id}", package_data)
+
+    async def delete_package(self, package_id: str) -> bool:
+        """Delete a package."""
+        return await self.delete(f"package:{package_id}")
+
+    async def list_packages(self) -> list[dict]:
+        """List all packages."""
+        keys = await self.keys("package:*")
+        packages = []
+        for key in keys:
+            package = await self.get(key)
+            if package:
+                packages.append(package)
+        return packages
+
+    async def get_media_kit(self, seller_org_id: str) -> Optional[dict]:
+        """Get media kit metadata for a seller organization."""
+        return await self.get(f"media_kit:{seller_org_id}")
+
+    async def set_media_kit(self, seller_org_id: str, data: dict) -> None:
+        """Store media kit metadata for a seller organization."""
+        await self.set(f"media_kit:{seller_org_id}", data)
