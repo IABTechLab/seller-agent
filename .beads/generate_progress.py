@@ -33,19 +33,37 @@ def load_issues():
 
 
 def get_phase(title):
-    """Extract phase number from title like '1D: ...' or '2B: ...'."""
+    """Extract phase number from title like '1D: ...', '2B: ...', or '1A-Phase1: ...'."""
+    # Match sub-tasks like "1A-Phase1: ..." or "1A-Phase2: ..."
+    m = re.match(r"(\d)[A-Z]-", title)
+    if m:
+        return m.group(1)
+    # Match top-level tasks like "1D: ..."
     m = re.match(r"(\d)[A-Z]:", title)
     if m:
         return m.group(1)
     return None
 
 
+def get_parent_task(title):
+    """Extract parent task ID from sub-task title like '1A-Phase1: ...' -> '1A'."""
+    m = re.match(r"(\d[A-Z])-", title)
+    if m:
+        return m.group(1)
+    return None
+
+
 def get_sort_key(title):
-    """Sort key: phase number then letter, e.g. '1D' -> (1, 'D')."""
+    """Sort key: phase number then letter then sub-phase, e.g. '1A-Phase2' -> (1, 'A', 2)."""
+    # Sub-task: "1A-Phase2: ..."
+    m = re.match(r"(\d)([A-Z])-Phase(\d+):", title)
+    if m:
+        return (int(m.group(1)), m.group(2), int(m.group(3)))
+    # Top-level: "1D: ..."
     m = re.match(r"(\d)([A-Z]):", title)
     if m:
-        return (int(m.group(1)), m.group(2))
-    return (99, title)
+        return (int(m.group(1)), m.group(2), 0)
+    return (99, title, 0)
 
 
 def is_blocked(issue, closed_ids):
@@ -138,17 +156,42 @@ def generate():
         lines.append("| | ID | Task | Priority | Blockers | Done |")
         lines.append("|---|---|---|---|---|---|")
 
+        # Separate top-level tasks and sub-tasks
+        top_level = []
+        sub_tasks = {}  # parent_key -> [issues]
         for issue in phases[phase_num]:
+            title = issue.get("title", "")
+            parent = get_parent_task(title)
+            if parent:
+                sub_tasks.setdefault(parent, []).append(issue)
+            else:
+                top_level.append(issue)
+
+        for issue in top_level:
             icon = status_icon(issue, closed_ids)
             iid = issue["id"]
             title = issue.get("title", "")
             priority = f"P{issue.get('priority', '?')}"
             blockers = get_blocker_ids(issue)
-            # Only show unresolved blockers
             unresolved = [b for b in blockers if b not in closed_ids]
             blocker_str = ", ".join(unresolved) if unresolved else "—"
             done = format_date(issue.get("closed_at", ""))
             lines.append(f"| {icon} | {iid} | {title} | {priority} | {blocker_str} | {done} |")
+
+            # Render sub-tasks indented right after their parent
+            task_key_match = re.match(r"(\d[A-Z]):", title)
+            if task_key_match:
+                task_key = task_key_match.group(1)
+                for sub in sub_tasks.get(task_key, []):
+                    sub_icon = status_icon(sub, closed_ids)
+                    sub_iid = sub["id"]
+                    sub_title = sub.get("title", "")
+                    sub_priority = f"P{sub.get('priority', '?')}"
+                    sub_blockers = get_blocker_ids(sub)
+                    sub_unresolved = [b for b in sub_blockers if b not in closed_ids]
+                    sub_blocker_str = ", ".join(sub_unresolved) if sub_unresolved else "—"
+                    sub_done = format_date(sub.get("closed_at", ""))
+                    lines.append(f"| {sub_icon} | {sub_iid} | &nbsp;&nbsp;↳ {sub_title} | {sub_priority} | {sub_blocker_str} | {sub_done} |")
 
         lines.append("")
 
