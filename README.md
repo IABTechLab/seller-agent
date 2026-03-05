@@ -1,3 +1,7 @@
+> **V2 — Active Development**
+> This is the next-generation seller agent, under active development.
+> See [PROGRESS.md](.beads/PROGRESS.md) for the current roadmap and status.
+
 # Ad Seller System
 
 An AI-powered inventory management system for **publishers and SSPs** to automate programmatic direct sales using IAB OpenDirect standards.
