@@ -10,6 +10,7 @@ Provides endpoints for:
 - Deal generation
 """
 
+from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -145,6 +146,126 @@ class CounterOfferRequest(BaseModel):
     buyer_tier: str = "public"
     agency_id: Optional[str] = None
     advertiser_id: Optional[str] = None
+
+
+class QuoteBuyerIdentityModel(BaseModel):
+    """Buyer identity in a quote request."""
+
+    seat_id: Optional[str] = None
+    agency_id: Optional[str] = None
+    advertiser_id: Optional[str] = None
+    dsp_platform: Optional[str] = None
+
+
+class QuoteRequestModel(BaseModel):
+    """API request model for POST /api/v1/quotes."""
+
+    product_id: str
+    deal_type: str
+    impressions: Optional[int] = None
+    flight_start: Optional[str] = None
+    flight_end: Optional[str] = None
+    target_cpm: Optional[float] = None
+    buyer_identity: Optional[QuoteBuyerIdentityModel] = None
+
+
+class DealBookingRequestModel(BaseModel):
+    """API request model for POST /api/v1/deals."""
+
+    quote_id: str
+    buyer_identity: Optional[QuoteBuyerIdentityModel] = None
+    notes: Optional[str] = None
+
+
+# =============================================================================
+# Auth & Context Helpers (must be defined before endpoints that use Depends)
+# =============================================================================
+
+
+async def _get_optional_api_key_record(
+    authorization: Optional[str] = None,
+    x_api_key: Optional[str] = None,
+):
+    """FastAPI dependency: validate API key from headers if present.
+
+    Returns None for anonymous requests (no key in headers).
+    Raises HTTPException(401) for invalid, revoked, or expired keys.
+    Accepts ``Authorization: Bearer <key>`` or ``X-Api-Key: <key>``.
+    """
+    from ...auth.dependencies import get_api_key_record
+    return await get_api_key_record(authorization, x_api_key)
+
+
+def _build_buyer_context(
+    buyer_tier: str = "public",
+    agency_id: Optional[str] = None,
+    advertiser_id: Optional[str] = None,
+    seat_id: Optional[str] = None,
+    api_key_record: Optional[Any] = None,
+    agent_url: Optional[str] = None,
+    max_access_tier: Optional[Any] = None,
+):
+    """Build a BuyerContext, preferring API key identity over body params.
+
+    If an api_key_record is present, the key's identity is used and the
+    buyer is marked as authenticated. Otherwise, falls back to body/query
+    params (backward compatible with pre-auth behavior).
+
+    The max_access_tier (from agent registry) is merged in when provided.
+    """
+    from ...models.buyer_identity import BuyerContext, BuyerIdentity, AccessTier
+
+    if api_key_record is not None:
+        return BuyerContext(
+            identity=api_key_record.identity,
+            is_authenticated=True,
+            authentication_method="api_key",
+            agent_url=agent_url,
+            max_access_tier=max_access_tier,
+        )
+
+    # Fallback: body params (existing behavior, backward compatible)
+    tier_map = {
+        "public": AccessTier.PUBLIC,
+        "seat": AccessTier.SEAT,
+        "agency": AccessTier.AGENCY,
+        "advertiser": AccessTier.ADVERTISER,
+    }
+    access_tier = tier_map.get(buyer_tier.lower(), AccessTier.PUBLIC)
+    identity = BuyerIdentity(
+        seat_id=seat_id,
+        agency_id=agency_id,
+        advertiser_id=advertiser_id,
+    )
+    return BuyerContext(
+        identity=identity,
+        is_authenticated=access_tier != AccessTier.PUBLIC,
+        agent_url=agent_url,
+        max_access_tier=max_access_tier,
+    )
+
+
+async def _resolve_and_enforce_agent(
+    agent_url: Optional[str],
+) -> tuple[Optional[Any], Optional[Any]]:
+    """Resolve agent and enforce blocked status.
+
+    Returns (RegisteredAgent, AccessTier). Raises HTTPException 403
+    if the agent is blocked — zero data leakage.
+    """
+    if not agent_url:
+        return None, None
+
+    service = await _get_registry_service()
+    agent, tier = await service.resolve_agent_access(agent_url)
+
+    if agent and agent.is_blocked:
+        raise HTTPException(
+            status_code=403,
+            detail="Agent is blocked. Contact the seller operator for access.",
+        )
+
+    return agent, tier
 
 
 # =============================================================================
@@ -933,79 +1054,6 @@ async def get_negotiation_status(proposal_id: str):
     }
 
 
-# =============================================================================
-# Helper: API key authentication dependency
-# =============================================================================
-
-
-async def _get_optional_api_key_record(
-    authorization: Optional[str] = None,
-    x_api_key: Optional[str] = None,
-):
-    """FastAPI dependency: validate API key from headers if present.
-
-    Returns None for anonymous requests (no key in headers).
-    Raises HTTPException(401) for invalid, revoked, or expired keys.
-    Accepts ``Authorization: Bearer <key>`` or ``X-Api-Key: <key>``.
-    """
-    from ...auth.dependencies import get_api_key_record
-    return await get_api_key_record(authorization, x_api_key)
-
-
-# =============================================================================
-# Helper: build buyer context from tier params
-# =============================================================================
-
-
-def _build_buyer_context(
-    buyer_tier: str = "public",
-    agency_id: Optional[str] = None,
-    advertiser_id: Optional[str] = None,
-    seat_id: Optional[str] = None,
-    api_key_record: Optional[Any] = None,
-    agent_url: Optional[str] = None,
-    max_access_tier: Optional[Any] = None,
-):
-    """Build a BuyerContext, preferring API key identity over body params.
-
-    If an api_key_record is present, the key's identity is used and the
-    buyer is marked as authenticated. Otherwise, falls back to body/query
-    params (backward compatible with pre-auth behavior).
-
-    The max_access_tier (from agent registry) is merged in when provided.
-    """
-    from ...models.buyer_identity import BuyerContext, BuyerIdentity, AccessTier
-
-    if api_key_record is not None:
-        return BuyerContext(
-            identity=api_key_record.identity,
-            is_authenticated=True,
-            authentication_method="api_key",
-            agent_url=agent_url,
-            max_access_tier=max_access_tier,
-        )
-
-    # Fallback: body params (existing behavior, backward compatible)
-    tier_map = {
-        "public": AccessTier.PUBLIC,
-        "seat": AccessTier.SEAT,
-        "agency": AccessTier.AGENCY,
-        "advertiser": AccessTier.ADVERTISER,
-    }
-    access_tier = tier_map.get(buyer_tier.lower(), AccessTier.PUBLIC)
-    identity = BuyerIdentity(
-        seat_id=seat_id,
-        agency_id=agency_id,
-        advertiser_id=advertiser_id,
-    )
-    return BuyerContext(
-        identity=identity,
-        is_authenticated=access_tier != AccessTier.PUBLIC,
-        agent_url=agent_url,
-        max_access_tier=max_access_tier,
-    )
-
-
 async def _get_media_kit_service():
     """Create a MediaKitService with storage and pricing engine."""
     from ...engines.media_kit_service import MediaKitService
@@ -1333,29 +1381,6 @@ def _get_api_settings():
     return get_settings()
 
 
-async def _resolve_and_enforce_agent(
-    agent_url: Optional[str],
-) -> tuple[Optional[Any], Optional[Any]]:
-    """Resolve agent and enforce blocked status.
-
-    Returns (RegisteredAgent, AccessTier). Raises HTTPException 403
-    if the agent is blocked — zero data leakage.
-    """
-    if not agent_url:
-        return None, None
-
-    service = await _get_registry_service()
-    agent, tier = await service.resolve_agent_access(agent_url)
-
-    if agent and agent.is_blocked:
-        raise HTTPException(
-            status_code=403,
-            detail="Agent is blocked. Contact the seller operator for access.",
-        )
-
-    return agent, tier
-
-
 # =============================================================================
 # API Key Management Endpoints (Operator-facing)
 # =============================================================================
@@ -1663,3 +1688,326 @@ async def remove_registered_agent(agent_id: str):
     if not removed:
         raise HTTPException(status_code=404, detail="Agent not found")
     return {"agent_id": agent_id, "status": "removed"}
+
+
+# =============================================================================
+# IAB Deals API v1.0 — Quote & Deal Booking Endpoints
+# =============================================================================
+
+
+@app.post("/api/v1/quotes")
+async def create_quote(
+    request: QuoteRequestModel,
+    api_key_record=Depends(_get_optional_api_key_record),
+):
+    """Request a non-binding price quote from the seller.
+
+    The seller evaluates the request against existing pricing rules and
+    returns a quote with pricing, terms, and availability. Quotes are
+    ephemeral with a 24-hour TTL — no Deal ID is created.
+    """
+    import uuid
+    from datetime import timedelta
+
+    from ...engines.pricing_rules_engine import PricingRulesEngine
+    from ...flows import ProductSetupFlow
+    from ...models.core import DealType
+    from ...models.pricing_tiers import TieredPricingConfig
+    from ...models.quotes import (
+        QuoteAvailability,
+        QuotePricing,
+        QuoteProductInfo,
+        QuoteResponse,
+        QuoteStatus,
+        QuoteTerms,
+    )
+    from ...storage.factory import get_storage
+
+    # Map deal type string to enum
+    deal_type_map = {
+        "PG": DealType.PROGRAMMATIC_GUARANTEED,
+        "PD": DealType.PREFERRED_DEAL,
+        "PA": DealType.PRIVATE_AUCTION,
+    }
+    deal_type_str = request.deal_type.upper()
+    if deal_type_str not in deal_type_map:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_deal_type",
+                "message": f"Deal type must be one of: PG, PD, PA. Got: {request.deal_type}",
+            },
+        )
+
+    # PG deals require impressions
+    if deal_type_str == "PG" and not request.impressions:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "pg_requires_impressions",
+                "message": "Programmatic Guaranteed deals require an impressions count.",
+            },
+        )
+
+    # Get product catalog
+    setup_flow = ProductSetupFlow()
+    await setup_flow.kickoff()
+
+    product = setup_flow.state.products.get(request.product_id)
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "product_not_found",
+                "message": f"Product '{request.product_id}' not found in catalog.",
+            },
+        )
+
+    # Validate minimum impressions
+    if request.impressions and request.impressions < product.minimum_impressions:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "below_minimum_impressions",
+                "message": f"Minimum impressions for this product: {product.minimum_impressions}.",
+            },
+        )
+
+    # Resolve buyer identity — API key takes priority over body
+    buyer_ident = request.buyer_identity
+    context = _build_buyer_context(
+        buyer_tier=(
+            "advertiser" if (buyer_ident and buyer_ident.advertiser_id) else
+            "agency" if (buyer_ident and buyer_ident.agency_id) else
+            "seat" if (buyer_ident and buyer_ident.seat_id) else
+            "public"
+        ),
+        agency_id=buyer_ident.agency_id if buyer_ident else None,
+        advertiser_id=buyer_ident.advertiser_id if buyer_ident else None,
+        seat_id=buyer_ident.seat_id if buyer_ident else None,
+        api_key_record=api_key_record,
+    )
+
+    # Calculate price via PricingRulesEngine
+    config = TieredPricingConfig(seller_organization_id="default")
+    engine = PricingRulesEngine(config)
+
+    deal_type_enum = deal_type_map[deal_type_str]
+    decision = engine.calculate_price(
+        product_id=request.product_id,
+        base_price=product.base_cpm,
+        buyer_context=context,
+        deal_type=deal_type_enum,
+        volume=request.impressions or 0,
+        inventory_type=product.inventory_type,
+    )
+
+    # Evaluate target_cpm if provided
+    final_cpm = decision.final_price
+    if request.target_cpm is not None:
+        acceptable, _ = engine.is_price_acceptable(
+            offered_price=request.target_cpm,
+            product_floor=product.floor_cpm,
+            buyer_context=context,
+        )
+        if acceptable:
+            final_cpm = request.target_cpm
+
+    # Build timestamps
+    now = datetime.utcnow()
+    expires_at = now + timedelta(hours=24)
+
+    # Default flight dates
+    flight_start = request.flight_start or now.strftime("%Y-%m-%d")
+    flight_end = request.flight_end or (now + timedelta(days=30)).strftime("%Y-%m-%d")
+
+    # Generate quote
+    quote_id = f"qt-{uuid.uuid4().hex[:12]}"
+    is_guaranteed = deal_type_str == "PG"
+
+    quote = QuoteResponse(
+        quote_id=quote_id,
+        status=QuoteStatus.AVAILABLE,
+        product=QuoteProductInfo(
+            product_id=product.product_id,
+            name=product.name,
+            inventory_type=product.inventory_type,
+        ),
+        pricing=QuotePricing(
+            base_cpm=decision.base_price,
+            tier_discount_pct=round(decision.tier_discount * 100, 1),
+            volume_discount_pct=round(decision.volume_discount * 100, 1),
+            final_cpm=final_cpm,
+            currency=decision.currency,
+            pricing_model=decision.pricing_model.value,
+            rationale=decision.rationale,
+        ),
+        terms=QuoteTerms(
+            impressions=request.impressions,
+            flight_start=flight_start,
+            flight_end=flight_end,
+            guaranteed=is_guaranteed,
+        ),
+        availability=QuoteAvailability(),
+        deal_type=deal_type_str,
+        buyer_tier=context.effective_tier.value,
+        expires_at=expires_at.isoformat() + "Z",
+        created_at=now.isoformat() + "Z",
+    )
+
+    # Persist with 24-hour TTL
+    storage = await get_storage()
+    await storage.set_quote(quote_id, quote.model_dump(mode="json"), ttl=86400)
+
+    return quote.model_dump(mode="json")
+
+
+@app.get("/api/v1/quotes/{quote_id}")
+async def get_quote(quote_id: str):
+    """Retrieve a previously issued quote.
+
+    Returns 410 Gone if the quote has expired.
+    """
+    from ...models.quotes import QuoteStatus
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    quote = await storage.get_quote(quote_id)
+
+    if not quote:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "quote_not_found", "message": f"Quote '{quote_id}' not found."},
+        )
+
+    # Lazy expiry check
+    if quote.get("expires_at"):
+        expires = datetime.fromisoformat(quote["expires_at"].rstrip("Z"))
+        if datetime.utcnow() > expires:
+            quote["status"] = QuoteStatus.EXPIRED.value
+            await storage.set_quote(quote_id, quote, ttl=3600)  # Keep expired record briefly
+            raise HTTPException(
+                status_code=410,
+                detail={"error": "quote_expired", "message": "Quote has expired. Request a new quote."},
+            )
+
+    return quote
+
+
+@app.post("/api/v1/deals")
+async def book_deal(
+    request: DealBookingRequestModel,
+    api_key_record=Depends(_get_optional_api_key_record),
+):
+    """Book a deal from a previously issued quote.
+
+    The seller validates the quote, generates a Deal ID, and returns
+    confirmed terms. This is the commit point — the quote becomes bound.
+    """
+    import uuid
+    from datetime import timedelta
+
+    from ...models.quotes import DealBookingResponse, DealBookingStatus, QuoteStatus
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+
+    # Retrieve the quote
+    quote = await storage.get_quote(request.quote_id)
+    if not quote:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "quote_not_found", "message": f"Quote '{request.quote_id}' not found."},
+        )
+
+    # Lazy expiry check
+    if quote.get("expires_at"):
+        expires = datetime.fromisoformat(quote["expires_at"].rstrip("Z"))
+        if datetime.utcnow() > expires:
+            quote["status"] = QuoteStatus.EXPIRED.value
+            await storage.set_quote(request.quote_id, quote, ttl=3600)
+            raise HTTPException(
+                status_code=410,
+                detail={"error": "quote_expired", "message": "Quote has expired. Request a new quote."},
+            )
+
+    # Validate status — must be "available"
+    if quote.get("status") != QuoteStatus.AVAILABLE.value:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "quote_already_booked",
+                "message": f"Quote status is '{quote.get('status')}', expected 'available'.",
+            },
+        )
+
+    # Generate deal
+    now = datetime.utcnow()
+    deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
+    deal_expires = now + timedelta(days=30)
+
+    from ...models.quotes import QuotePricing, QuoteProductInfo, QuoteTerms
+
+    deal = DealBookingResponse(
+        deal_id=deal_id,
+        deal_type=quote["deal_type"],
+        status=DealBookingStatus.PROPOSED,
+        quote_id=request.quote_id,
+        product=QuoteProductInfo(**quote["product"]),
+        pricing=QuotePricing(**quote["pricing"]),
+        terms=QuoteTerms(**quote["terms"]),
+        buyer_tier=quote.get("buyer_tier", "public"),
+        expires_at=deal_expires.isoformat() + "Z",
+        activation_instructions={
+            "ttd": f"In The Trade Desk, create a new PMP deal with Deal ID: {deal_id}",
+            "dv360": f"In DV360, add deal {deal_id} under Inventory > My Inventory > Deals",
+            "xandr": f"In Xandr, navigate to Deals and enter Deal ID: {deal_id}",
+        },
+        openrtb_params={
+            "id": deal_id,
+            "bidfloor": quote["pricing"]["final_cpm"],
+            "bidfloorcur": "USD",
+            "at": 3 if quote["deal_type"] == "PA" else 1,
+            "wseat": [],
+        },
+        created_at=now.isoformat() + "Z",
+    )
+
+    deal_data = deal.model_dump(mode="json")
+
+    # Update quote status to "booked" and link deal_id
+    quote["status"] = QuoteStatus.BOOKED.value
+    quote["deal_id"] = deal_id
+    await storage.set_quote(request.quote_id, quote, ttl=86400)
+
+    # Store the deal in deal storage (coexists with proposal-based deals)
+    await storage.set_deal(deal_id, deal_data)
+
+    return deal_data
+
+
+@app.get("/api/v1/deals/{deal_id}")
+async def get_deal_by_id(deal_id: str):
+    """Get the current status of a deal.
+
+    Performs a lazy expiry check for deals in 'proposed' status.
+    """
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    deal = await storage.get_deal(deal_id)
+
+    if not deal:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "deal_not_found", "message": f"Deal '{deal_id}' not found."},
+        )
+
+    # Lazy expiry check for proposed deals
+    if deal.get("status") == "proposed" and deal.get("expires_at"):
+        expires = datetime.fromisoformat(deal["expires_at"].rstrip("Z"))
+        if datetime.utcnow() > expires:
+            deal["status"] = "expired"
+            await storage.set_deal(deal_id, deal)
+
+    return deal

@@ -192,6 +192,36 @@ class StorageBackend(ABC):
         """Store media kit metadata for a seller organization."""
         await self.set(f"media_kit:{seller_org_id}", data)
 
+    # Quote operations
+
+    async def get_quote(self, quote_id: str) -> Optional[dict]:
+        """Get a quote by ID."""
+        return await self.get(f"quote:{quote_id}")
+
+    async def set_quote(
+        self, quote_id: str, quote_data: dict, ttl: int = 86400
+    ) -> None:
+        """Store a quote with TTL (default 24 hours)."""
+        await self.set(f"quote:{quote_id}", quote_data, ttl=ttl)
+
+    async def list_quotes(self, filters: Optional[dict] = None) -> list[dict]:
+        """List quotes, optionally filtered by status, buyer, or product."""
+        keys = await self.keys("quote:*")
+        quotes = []
+        for key in keys:
+            quote = await self.get(key)
+            if quote is None:
+                continue
+            if filters:
+                if "status" in filters and quote.get("status") != filters["status"]:
+                    continue
+                if "product_id" in filters and quote.get("product", {}).get(
+                    "product_id"
+                ) != filters["product_id"]:
+                    continue
+            quotes.append(quote)
+        return quotes
+
     # Negotiation operations
 
     async def get_negotiation(self, proposal_id: str) -> Optional[dict]:
