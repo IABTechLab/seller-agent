@@ -111,6 +111,16 @@ from .agent_registry import (
     TrustStatus,
     TRUST_TO_TIER_MAP,
 )
+from .order_state_machine import (
+    InvalidTransitionError,
+    OrderAuditLog,
+    OrderStateMachine,
+    OrderStatus,
+    StateTransition,
+    TransitionRule,
+    from_execution_order_status,
+    from_execution_status,
+)
 from .negotiation import (
     NegotiationAction,
     NegotiationHistory,
@@ -280,6 +290,15 @@ __all__ = [
     "RegistrySource",
     "TrustStatus",
     "TRUST_TO_TIER_MAP",
+    # Order state machine
+    "OrderStatus",
+    "OrderStateMachine",
+    "OrderAuditLog",
+    "StateTransition",
+    "TransitionRule",
+    "InvalidTransitionError",
+    "from_execution_status",
+    "from_execution_order_status",
     # API key authentication
     "ApiKeyCreateRequest",
     "ApiKeyCreateResponse",
