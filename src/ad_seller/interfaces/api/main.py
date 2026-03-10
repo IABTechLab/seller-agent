@@ -10,6 +10,7 @@ Provides endpoints for:
 - Deal generation
 """
 
+import uuid
 from datetime import datetime
 from typing import Any, Optional
 
@@ -2011,3 +2012,191 @@ async def get_deal_by_id(deal_id: str):
             await storage.set_deal(deal_id, deal)
 
     return deal
+
+
+# =============================================================================
+# Order Workflow endpoints (seller-cnd)
+# =============================================================================
+
+
+class CreateOrderRequest(BaseModel):
+    """Request to create a new order."""
+    deal_id: Optional[str] = None
+    quote_id: Optional[str] = None
+    metadata: Optional[dict] = None
+
+
+class TransitionOrderRequest(BaseModel):
+    """Request to transition an order to a new state."""
+    to_status: str
+    actor: str = "system"
+    reason: str = ""
+    metadata: Optional[dict] = None
+
+
+@app.post("/api/v1/orders")
+async def create_order(
+    request: CreateOrderRequest,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """Create a new order and persist its state machine."""
+    from ...storage.factory import get_storage
+    from ...models.order_state_machine import OrderStateMachine, OrderStatus
+
+    storage = await get_storage()
+
+    order_id = f"ORD-{uuid.uuid4().hex[:12].upper()}"
+    machine = OrderStateMachine(order_id=order_id)
+
+    order_data = machine.to_dict()
+    order_data["deal_id"] = request.deal_id
+    order_data["quote_id"] = request.quote_id
+    order_data["created_at"] = datetime.utcnow().isoformat() + "Z"
+    order_data["metadata"] = request.metadata or {}
+
+    await storage.set_order(order_id, order_data)
+
+    return order_data
+
+
+@app.get("/api/v1/orders")
+async def list_orders(
+    status: Optional[str] = None,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """List orders, optionally filtered by status."""
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    filters = {}
+    if status:
+        filters["status"] = status
+    orders = await storage.list_orders(filters if filters else None)
+    return {"orders": orders, "count": len(orders)}
+
+
+@app.get("/api/v1/orders/{order_id}")
+async def get_order(
+    order_id: str,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """Get order current status and audit trail."""
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    order = await storage.get_order(order_id)
+
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "order_not_found", "message": f"Order '{order_id}' not found."},
+        )
+
+    return order
+
+
+@app.get("/api/v1/orders/{order_id}/history")
+async def get_order_history(
+    order_id: str,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """Get the full transition history for an order."""
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    order = await storage.get_order(order_id)
+
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "order_not_found", "message": f"Order '{order_id}' not found."},
+        )
+
+    audit_log = order.get("audit_log", {})
+    transitions = audit_log.get("transitions", [])
+
+    return {
+        "order_id": order_id,
+        "current_status": order.get("status"),
+        "transitions": transitions,
+        "transition_count": len(transitions),
+    }
+
+
+@app.post("/api/v1/orders/{order_id}/transition")
+async def transition_order(
+    order_id: str,
+    request: TransitionOrderRequest,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """Transition an order to a new state.
+
+    Validates the transition against the state machine rules and
+    records the change in the audit log.
+    """
+    from ...storage.factory import get_storage
+    from ...models.order_state_machine import (
+        InvalidTransitionError,
+        OrderStateMachine,
+        OrderStatus,
+    )
+
+    storage = await get_storage()
+    order = await storage.get_order(order_id)
+
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "order_not_found", "message": f"Order '{order_id}' not found."},
+        )
+
+    # Validate target status
+    try:
+        to_status = OrderStatus(request.to_status)
+    except ValueError:
+        valid = [s.value for s in OrderStatus]
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_status",
+                "message": f"'{request.to_status}' is not a valid order status.",
+                "valid_statuses": valid,
+            },
+        )
+
+    # Restore state machine from stored data
+    machine = OrderStateMachine.from_dict(order)
+
+    try:
+        record = machine.transition(
+            to_status,
+            actor=request.actor,
+            reason=request.reason,
+            metadata=request.metadata,
+        )
+    except InvalidTransitionError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "invalid_transition",
+                "message": str(e),
+                "current_status": machine.status.value,
+                "allowed_transitions": [s.value for s in machine.allowed_transitions()],
+            },
+        )
+
+    # Persist updated state
+    updated = machine.to_dict()
+    # Preserve extra fields not managed by the state machine
+    for key in ("deal_id", "quote_id", "created_at", "metadata"):
+        if key in order:
+            updated[key] = order[key]
+
+    await storage.set_order(order_id, updated)
+
+    return {
+        "order_id": order_id,
+        "status": machine.status.value,
+        "transition": record.model_dump(mode="json"),
+        "allowed_next": [s.value for s in machine.allowed_transitions()],
+    }

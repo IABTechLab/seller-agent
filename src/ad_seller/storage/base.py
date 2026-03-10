@@ -222,6 +222,34 @@ class StorageBackend(ABC):
             quotes.append(quote)
         return quotes
 
+    # Order operations
+
+    async def get_order(self, order_id: str) -> Optional[dict]:
+        """Get an order state machine by ID."""
+        return await self.get(f"order:{order_id}")
+
+    async def set_order(self, order_id: str, order_data: dict) -> None:
+        """Store an order state machine."""
+        await self.set(f"order:{order_id}", order_data)
+
+    async def delete_order(self, order_id: str) -> bool:
+        """Delete an order."""
+        return await self.delete(f"order:{order_id}")
+
+    async def list_orders(self, filters: Optional[dict] = None) -> list[dict]:
+        """List orders, optionally filtered by status."""
+        keys = await self.keys("order:*")
+        orders = []
+        for key in keys:
+            order = await self.get(key)
+            if order is None:
+                continue
+            if filters:
+                if "status" in filters and order.get("status") != filters["status"]:
+                    continue
+            orders.append(order)
+        return orders
+
     # Negotiation operations
 
     async def get_negotiation(self, proposal_id: str) -> Optional[dict]:
