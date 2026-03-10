@@ -15,7 +15,7 @@ An AI-powered inventory management system for **publishers and SSPs** to automat
 - **Generate Deal IDs** compatible with any DSP (The Trade Desk, Amazon, DV360, etc.)
 - **Manage orders** with a full state machine (draft → booked → delivering → complete)
 - **Human-in-the-loop** approval gates for operator oversight of deal decisions
-- **Connect to ad servers** (Google Ad Manager, FreeWheel planned) for live inventory sync
+- **Connect to ad servers** via a pluggable interface — GAM supported today, FreeWheel in progress, extend for any ad server
 
 ## Access Methods
 
@@ -40,9 +40,13 @@ Buyer Agents ──→ MCP / A2A / REST ──→ FastAPI
               (3-level hierarchy)  (Tier-gated catalog)  (4-tier pricing)
                     │                    │                    │
                     ▼                    ▼                    ▼
-              Google Ad Manager    Storage (SQLite/Redis)   Event Bus
-              (inventory sync)     (products, packages,     (22 event types)
-                                    orders, sessions)
+              Ad Server Layer      Storage (SQLite/Redis)   Event Bus
+              ┌──────────────┐     (products, packages,     (22 event types)
+              │ GAM    ✅    │      orders, sessions)
+              │ FreeWheel 🚧 │
+              │ Your Server* │
+              └──────────────┘
+              * Pluggable via AdServerClient interface
 ```
 
 ### Agent Hierarchy
