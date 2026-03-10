@@ -121,6 +121,15 @@ from .order_state_machine import (
     from_execution_order_status,
     from_execution_status,
 )
+from .change_request import (
+    ChangeRequest,
+    ChangeRequestStatus,
+    ChangeSeverity,
+    ChangeType,
+    FieldDiff,
+    classify_severity,
+    validate_change_request,
+)
 from .negotiation import (
     NegotiationAction,
     NegotiationHistory,
@@ -299,6 +308,14 @@ __all__ = [
     "InvalidTransitionError",
     "from_execution_status",
     "from_execution_order_status",
+    # Change request management
+    "ChangeRequest",
+    "ChangeRequestStatus",
+    "ChangeSeverity",
+    "ChangeType",
+    "FieldDiff",
+    "classify_severity",
+    "validate_change_request",
     # API key authentication
     "ApiKeyCreateRequest",
     "ApiKeyCreateResponse",

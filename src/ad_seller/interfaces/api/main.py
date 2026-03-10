@@ -2200,3 +2200,279 @@ async def transition_order(
         "transition": record.model_dump(mode="json"),
         "allowed_next": [s.value for s in machine.allowed_transitions()],
     }
+
+
+# =============================================================================
+# Change Request endpoints (seller-ju5)
+# =============================================================================
+
+
+class FieldDiffModel(BaseModel):
+    field: str
+    old_value: Any = None
+    new_value: Any = None
+
+
+class CreateChangeRequestModel(BaseModel):
+    """Request to create a change request for an order."""
+    order_id: str
+    change_type: str
+    diffs: list[FieldDiffModel] = []
+    proposed_values: Optional[dict] = None
+    reason: str = ""
+    requested_by: str = "system"
+
+
+class ReviewChangeRequestModel(BaseModel):
+    """Approve or reject a change request."""
+    decision: str  # "approve" or "reject"
+    decided_by: str = "system"
+    reason: str = ""
+
+
+@app.post("/api/v1/change-requests")
+async def create_change_request(
+    request: CreateChangeRequestModel,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """Submit a change request for an existing order.
+
+    Validates the change against the current order state, classifies
+    severity, and routes to approval if needed.
+    """
+    from ...storage.factory import get_storage
+    from ...models.change_request import (
+        ChangeRequest,
+        ChangeRequestStatus,
+        ChangeSeverity,
+        ChangeType,
+        FieldDiff,
+        classify_severity,
+        validate_change_request,
+    )
+
+    storage = await get_storage()
+
+    # Validate change_type
+    try:
+        change_type = ChangeType(request.change_type)
+    except ValueError:
+        valid = [t.value for t in ChangeType]
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_change_type",
+                "message": f"'{request.change_type}' is not a valid change type.",
+                "valid_types": valid,
+            },
+        )
+
+    # Verify order exists
+    order = await storage.get_order(request.order_id)
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "order_not_found", "message": f"Order '{request.order_id}' not found."},
+        )
+
+    # Build diffs
+    diffs = [FieldDiff(field=d.field, old_value=d.old_value, new_value=d.new_value) for d in request.diffs]
+
+    # Classify severity
+    severity = classify_severity(change_type, diffs)
+
+    # Create the change request
+    cr = ChangeRequest(
+        order_id=request.order_id,
+        deal_id=order.get("deal_id", ""),
+        change_type=change_type,
+        severity=severity,
+        requested_by=request.requested_by,
+        reason=request.reason,
+        diffs=diffs,
+        proposed_values=request.proposed_values or {},
+        rollback_snapshot=order.copy(),
+    )
+
+    # Validate against order state
+    errors = validate_change_request(cr, order)
+    if errors:
+        cr.status = ChangeRequestStatus.FAILED
+        cr.validation_errors = errors
+        cr_data = cr.model_dump(mode="json")
+        await storage.set_change_request(cr.change_request_id, cr_data)
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "validation_failed",
+                "change_request_id": cr.change_request_id,
+                "validation_errors": errors,
+            },
+        )
+
+    # Auto-approve minor changes, route material/critical to approval
+    if severity == ChangeSeverity.MINOR:
+        cr.status = ChangeRequestStatus.APPROVED
+        cr.approved_by = "system:auto-approve"
+        cr.approved_at = datetime.utcnow()
+    else:
+        cr.status = ChangeRequestStatus.PENDING_APPROVAL
+
+    cr_data = cr.model_dump(mode="json")
+    await storage.set_change_request(cr.change_request_id, cr_data)
+
+    return cr_data
+
+
+@app.get("/api/v1/change-requests")
+async def list_change_requests(
+    order_id: Optional[str] = None,
+    status: Optional[str] = None,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """List change requests, optionally filtered by order or status."""
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    filters = {}
+    if order_id:
+        filters["order_id"] = order_id
+    if status:
+        filters["status"] = status
+    results = await storage.list_change_requests(filters if filters else None)
+    return {"change_requests": results, "count": len(results)}
+
+
+@app.get("/api/v1/change-requests/{cr_id}")
+async def get_change_request(
+    cr_id: str,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """Get a change request by ID."""
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    cr = await storage.get_change_request(cr_id)
+    if not cr:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "change_request_not_found", "message": f"Change request '{cr_id}' not found."},
+        )
+    return cr
+
+
+@app.post("/api/v1/change-requests/{cr_id}/review")
+async def review_change_request(
+    cr_id: str,
+    request: ReviewChangeRequestModel,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """Approve or reject a pending change request."""
+    from ...storage.factory import get_storage
+    from ...models.change_request import ChangeRequestStatus
+
+    storage = await get_storage()
+    cr = await storage.get_change_request(cr_id)
+
+    if not cr:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "change_request_not_found", "message": f"Change request '{cr_id}' not found."},
+        )
+
+    if cr.get("status") != ChangeRequestStatus.PENDING_APPROVAL.value:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "not_pending_approval",
+                "message": f"Change request is in '{cr.get('status')}' status, not 'pending_approval'.",
+            },
+        )
+
+    if request.decision not in ("approve", "reject"):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_decision", "message": "Decision must be 'approve' or 'reject'."},
+        )
+
+    now = datetime.utcnow().isoformat() + "Z"
+
+    if request.decision == "approve":
+        cr["status"] = ChangeRequestStatus.APPROVED.value
+        cr["approved_by"] = request.decided_by
+        cr["approved_at"] = now
+    else:
+        cr["status"] = ChangeRequestStatus.REJECTED.value
+        cr["rejection_reason"] = request.reason
+        cr["approved_by"] = request.decided_by
+        cr["approved_at"] = now
+
+    await storage.set_change_request(cr_id, cr)
+    return cr
+
+
+@app.post("/api/v1/change-requests/{cr_id}/apply")
+async def apply_change_request(
+    cr_id: str,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """Apply an approved change request to the order.
+
+    Updates the order with the proposed values from the change request.
+    """
+    from ...storage.factory import get_storage
+    from ...models.change_request import ChangeRequestStatus
+
+    storage = await get_storage()
+    cr = await storage.get_change_request(cr_id)
+
+    if not cr:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "change_request_not_found", "message": f"Change request '{cr_id}' not found."},
+        )
+
+    if cr.get("status") != ChangeRequestStatus.APPROVED.value:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "not_approved",
+                "message": f"Change request is in '{cr.get('status')}' status, not 'approved'.",
+            },
+        )
+
+    # Load the order
+    order_id = cr.get("order_id")
+    order = await storage.get_order(order_id)
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "order_not_found", "message": f"Order '{order_id}' not found."},
+        )
+
+    # Apply proposed values to order metadata
+    proposed = cr.get("proposed_values", {})
+    order_meta = order.get("metadata", {})
+    order_meta.update(proposed)
+    order["metadata"] = order_meta
+
+    # Apply diffs directly to order where applicable
+    for diff in cr.get("diffs", []):
+        field = diff.get("field", "")
+        new_val = diff.get("new_value")
+        if field and new_val is not None:
+            order_meta[f"_changed_{field}"] = new_val
+
+    await storage.set_order(order_id, order)
+
+    # Mark change request as applied
+    cr["status"] = ChangeRequestStatus.APPLIED.value
+    cr["applied_at"] = datetime.utcnow().isoformat() + "Z"
+    cr["applied_by"] = "system"
+    await storage.set_change_request(cr_id, cr)
+
+    return {
+        "change_request_id": cr_id,
+        "status": "applied",
+        "order_id": order_id,
+    }

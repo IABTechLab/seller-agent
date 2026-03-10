@@ -250,6 +250,32 @@ class StorageBackend(ABC):
             orders.append(order)
         return orders
 
+    # Change request operations
+
+    async def get_change_request(self, cr_id: str) -> Optional[dict]:
+        """Get a change request by ID."""
+        return await self.get(f"change_request:{cr_id}")
+
+    async def set_change_request(self, cr_id: str, cr_data: dict) -> None:
+        """Store a change request."""
+        await self.set(f"change_request:{cr_id}", cr_data)
+
+    async def list_change_requests(self, filters: Optional[dict] = None) -> list[dict]:
+        """List change requests, optionally filtered by order_id or status."""
+        keys = await self.keys("change_request:*")
+        results = []
+        for key in keys:
+            cr = await self.get(key)
+            if cr is None:
+                continue
+            if filters:
+                if "order_id" in filters and cr.get("order_id") != filters["order_id"]:
+                    continue
+                if "status" in filters and cr.get("status") != filters["status"]:
+                    continue
+            results.append(cr)
+        return results
+
     # Negotiation operations
 
     async def get_negotiation(self, proposal_id: str) -> Optional[dict]:
