@@ -16,7 +16,7 @@ PHASE_MAP = {
     "1": ("Phase 1", "CTV/Linear Publisher Pilot"),
     "2": ("Phase 2", "Negotiation & Order Lifecycle"),
     "3": ("Phase 3", "Platform Features"),
-    "4": ("Phase 4", "Production Hardening"),
+    "4": ("Phase 4", "Inventory Sync Enhancements"),
 }
 
 
