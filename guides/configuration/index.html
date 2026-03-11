@@ -1,0 +1,2851 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="API & Architecture Reference for the IAB OpenDirect 2.1 Seller Agent">
+      
+      
+      
+        <link rel="canonical" href="https://iabtechlab.github.io/seller-agent/guides/configuration/">
+      
+      
+        <link rel="prev" href="../publisher-setup/">
+      
+      
+        <link rel="next" href="../inventory-sync/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>Configuration - IAB Tech Lab — Seller Agent</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration-environment" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+            
+  <a href="https://iabtechlab.github.io/buyer-agent/" style="color: white;">
+    This is the <strong>Seller Agent</strong> documentation.
+    Looking for the <strong>Buyer Agent</strong>? Click here &rarr;
+  </a>
+
+          </div>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="IAB Tech Lab — Seller Agent" class="md-header__button md-logo" aria-label="IAB Tech Lab — Seller Agent" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            IAB Tech Lab — Seller Agent
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/IABTechLab/seller-agent" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/quickstart/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/overview/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../state-machines/order-lifecycle/" class="md-tabs__link">
+          
+  
+  
+  State Machines
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../event-bus/overview/" class="md-tabs__link">
+          
+  
+  
+  Event Bus
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../integration/buyer-agent/" class="md-tabs__link">
+          
+  
+  
+  Integration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../publisher-setup/" class="md-tabs__link">
+          
+  
+  
+  Publisher Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://iabtechlab.github.io/buyer-agent/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Buyer Agent Docs →
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="IAB Tech Lab — Seller Agent" class="md-nav__button md-logo" aria-label="IAB Tech Lab — Seller Agent" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    IAB Tech Lab — Seller Agent
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/IABTechLab/seller-agent" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/a2a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A2A Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/agent-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Discovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/quotes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quotes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/orders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/change-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machines
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    State Machines
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../state-machines/order-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Order Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../state-machines/change-request-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Request Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Bus
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Event Bus
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../event-bus/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Integration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/buyer-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer Agent Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/negotiation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Negotiation Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publisher Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Publisher Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../publisher-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#protocol-api-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol &amp; API Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ad-server-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ad Server Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="LLM Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#supported-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Providers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database &amp; Storage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pricing-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pricing Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#yield-optimization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Yield Optimization
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature Flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent Registry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#approval-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Approval Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#crewai-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CrewAI Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-key-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Key Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example-env-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example .env File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roadmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inventory-sync/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inventory Sync
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../media-kit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Media Kit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pricing-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pricing & Access Tiers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../approval-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Approval & HITL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer & Agent Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://iabtechlab.github.io/buyer-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer Agent Docs →
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#protocol-api-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol &amp; API Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ad-server-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ad Server Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="LLM Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#supported-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Providers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database &amp; Storage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pricing-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pricing Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#yield-optimization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Yield Optimization
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature Flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent Registry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#approval-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Approval Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#crewai-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CrewAI Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-key-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Key Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example-env-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example .env File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roadmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="configuration-environment">Configuration &amp; Environment<a class="headerlink" href="#configuration-environment" title="Permanent link">&para;</a></h1>
+<p>All seller agent configuration is managed through environment variables, loaded
+via a <code>.env</code> file or the shell environment. The agent uses
+<a href="https://docs.pydantic.dev/latest/concepts/pydantic_settings/">pydantic-settings</a>
+with case-insensitive variable names.</p>
+<hr />
+<h2 id="core-settings">Core Settings<a class="headerlink" href="#core-settings" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td><code>str</code></td>
+<td><strong>required</strong>*</td>
+<td>API key for your LLM provider (see <a href="#supported-providers">Supported Providers</a>)</td>
+</tr>
+<tr>
+<td><code>SELLER_ORGANIZATION_ID</code></td>
+<td><code>str</code></td>
+<td>auto-generated</td>
+<td>Your organization ID</td>
+</tr>
+<tr>
+<td><code>SELLER_ORGANIZATION_NAME</code></td>
+<td><code>str</code></td>
+<td><code>"Default Publisher"</code></td>
+<td>Organization display name</td>
+</tr>
+<tr>
+<td><code>SELLER_AGENT_NAME</code></td>
+<td><code>str</code></td>
+<td><code>"Ad Seller Agent"</code></td>
+<td>Agent name shown in discovery</td>
+</tr>
+<tr>
+<td><code>SELLER_AGENT_URL</code></td>
+<td><code>str</code></td>
+<td><code>"http://localhost:8000"</code></td>
+<td>Public URL for agent discovery (<code>.well-known/agent.json</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="protocol-api-settings">Protocol &amp; API Settings<a class="headerlink" href="#protocol-api-settings" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DEFAULT_PROTOCOL</code></td>
+<td><code>str</code></td>
+<td><code>"opendirect21"</code></td>
+<td>Protocol selection: <code>opendirect21</code> or <code>a2a</code></td>
+</tr>
+<tr>
+<td><code>OPENDIRECT_BASE_URL</code></td>
+<td><code>str</code></td>
+<td><code>"http://localhost:3000"</code></td>
+<td>OpenDirect service base URL</td>
+</tr>
+<tr>
+<td><code>OPENDIRECT_API_KEY</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>OpenDirect API key (optional)</td>
+</tr>
+<tr>
+<td><code>OPENDIRECT_TOKEN</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>OpenDirect auth token (optional)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="ad-server-settings">Ad Server Settings<a class="headerlink" href="#ad-server-settings" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AD_SERVER_TYPE</code></td>
+<td><code>str</code></td>
+<td><code>"google_ad_manager"</code></td>
+<td>Ad server type: <code>google_ad_manager</code> or <code>freewheel</code></td>
+</tr>
+<tr>
+<td><code>GAM_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+<td>Feature flag to enable GAM integration</td>
+</tr>
+<tr>
+<td><code>GAM_NETWORK_CODE</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>GAM network code (numeric ID)</td>
+</tr>
+<tr>
+<td><code>GAM_JSON_KEY_PATH</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>Path to GAM service account JSON key file</td>
+</tr>
+<tr>
+<td><code>GAM_APPLICATION_NAME</code></td>
+<td><code>str</code></td>
+<td><code>"AdSellerSystem"</code></td>
+<td>Application name for GAM API requests</td>
+</tr>
+<tr>
+<td><code>GAM_API_VERSION</code></td>
+<td><code>str</code></td>
+<td><code>"v202411"</code></td>
+<td>GAM SOAP API version</td>
+</tr>
+<tr>
+<td><code>GAM_DEFAULT_TRAFFICKER_ID</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>Default trafficker user ID for order creation</td>
+</tr>
+<tr>
+<td><code>FREEWHEEL_API_URL</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>FreeWheel API URL</td>
+</tr>
+<tr>
+<td><code>FREEWHEEL_API_KEY</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>FreeWheel API key</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">Planned Feature</p>
+<p>FreeWheel integration is declared in configuration but not yet functional.
+Only Google Ad Manager is currently supported for live inventory sync.
+See <a href="../inventory-sync/">Inventory Sync</a> for details and
+<a href="https://github.com/IABTechLab/seller-agent/blob/main/.beads/PROGRESS.md">PROGRESS.md</a> for FreeWheel (seller-dcd) status.</p>
+</div>
+<h2 id="llm-configuration">LLM Configuration<a class="headerlink" href="#llm-configuration" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DEFAULT_LLM_MODEL</code></td>
+<td><code>str</code></td>
+<td><code>"anthropic/claude-sonnet-4-5-20250929"</code></td>
+<td>Model for specialist agents (pricing, negotiation, etc.)</td>
+</tr>
+<tr>
+<td><code>MANAGER_LLM_MODEL</code></td>
+<td><code>str</code></td>
+<td><code>"anthropic/claude-opus-4-20250514"</code></td>
+<td>Model for manager/orchestrator agents</td>
+</tr>
+<tr>
+<td><code>LLM_TEMPERATURE</code></td>
+<td><code>float</code></td>
+<td><code>0.3</code></td>
+<td>LLM temperature (lower = more deterministic)</td>
+</tr>
+<tr>
+<td><code>LLM_MAX_TOKENS</code></td>
+<td><code>int</code></td>
+<td><code>4096</code></td>
+<td>Maximum tokens per LLM response</td>
+</tr>
+</tbody>
+</table>
+<h3 id="supported-providers">Supported Providers<a class="headerlink" href="#supported-providers" title="Permanent link">&para;</a></h3>
+<p>The seller agent uses CrewAI's <code>LLM</code> class, which wraps <a href="https://docs.litellm.ai/">litellm</a> — supporting <strong>100+ LLM providers</strong> out of the box. Models are specified using litellm's <code>provider/model-name</code> format. No code changes are required to switch providers.</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Model Format</th>
+<th>API Key Variable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Anthropic</strong> (default)</td>
+<td><code>anthropic/claude-sonnet-4-5-20250929</code></td>
+<td><code>ANTHROPIC_API_KEY</code></td>
+</tr>
+<tr>
+<td><strong>OpenAI</strong></td>
+<td><code>openai/gpt-4o</code></td>
+<td><code>OPENAI_API_KEY</code></td>
+</tr>
+<tr>
+<td><strong>Azure OpenAI</strong></td>
+<td><code>azure/my-deployment</code></td>
+<td><code>AZURE_API_KEY</code>, <code>AZURE_API_BASE</code></td>
+</tr>
+<tr>
+<td><strong>Google Vertex AI</strong></td>
+<td><code>vertex_ai/gemini-pro</code></td>
+<td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+</tr>
+<tr>
+<td><strong>AWS Bedrock</strong></td>
+<td><code>bedrock/anthropic.claude-3-sonnet</code></td>
+<td>AWS credentials</td>
+</tr>
+<tr>
+<td><strong>Cohere</strong></td>
+<td><code>cohere/command-r-plus</code></td>
+<td><code>COHERE_API_KEY</code></td>
+</tr>
+<tr>
+<td><strong>Ollama</strong> (local)</td>
+<td><code>ollama/llama3</code></td>
+<td>— (runs locally)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example — switching to OpenAI:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nv">DEFAULT_LLM_MODEL</span><span class="o">=</span>openai/gpt-4o
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nv">MANAGER_LLM_MODEL</span><span class="o">=</span>openai/gpt-4o
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>sk-xxxxx
+</code></pre></div>
+<p><strong>Example — local Ollama (no API key needed):</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">DEFAULT_LLM_MODEL</span><span class="o">=</span>ollama/llama3
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nv">MANAGER_LLM_MODEL</span><span class="o">=</span>ollama/llama3
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Prompt Tuning</p>
+<p>Agent prompts are tuned and tested with Claude models. Other providers work but may produce different quality results. If you switch providers, test negotiation and pricing flows to verify acceptable output quality.</p>
+</div>
+<p>For the full list of supported providers, see the <a href="https://docs.litellm.ai/docs/providers">litellm documentation</a>.</p>
+<h2 id="database-storage">Database &amp; Storage<a class="headerlink" href="#database-storage" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td><code>str</code></td>
+<td><code>"sqlite:///./ad_seller.db"</code></td>
+<td>Database connection URL (SQLite or PostgreSQL)</td>
+</tr>
+<tr>
+<td><code>REDIS_URL</code></td>
+<td><code>str</code></td>
+<td><code>None</code></td>
+<td>Redis URL (for <code>redis</code> or <code>hybrid</code> storage)</td>
+</tr>
+<tr>
+<td><code>STORAGE_TYPE</code></td>
+<td><code>str</code></td>
+<td><code>"sqlite"</code></td>
+<td>Storage backend: <code>sqlite</code>, <code>redis</code>, or <code>hybrid</code></td>
+</tr>
+<tr>
+<td><code>POSTGRES_POOL_MIN</code></td>
+<td><code>int</code></td>
+<td><code>2</code></td>
+<td>Minimum PostgreSQL connection pool size</td>
+</tr>
+<tr>
+<td><code>POSTGRES_POOL_MAX</code></td>
+<td><code>int</code></td>
+<td><code>10</code></td>
+<td>Maximum PostgreSQL connection pool size</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Hybrid Storage (Recommended for Production)</p>
+<p>Set <code>STORAGE_TYPE=hybrid</code> with both <code>DATABASE_URL</code> (PostgreSQL) and <code>REDIS_URL</code> to route
+business data (products, deals, orders) to PostgreSQL and sessions/cache to Redis.
+See <a href="../deployment/">Deployment</a> for details.</p>
+</div>
+<h2 id="pricing-configuration">Pricing Configuration<a class="headerlink" href="#pricing-configuration" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DEFAULT_CURRENCY</code></td>
+<td><code>str</code></td>
+<td><code>"USD"</code></td>
+<td>Default currency for pricing</td>
+</tr>
+<tr>
+<td><code>MIN_DEAL_VALUE</code></td>
+<td><code>float</code></td>
+<td><code>1000.0</code></td>
+<td>Minimum deal value</td>
+</tr>
+<tr>
+<td><code>DEFAULT_PRICE_FLOOR_CPM</code></td>
+<td><code>float</code></td>
+<td><code>5.0</code></td>
+<td>Global default price floor (CPM)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="yield-optimization">Yield Optimization<a class="headerlink" href="#yield-optimization" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>YIELD_OPTIMIZATION_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable yield optimization engine</td>
+</tr>
+<tr>
+<td><code>PROGRAMMATIC_FLOOR_MULTIPLIER</code></td>
+<td><code>float</code></td>
+<td><code>1.2</code></td>
+<td>Floor multiplier for programmatic deals</td>
+</tr>
+<tr>
+<td><code>PREFERRED_DEAL_DISCOUNT_MAX</code></td>
+<td><code>float</code></td>
+<td><code>0.15</code></td>
+<td>Maximum discount for preferred deals (15%)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="feature-flags">Feature Flags<a class="headerlink" href="#feature-flags" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GAM_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+<td>Enable Google Ad Manager integration</td>
+</tr>
+<tr>
+<td><code>EVENT_BUS_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable event publishing (required for approvals)</td>
+</tr>
+<tr>
+<td><code>APPROVAL_GATE_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+<td>Enable human-in-the-loop approval gates</td>
+</tr>
+<tr>
+<td><code>AGENT_REGISTRY_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable agent registry for A2A trust management</td>
+</tr>
+<tr>
+<td><code>API_KEY_AUTH_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable API key authentication for buyers</td>
+</tr>
+<tr>
+<td><code>CREW_MEMORY_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable CrewAI agent memory (conversation recall)</td>
+</tr>
+<tr>
+<td><code>YIELD_OPTIMIZATION_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable yield optimization engine</td>
+</tr>
+</tbody>
+</table>
+<h2 id="agent-registry">Agent Registry<a class="headerlink" href="#agent-registry" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AGENT_REGISTRY_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable agent registry</td>
+</tr>
+<tr>
+<td><code>AGENT_REGISTRY_URL</code></td>
+<td><code>str</code></td>
+<td><code>"https://tools.iabtechlab.com/agent-registry"</code></td>
+<td>Primary IAB AAMP registry URL</td>
+</tr>
+<tr>
+<td><code>AGENT_REGISTRY_EXTRA_URLS</code></td>
+<td><code>str</code></td>
+<td><code>""</code></td>
+<td>Additional registry URLs (comma-separated)</td>
+</tr>
+<tr>
+<td><code>AUTO_APPROVE_REGISTERED_AGENTS</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Auto-approve agents found in a registry</td>
+</tr>
+<tr>
+<td><code>REQUIRE_APPROVAL_FOR_UNREGISTERED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Require operator approval for unknown agents</td>
+</tr>
+</tbody>
+</table>
+<h2 id="approval-configuration">Approval Configuration<a class="headerlink" href="#approval-configuration" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>APPROVAL_GATE_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>false</code></td>
+<td>Enable approval gates</td>
+</tr>
+<tr>
+<td><code>APPROVAL_TIMEOUT_HOURS</code></td>
+<td><code>int</code></td>
+<td><code>24</code></td>
+<td>Hours before a pending approval expires</td>
+</tr>
+<tr>
+<td><code>APPROVAL_REQUIRED_FLOWS</code></td>
+<td><code>str</code></td>
+<td><code>""</code></td>
+<td>Comma-separated gate names requiring approval (e.g., <code>"proposal_decision,deal_registration"</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="session-configuration">Session Configuration<a class="headerlink" href="#session-configuration" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SESSION_TTL_SECONDS</code></td>
+<td><code>int</code></td>
+<td><code>604800</code></td>
+<td>Session time-to-live in seconds (default: 7 days)</td>
+</tr>
+<tr>
+<td><code>SESSION_MAX_MESSAGES</code></td>
+<td><code>int</code></td>
+<td><code>200</code></td>
+<td>Maximum messages per session</td>
+</tr>
+</tbody>
+</table>
+<h2 id="crewai-configuration">CrewAI Configuration<a class="headerlink" href="#crewai-configuration" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CREW_MEMORY_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable agent memory</td>
+</tr>
+<tr>
+<td><code>CREW_VERBOSE</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable verbose CrewAI logging</td>
+</tr>
+<tr>
+<td><code>CREW_MAX_ITERATIONS</code></td>
+<td><code>int</code></td>
+<td><code>15</code></td>
+<td>Maximum iterations per crew run</td>
+</tr>
+</tbody>
+</table>
+<h2 id="api-key-authentication">API Key Authentication<a class="headerlink" href="#api-key-authentication" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>API_KEY_AUTH_ENABLED</code></td>
+<td><code>bool</code></td>
+<td><code>true</code></td>
+<td>Enable API key authentication</td>
+</tr>
+<tr>
+<td><code>API_KEY_DEFAULT_EXPIRY_DAYS</code></td>
+<td><code>int</code></td>
+<td><code>None</code></td>
+<td>Default key expiry in days (<code>None</code> = never expires)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="complete-example-env-file">Complete Example <code>.env</code> File<a class="headerlink" href="#complete-example-env-file" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># LLM Provider (set the key for your chosen provider)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>sk-ant-api03-xxxxxxxxxxxxxxxxxxxxx
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># OPENAI_API_KEY=sk-xxxxx                   # For OpenAI / Azure</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="c1"># COHERE_API_KEY=xxxxx                      # For Cohere</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="c1"># Seller Identity</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="nv">SELLER_ORGANIZATION_ID</span><span class="o">=</span>pub-acme-001
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="nv">SELLER_ORGANIZATION_NAME</span><span class="o">=</span>Acme<span class="w"> </span>Media<span class="w"> </span>Group
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="nv">SELLER_AGENT_NAME</span><span class="o">=</span>Acme<span class="w"> </span>Seller<span class="w"> </span>Agent
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="nv">SELLER_AGENT_URL</span><span class="o">=</span>https://seller.acme-media.com
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="c1"># Ad Server (Google Ad Manager)</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="nv">AD_SERVER_TYPE</span><span class="o">=</span>google_ad_manager
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="nv">GAM_ENABLED</span><span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="nv">GAM_NETWORK_CODE</span><span class="o">=</span><span class="m">12345678</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="nv">GAM_JSON_KEY_PATH</span><span class="o">=</span>/etc/secrets/gam-service-account.json
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="nv">GAM_APPLICATION_NAME</span><span class="o">=</span>AcmeSellerAgent
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="nv">GAM_API_VERSION</span><span class="o">=</span>v202411
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="c1"># GAM_DEFAULT_TRAFFICKER_ID=111222333  # Optional</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="c1"># LLM</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="nv">DEFAULT_LLM_MODEL</span><span class="o">=</span>anthropic/claude-sonnet-4-5-20250929
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="nv">MANAGER_LLM_MODEL</span><span class="o">=</span>anthropic/claude-opus-4-20250514
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="nv">LLM_TEMPERATURE</span><span class="o">=</span><span class="m">0</span>.3
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a><span class="nv">LLM_MAX_TOKENS</span><span class="o">=</span><span class="m">4096</span>
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a><span class="c1"># Storage</span>
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a><span class="nv">STORAGE_TYPE</span><span class="o">=</span>sqlite<span class="w">                                    </span><span class="c1"># sqlite, redis, hybrid</span>
+<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a><span class="nv">DATABASE_URL</span><span class="o">=</span>sqlite:///./ad_seller.db
+<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a><span class="c1"># DATABASE_URL=postgresql+asyncpg://seller:seller@localhost:5432/ad_seller  # For Postgres/hybrid</span>
+<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a><span class="c1"># REDIS_URL=redis://localhost:6379/0                   # For redis or hybrid mode</span>
+<a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a><span class="c1"># POSTGRES_POOL_MIN=2</span>
+<a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a><span class="c1"># POSTGRES_POOL_MAX=10</span>
+<a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a>
+<a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a><span class="c1"># Pricing</span>
+<a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-48" name="__codelineno-2-48" href="#__codelineno-2-48"></a><span class="nv">DEFAULT_CURRENCY</span><span class="o">=</span>USD
+<a id="__codelineno-2-49" name="__codelineno-2-49" href="#__codelineno-2-49"></a><span class="nv">MIN_DEAL_VALUE</span><span class="o">=</span><span class="m">1000</span>.0
+<a id="__codelineno-2-50" name="__codelineno-2-50" href="#__codelineno-2-50"></a><span class="nv">DEFAULT_PRICE_FLOOR_CPM</span><span class="o">=</span><span class="m">5</span>.0
+<a id="__codelineno-2-51" name="__codelineno-2-51" href="#__codelineno-2-51"></a>
+<a id="__codelineno-2-52" name="__codelineno-2-52" href="#__codelineno-2-52"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a><span class="c1"># Yield Optimization</span>
+<a id="__codelineno-2-54" name="__codelineno-2-54" href="#__codelineno-2-54"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-55" name="__codelineno-2-55" href="#__codelineno-2-55"></a><span class="nv">YIELD_OPTIMIZATION_ENABLED</span><span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-2-56" name="__codelineno-2-56" href="#__codelineno-2-56"></a><span class="nv">PROGRAMMATIC_FLOOR_MULTIPLIER</span><span class="o">=</span><span class="m">1</span>.2
+<a id="__codelineno-2-57" name="__codelineno-2-57" href="#__codelineno-2-57"></a><span class="nv">PREFERRED_DEAL_DISCOUNT_MAX</span><span class="o">=</span><span class="m">0</span>.15
+<a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a>
+<a id="__codelineno-2-59" name="__codelineno-2-59" href="#__codelineno-2-59"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-60" name="__codelineno-2-60" href="#__codelineno-2-60"></a><span class="c1"># Feature Flags</span>
+<a id="__codelineno-2-61" name="__codelineno-2-61" href="#__codelineno-2-61"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-62" name="__codelineno-2-62" href="#__codelineno-2-62"></a><span class="nv">EVENT_BUS_ENABLED</span><span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-2-63" name="__codelineno-2-63" href="#__codelineno-2-63"></a><span class="nv">APPROVAL_GATE_ENABLED</span><span class="o">=</span><span class="nb">false</span>
+<a id="__codelineno-2-64" name="__codelineno-2-64" href="#__codelineno-2-64"></a><span class="nv">AGENT_REGISTRY_ENABLED</span><span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-2-65" name="__codelineno-2-65" href="#__codelineno-2-65"></a><span class="nv">API_KEY_AUTH_ENABLED</span><span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-2-66" name="__codelineno-2-66" href="#__codelineno-2-66"></a><span class="nv">CREW_MEMORY_ENABLED</span><span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-2-67" name="__codelineno-2-67" href="#__codelineno-2-67"></a>
+<a id="__codelineno-2-68" name="__codelineno-2-68" href="#__codelineno-2-68"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-69" name="__codelineno-2-69" href="#__codelineno-2-69"></a><span class="c1"># Agent Registry</span>
+<a id="__codelineno-2-70" name="__codelineno-2-70" href="#__codelineno-2-70"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-71" name="__codelineno-2-71" href="#__codelineno-2-71"></a><span class="nv">AGENT_REGISTRY_URL</span><span class="o">=</span>https://tools.iabtechlab.com/agent-registry
+<a id="__codelineno-2-72" name="__codelineno-2-72" href="#__codelineno-2-72"></a><span class="c1"># AGENT_REGISTRY_EXTRA_URLS=https://other-registry.example.com</span>
+<a id="__codelineno-2-73" name="__codelineno-2-73" href="#__codelineno-2-73"></a><span class="nv">AUTO_APPROVE_REGISTERED_AGENTS</span><span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-2-74" name="__codelineno-2-74" href="#__codelineno-2-74"></a><span class="nv">REQUIRE_APPROVAL_FOR_UNREGISTERED</span><span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-2-75" name="__codelineno-2-75" href="#__codelineno-2-75"></a>
+<a id="__codelineno-2-76" name="__codelineno-2-76" href="#__codelineno-2-76"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-77" name="__codelineno-2-77" href="#__codelineno-2-77"></a><span class="c1"># Approval Gates</span>
+<a id="__codelineno-2-78" name="__codelineno-2-78" href="#__codelineno-2-78"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-79" name="__codelineno-2-79" href="#__codelineno-2-79"></a><span class="c1"># APPROVAL_GATE_ENABLED=true</span>
+<a id="__codelineno-2-80" name="__codelineno-2-80" href="#__codelineno-2-80"></a><span class="c1"># APPROVAL_TIMEOUT_HOURS=24</span>
+<a id="__codelineno-2-81" name="__codelineno-2-81" href="#__codelineno-2-81"></a><span class="c1"># APPROVAL_REQUIRED_FLOWS=proposal_decision</span>
+<a id="__codelineno-2-82" name="__codelineno-2-82" href="#__codelineno-2-82"></a>
+<a id="__codelineno-2-83" name="__codelineno-2-83" href="#__codelineno-2-83"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-84" name="__codelineno-2-84" href="#__codelineno-2-84"></a><span class="c1"># Sessions</span>
+<a id="__codelineno-2-85" name="__codelineno-2-85" href="#__codelineno-2-85"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-86" name="__codelineno-2-86" href="#__codelineno-2-86"></a><span class="nv">SESSION_TTL_SECONDS</span><span class="o">=</span><span class="m">604800</span>
+<a id="__codelineno-2-87" name="__codelineno-2-87" href="#__codelineno-2-87"></a><span class="nv">SESSION_MAX_MESSAGES</span><span class="o">=</span><span class="m">200</span>
+<a id="__codelineno-2-88" name="__codelineno-2-88" href="#__codelineno-2-88"></a>
+<a id="__codelineno-2-89" name="__codelineno-2-89" href="#__codelineno-2-89"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-90" name="__codelineno-2-90" href="#__codelineno-2-90"></a><span class="c1"># Protocol</span>
+<a id="__codelineno-2-91" name="__codelineno-2-91" href="#__codelineno-2-91"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-2-92" name="__codelineno-2-92" href="#__codelineno-2-92"></a><span class="nv">DEFAULT_PROTOCOL</span><span class="o">=</span>opendirect21
+<a id="__codelineno-2-93" name="__codelineno-2-93" href="#__codelineno-2-93"></a><span class="nv">OPENDIRECT_BASE_URL</span><span class="o">=</span>http://localhost:3000
+</code></pre></div>
+<hr />
+<h2 id="roadmap">Roadmap<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Planned Configuration Improvements</p>
+<p>Future releases plan to add:</p>
+<ul>
+<li>Runtime configuration API (update settings without restart)</li>
+<li>Per-product pricing overrides via API</li>
+<li>Config validation and health-check endpoint</li>
+<li>Secret management integration (AWS Secrets Manager, HashiCorp Vault)</li>
+<li>FreeWheel ad server integration</li>
+</ul>
+<p>See <a href="https://github.com/IABTechLab/seller-agent/blob/main/.beads/PROGRESS.md">PROGRESS.md</a> for roadmap status.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
