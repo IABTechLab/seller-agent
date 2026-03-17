@@ -1,16 +1,16 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Non-Agentic DSP Flow - Support traditional DSPs without buyer agents.
+"""Deal Request Flow - Support deal creation for any buyer workflow.
 
-This flow enables the seller agent to operate WITHOUT a buyer agent:
+This flow enables the seller agent to create deals via direct request:
 - Human buyer or agency requests deal via chat/API
 - Seller agent validates, prices, creates Deal ID
 - Deal ID shared with buyer for DSP activation
-- Full seller agent value even without buyer agent adoption
+- Full seller agent value for both agentic and traditional buyers
 
-Critical for migration period and ongoing compatibility with
-traditional DSPs (TTD, Amazon DSP, DV360).
+Compatible with traditional DSPs (TTD, Amazon DSP, DV360) and
+agentic buyer workflows (Deal Jockey sub-agent).
 """
 
 import uuid
@@ -30,8 +30,8 @@ from ..models.core import DealType, PricingModel
 from ..config import get_settings
 
 
-class NonAgenticState(SellerFlowState):
-    """State for non-agentic DSP flow."""
+class DealRequestState(SellerFlowState):
+    """State for deal request flow."""
 
     # Request details (from human/chat)
     request_type: str = "deal_request"  # deal_request, inquiry, negotiation
@@ -46,11 +46,11 @@ class NonAgenticState(SellerFlowState):
     deal_output: Optional[DealOutput] = None
 
 
-class NonAgenticDSPFlow(Flow[NonAgenticState]):
-    """Flow for supporting non-agentic DSP deal creation.
+class DealRequestFlow(Flow[DealRequestState]):
+    """Flow for processing deal requests from buyers.
 
     Workflow:
-    1. Receive request from human buyer (via chat, API, email)
+    1. Receive request from buyer (via chat, API, agent)
     2. Parse and understand the request
     3. Validate buyer identity and access tier
     4. Apply tiered pricing
@@ -58,22 +58,22 @@ class NonAgenticDSPFlow(Flow[NonAgenticState]):
     6. Generate Deal ID
     7. Provide activation instructions for DSP
 
-    The seller agent provides full value even without a buyer agent:
+    The seller agent provides full value for any buyer workflow:
     - Automated pricing and validation
     - Deal ID generation
     - Clear activation instructions
     """
 
     def __init__(self) -> None:
-        """Initialize the non-agentic DSP flow."""
+        """Initialize the deal request flow."""
         super().__init__()
         self._settings = get_settings()
 
     @start()
     async def receive_request(self) -> None:
-        """Receive and categorize the human buyer's request."""
+        """Receive and categorize the buyer's request."""
         self.state.flow_id = str(uuid.uuid4())
-        self.state.flow_type = "non_agentic_dsp"
+        self.state.flow_type = "deal_request"
         self.state.started_at = datetime.utcnow()
         self.state.status = ExecutionStatus.PROPOSAL_RECEIVED
 
@@ -307,7 +307,7 @@ Ready to create a deal? Just let me know and I'll generate a Deal ID for you.
         buyer_context: Optional[BuyerContext] = None,
         seller_organization_id: Optional[str] = None,
     ) -> dict[str, Any]:
-        """Process a request from a human buyer.
+        """Process a request from a buyer.
 
         Args:
             request_text: Natural language request
@@ -331,3 +331,8 @@ Ready to create a deal? Just let me know and I'll generate a Deal ID for you.
             "status": self.state.status.value,
             "errors": self.state.errors,
         }
+
+
+# Backward-compatibility aliases
+NonAgenticState = DealRequestState
+NonAgenticDSPFlow = DealRequestFlow

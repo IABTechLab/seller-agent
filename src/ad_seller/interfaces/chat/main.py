@@ -12,7 +12,7 @@ Enables natural language conversations with buyers for:
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from ...flows import DiscoveryInquiryFlow, NonAgenticDSPFlow, ProductSetupFlow
+from ...flows import DiscoveryInquiryFlow, DealRequestFlow, ProductSetupFlow
 from ...models.buyer_identity import BuyerContext, BuyerIdentity, AccessTier
 from ...models.session import Session, SessionStatus
 
@@ -370,7 +370,7 @@ class ChatInterface:
         context: BuyerContext,
     ) -> dict[str, Any]:
         """Handle a deal creation request."""
-        flow = NonAgenticDSPFlow()
+        flow = DealRequestFlow()
         result = flow.process_request(
             request_text=message,
             buyer_context=context,

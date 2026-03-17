@@ -1,30 +1,30 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Non-Agentic DSP workflow example.
+"""Deal Request workflow example.
 
-Demonstrates how the seller agent works with traditional DSPs
-that don't have buyer agents (TTD, Amazon DSP, DV360).
-
-The seller agent:
-1. Receives a natural language request from a human buyer
+Demonstrates how the seller agent creates deals for buyers:
+1. Receives a natural language request from a buyer
 2. Validates, prices, and creates a Deal ID
 3. Provides activation instructions for the DSP
+
+Compatible with traditional DSPs (TTD, Amazon DSP, DV360) and
+agentic buyer workflows (Deal Jockey sub-agent).
 """
 
-from ad_seller.flows import NonAgenticDSPFlow
+from ad_seller.flows import DealRequestFlow
 from ad_seller.models.buyer_identity import BuyerContext, BuyerIdentity
 
 
 def main():
-    """Run non-agentic DSP workflow example."""
+    """Run deal request workflow example."""
     print("=" * 60)
-    print("Non-Agentic DSP Workflow Example")
+    print("Deal Request Workflow Example")
     print("=" * 60)
 
     # Scenario 1: Anonymous inquiry
     print("\n1. Anonymous inquiry (public tier)...")
-    flow1 = NonAgenticDSPFlow()
+    flow1 = DealRequestFlow()
     result1 = flow1.process_request(
         request_text="What CTV inventory do you have available?",
         buyer_context=None,
@@ -44,7 +44,7 @@ def main():
         is_authenticated=True,
     )
 
-    flow2 = NonAgenticDSPFlow()
+    flow2 = DealRequestFlow()
     result2 = flow2.process_request(
         request_text="I want to create a CTV deal for 5 million impressions",
         buyer_context=agency_context,
@@ -71,7 +71,7 @@ def main():
         is_authenticated=True,
     )
 
-    flow3 = NonAgenticDSPFlow()
+    flow3 = DealRequestFlow()
     result3 = flow3.process_request(
         request_text="Create a preferred deal for video inventory",
         buyer_context=advertiser_context,
@@ -93,7 +93,7 @@ def main():
         is_authenticated=True,
     )
 
-    flow4 = NonAgenticDSPFlow()
+    flow4 = DealRequestFlow()
     result4 = flow4.process_request(
         request_text="What's the pricing for video?",
         buyer_context=different_agency_context,
@@ -103,7 +103,7 @@ def main():
     print("\n   Note: Same advertiser gets consistent pricing regardless of agency!")
 
     print("\n" + "=" * 60)
-    print("Non-Agentic DSP example completed!")
+    print("Deal request example completed!")
 
 
 if __name__ == "__main__":

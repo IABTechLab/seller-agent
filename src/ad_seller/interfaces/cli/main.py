@@ -167,8 +167,8 @@ def deal(
     agency: Optional[str] = typer.Option(None, "--agency", "-a", help="Agency ID"),
     advertiser: Optional[str] = typer.Option(None, "--advertiser", help="Advertiser ID"),
 ):
-    """Process a deal request (non-agentic DSP workflow)."""
-    from ...flows import NonAgenticDSPFlow
+    """Process a deal request."""
+    from ...flows import DealRequestFlow
     from ...models.buyer_identity import BuyerContext, BuyerIdentity
 
     # Create buyer context
@@ -183,7 +183,7 @@ def deal(
 
     console.print(Panel(f"Processing: [cyan]{buyer_request}[/cyan]", title="Deal Request"))
 
-    flow = NonAgenticDSPFlow()
+    flow = DealRequestFlow()
     result = flow.process_request(
         request_text=buyer_request,
         buyer_context=context,
@@ -228,7 +228,7 @@ def connect(
 @app.command()
 def chat():
     """Start interactive chat mode for buyer interactions."""
-    from ...flows import NonAgenticDSPFlow, DiscoveryInquiryFlow
+    from ...flows import DealRequestFlow, DiscoveryInquiryFlow
     from ...models.buyer_identity import BuyerContext, BuyerIdentity
 
     console.print(Panel(
@@ -257,7 +257,7 @@ def chat():
             input_lower = user_input.lower()
 
             if any(word in input_lower for word in ["deal", "create", "book", "buy"]):
-                flow = NonAgenticDSPFlow()
+                flow = DealRequestFlow()
                 result = flow.process_request(
                     request_text=user_input,
                     buyer_context=context,

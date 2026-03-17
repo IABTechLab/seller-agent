@@ -47,6 +47,9 @@ app = FastAPI(
         {"name": "Orders", "description": "Order state machine and lifecycle management"},
         {"name": "Change Requests", "description": "Post-deal modification requests"},
         {"name": "Audit", "description": "Order audit logs and operational reports"},
+        {"name": "Supply Chain", "description": "Supply chain transparency (sellers.json-like self-description)"},
+        {"name": "Deal Performance", "description": "Deal delivery and performance metrics"},
+        {"name": "Bulk Operations", "description": "Batch deal create/update/cancel"},
     ],
 )
 
@@ -2625,5 +2628,299 @@ async def get_order_audit(
         "change_requests": change_requests,
         "change_request_count": len(change_requests),
     }
+
+
+# =============================================================================
+# Supply Chain Transparency (Deal Jockey Phase 5)
+# =============================================================================
+
+
+class SupplyChainNodeModel(BaseModel):
+    """A node in the supply chain (sellers.json format)."""
+
+    asi: str  # Account System Identifier (domain)
+    sid: str  # Seller ID within the exchange
+    name: str
+    domain: str
+    seller_type: str  # PUBLISHER, INTERMEDIARY, BOTH
+    is_direct: bool
+    comment: Optional[str] = None
+
+
+class SupplyChainResponse(BaseModel):
+    """Supply chain transparency response (sellers.json-like self-description)."""
+
+    seller_id: str
+    seller_name: str
+    seller_type: str  # PUBLISHER, INTERMEDIARY, BOTH
+    domain: str
+    is_direct: bool
+    supported_deal_types: list[str]
+    contact_email: Optional[str] = None
+    schain: list[SupplyChainNodeModel]
+    version: str = "1.0"
+
+
+@app.get("/api/v1/supply-chain", tags=["Supply Chain"], response_model=SupplyChainResponse)
+async def get_supply_chain():
+    """Return sellers.json-like self-description of this seller instance.
+
+    Provides supply chain transparency for buyer agents (Deal Jockey)
+    to evaluate supply paths. Hardcoded for this seller instance —
+    real sellers.json parsing comes in a future phase (5E).
+    """
+    from ...config import get_settings
+
+    settings = get_settings()
+    seller_domain = getattr(settings, "seller_domain", "demo-publisher.example.com")
+    seller_name = getattr(settings, "seller_name", "Demo Publisher")
+    seller_id = getattr(settings, "seller_organization_id", "default")
+
+    return SupplyChainResponse(
+        seller_id=seller_id,
+        seller_name=seller_name,
+        seller_type="PUBLISHER",
+        domain=seller_domain,
+        is_direct=True,
+        supported_deal_types=["programmatic_guaranteed", "preferred_deal", "private_auction"],
+        schain=[
+            SupplyChainNodeModel(
+                asi=seller_domain,
+                sid=seller_id,
+                name=seller_name,
+                domain=seller_domain,
+                seller_type="PUBLISHER",
+                is_direct=True,
+                comment="Direct seller — no intermediaries",
+            ),
+        ],
+    )
+
+
+# =============================================================================
+# Deal Performance Data (Deal Jockey Phase 5)
+# =============================================================================
+
+
+class DealPerformanceResponse(BaseModel):
+    """Deal delivery and performance metrics."""
+
+    deal_id: str
+    impressions_available: int
+    impressions_served: int
+    fill_rate: float
+    win_rate: float
+    avg_cpm_actual: float
+    delivery_pacing: str  # ahead, on_track, behind, not_started
+    last_updated: str
+
+
+@app.get("/api/v1/deals/{deal_id}/performance", tags=["Deal Performance"])
+async def get_deal_performance(deal_id: str):
+    """Return delivery stats for a deal.
+
+    Provides performance feedback for buyer SPO (Supply Path Optimization).
+    Returns placeholder/mock stats initially — real ad server integration
+    comes in a future phase.
+    """
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    deal = await storage.get_deal(deal_id)
+
+    if not deal:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "deal_not_found", "message": f"Deal '{deal_id}' not found."},
+        )
+
+    # Placeholder performance data — real stats come from ad server integration
+    now = datetime.utcnow().isoformat() + "Z"
+    return DealPerformanceResponse(
+        deal_id=deal_id,
+        impressions_available=1000000,
+        impressions_served=0,
+        fill_rate=0.0,
+        win_rate=0.0,
+        avg_cpm_actual=0.0,
+        delivery_pacing="not_started",
+        last_updated=now,
+    )
+
+
+# =============================================================================
+# Bulk Deal Operations (Deal Jockey Phase 5)
+# =============================================================================
+
+
+class BulkDealOperation(BaseModel):
+    """A single operation in a bulk deal request."""
+
+    action: str  # create, update, cancel
+    deal_id: Optional[str] = None  # required for update/cancel
+    quote_id: Optional[str] = None  # required for create
+    buyer_identity: Optional[QuoteBuyerIdentityModel] = None
+    notes: Optional[str] = None
+
+
+class BulkDealRequest(BaseModel):
+    """Batch of deal operations."""
+
+    operations: list[BulkDealOperation]
+
+
+class BulkDealOperationResult(BaseModel):
+    """Result of a single bulk operation."""
+
+    index: int
+    action: str
+    success: bool
+    deal_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BulkDealResponse(BaseModel):
+    """Batch results for bulk deal operations."""
+
+    total: int
+    succeeded: int
+    failed: int
+    results: list[BulkDealOperationResult]
+
+
+@app.post("/api/v1/deals/bulk", tags=["Bulk Operations"], response_model=BulkDealResponse)
+async def bulk_deal_operations(
+    request: BulkDealRequest,
+    api_key_record=Depends(_get_optional_api_key_record),
+):
+    """Process a batch of deal operations (create/update/cancel).
+
+    Enables the Deal Jockey buyer agent to efficiently manage multiple
+    deals in a single request. Each operation is processed independently
+    and returns per-operation success/failure.
+    """
+    import uuid as uuid_mod
+    from datetime import timedelta
+
+    from ...models.quotes import DealBookingResponse, DealBookingStatus, QuoteStatus
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    results: list[BulkDealOperationResult] = []
+
+    for i, op in enumerate(request.operations):
+        try:
+            if op.action == "create":
+                if not op.quote_id:
+                    results.append(BulkDealOperationResult(
+                        index=i, action="create", success=False,
+                        error="quote_id is required for create",
+                    ))
+                    continue
+
+                quote = await storage.get_quote(op.quote_id)
+                if not quote:
+                    results.append(BulkDealOperationResult(
+                        index=i, action="create", success=False,
+                        error=f"Quote '{op.quote_id}' not found",
+                    ))
+                    continue
+
+                if quote.get("status") != QuoteStatus.AVAILABLE.value:
+                    results.append(BulkDealOperationResult(
+                        index=i, action="create", success=False,
+                        error=f"Quote status is '{quote.get('status')}', expected 'available'",
+                    ))
+                    continue
+
+                # Generate deal
+                now = datetime.utcnow()
+                deal_id = f"DEMO-{uuid_mod.uuid4().hex[:12].upper()}"
+
+                deal_data = {
+                    "deal_id": deal_id,
+                    "quote_id": op.quote_id,
+                    "status": DealBookingStatus.CONFIRMED.value,
+                    "created_at": now.isoformat() + "Z",
+                    "notes": op.notes,
+                }
+                await storage.set_deal(deal_id, deal_data)
+
+                # Mark quote as booked
+                quote["status"] = QuoteStatus.BOOKED.value
+                await storage.set_quote(op.quote_id, quote)
+
+                results.append(BulkDealOperationResult(
+                    index=i, action="create", success=True, deal_id=deal_id,
+                ))
+
+            elif op.action == "cancel":
+                if not op.deal_id:
+                    results.append(BulkDealOperationResult(
+                        index=i, action="cancel", success=False,
+                        error="deal_id is required for cancel",
+                    ))
+                    continue
+
+                deal = await storage.get_deal(op.deal_id)
+                if not deal:
+                    results.append(BulkDealOperationResult(
+                        index=i, action="cancel", success=False,
+                        error=f"Deal '{op.deal_id}' not found",
+                    ))
+                    continue
+
+                deal["status"] = "cancelled"
+                deal["cancelled_at"] = datetime.utcnow().isoformat() + "Z"
+                deal["cancel_reason"] = op.notes or "Cancelled via bulk operation"
+                await storage.set_deal(op.deal_id, deal)
+
+                results.append(BulkDealOperationResult(
+                    index=i, action="cancel", success=True, deal_id=op.deal_id,
+                ))
+
+            elif op.action == "update":
+                if not op.deal_id:
+                    results.append(BulkDealOperationResult(
+                        index=i, action="update", success=False,
+                        error="deal_id is required for update",
+                    ))
+                    continue
+
+                deal = await storage.get_deal(op.deal_id)
+                if not deal:
+                    results.append(BulkDealOperationResult(
+                        index=i, action="update", success=False,
+                        error=f"Deal '{op.deal_id}' not found",
+                    ))
+                    continue
+
+                if op.notes:
+                    deal["notes"] = op.notes
+                deal["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                await storage.set_deal(op.deal_id, deal)
+
+                results.append(BulkDealOperationResult(
+                    index=i, action="update", success=True, deal_id=op.deal_id,
+                ))
+
+            else:
+                results.append(BulkDealOperationResult(
+                    index=i, action=op.action, success=False,
+                    error=f"Unknown action '{op.action}'. Must be create, update, or cancel.",
+                ))
+
+        except Exception as e:
+            results.append(BulkDealOperationResult(
+                index=i, action=op.action, success=False, error=str(e),
+            ))
+
+    succeeded = sum(1 for r in results if r.success)
+    return BulkDealResponse(
+        total=len(request.operations),
+        succeeded=succeeded,
+        failed=len(request.operations) - succeeded,
+        results=results,
+    )
 
 
