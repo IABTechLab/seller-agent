@@ -2701,50 +2701,218 @@ async def get_supply_chain():
 # Deal Performance Data (Deal Jockey Phase 5)
 # =============================================================================
 
+# Valid period values per contract (Section 5)
+_VALID_PERIODS = {"last_7_days", "last_30_days", "last_90_days", "lifetime", "custom"}
 
-class DealPerformanceResponse(BaseModel):
-    """Deal delivery and performance metrics."""
+# Period-to-days mapping for date range calculation
+_PERIOD_DAYS = {
+    "last_7_days": 7,
+    "last_30_days": 30,
+    "last_90_days": 90,
+}
+
+
+class DailyPerformanceModel(BaseModel):
+    """Per-day performance breakdown."""
+
+    date: str  # YYYY-MM-DD
+    impressions: int
+    spend: float
+    fill_rate: Optional[float] = None  # 0.0 to 1.0
+    win_rate: Optional[float] = None  # 0.0 to 1.0
+
+
+class DealPerformanceResponseModel(BaseModel):
+    """Deal delivery performance metrics per contract Section 5."""
 
     deal_id: str
-    impressions_available: int
-    impressions_served: int
-    fill_rate: float
-    win_rate: float
-    avg_cpm_actual: float
-    delivery_pacing: str  # ahead, on_track, behind, not_started
-    last_updated: str
+    period: str  # last_7_days, last_30_days, last_90_days, lifetime, custom
+    period_start: str  # YYYY-MM-DD
+    period_end: str  # YYYY-MM-DD
+    impressions_delivered: int
+    impressions_target: Optional[int] = None
+    spend: float
+    currency: str = "USD"
+    fill_rate: Optional[float] = None  # 0.0 to 1.0
+    win_rate: Optional[float] = None  # 0.0 to 1.0
+    pacing_percentage: Optional[float] = None  # 0.0 to 1.0+
+    avg_cpm: Optional[float] = None
+    last_delivery_at: Optional[str] = None  # ISO 8601
+    daily_breakdown: list[DailyPerformanceModel] = []
+
+
+def _is_counterparty(api_key_record, deal: dict) -> bool:
+    """Check if the authenticated buyer is a counterparty to the deal.
+
+    Matches by seat_id, agency_id, or advertiser_id between the API key
+    identity and the deal's stored buyer_identity.
+    """
+    if api_key_record is None:
+        return False
+
+    key_identity = api_key_record.identity
+    deal_buyer = deal.get("buyer_identity", {})
+    if not deal_buyer:
+        return False
+
+    # Match by any identity field that both sides have
+    if key_identity.seat_id and deal_buyer.get("seat_id"):
+        if key_identity.seat_id == deal_buyer["seat_id"]:
+            return True
+    if key_identity.agency_id and deal_buyer.get("agency_id"):
+        if key_identity.agency_id == deal_buyer["agency_id"]:
+            return True
+    if key_identity.advertiser_id and deal_buyer.get("advertiser_id"):
+        if key_identity.advertiser_id == deal_buyer["advertiser_id"]:
+            return True
+
+    return False
+
+
+def _compute_period_dates(
+    period: str,
+    start_date: Optional[str],
+    end_date: Optional[str],
+) -> tuple[str, str]:
+    """Compute period_start and period_end based on the period type.
+
+    Returns (period_start, period_end) as YYYY-MM-DD strings.
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+
+    if period == "custom":
+        # Already validated that start_date and end_date are present
+        return start_date, end_date
+
+    if period == "lifetime":
+        # Use a far-back start date; end is today
+        return "2020-01-01", today.isoformat()
+
+    days = _PERIOD_DAYS.get(period, 30)
+    period_start = (today - timedelta(days=days)).isoformat()
+    return period_start, today.isoformat()
 
 
 @app.get("/api/v1/deals/{deal_id}/performance", tags=["Deal Performance"])
-async def get_deal_performance(deal_id: str):
-    """Return delivery stats for a deal.
+async def get_deal_performance(
+    deal_id: str,
+    period: str = "last_30_days",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    api_key_record=Depends(_get_optional_api_key_record),
+):
+    """Return delivery performance metrics for a specific deal.
 
-    Provides performance feedback for buyer SPO (Supply Path Optimization).
-    Returns placeholder/mock stats initially — real ad server integration
-    comes in a future phase.
+    Implements the contract from buyer-te6b.1.1 Section 5:
+    - Authentication required (401 if unauthenticated)
+    - Counterparty authorization (403 if buyer is not a counterparty)
+    - 403 for non-counterparty regardless of deal existence (prevents enumeration)
+    - 404 only if deal doesn't exist AND buyer would be authorized
+    - Configurable time period via query parameter
+    - Phase 1: returns placeholder/mock metrics
     """
     from ...storage.factory import get_storage
+
+    # Authentication check: require API key or Bearer token
+    if api_key_record is None:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "authentication_required",
+                "message": "API key or Bearer token is required.",
+            },
+        )
+
+    # Validate period parameter
+    if period not in _VALID_PERIODS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_period",
+                "message": (
+                    f"Invalid period '{period}'. "
+                    f"Must be one of: {', '.join(sorted(_VALID_PERIODS))}."
+                ),
+            },
+        )
+
+    # Validate custom period dates
+    if period == "custom":
+        if not start_date or not end_date:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "custom_period_missing_dates",
+                    "message": "start_date and end_date are required when period=custom.",
+                },
+            )
+        if start_date > end_date:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_date_range",
+                    "message": "start_date must not be after end_date.",
+                },
+            )
 
     storage = await get_storage()
     deal = await storage.get_deal(deal_id)
 
-    if not deal:
+    if deal:
+        # Deal exists: check counterparty authorization
+        if not _is_counterparty(api_key_record, deal):
+            # Return 403 without indicating whether deal exists (anti-enumeration)
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "not_authorized",
+                    "message": "You are not authorized to view this deal's performance.",
+                },
+            )
+    else:
+        # Deal doesn't exist. Per contract Section 5 (Authorization):
+        # "If the buyer is not a counterparty to the deal, the seller returns
+        #  403 regardless of whether the deal exists (to prevent deal ID
+        #  enumeration)."
+        #
+        # Since we can't determine counterparty status for a nonexistent deal,
+        # return 403 uniformly. This prevents unauthorized buyers from
+        # distinguishing "deal exists but I'm not authorized" from "deal
+        # doesn't exist" -- both return 403.
         raise HTTPException(
-            status_code=404,
-            detail={"error": "deal_not_found", "message": f"Deal '{deal_id}' not found."},
+            status_code=403,
+            detail={
+                "error": "not_authorized",
+                "message": "You are not authorized to view this deal's performance.",
+            },
         )
 
-    # Placeholder performance data — real stats come from ad server integration
-    now = datetime.utcnow().isoformat() + "Z"
-    return DealPerformanceResponse(
+    # Compute period dates
+    p_start, p_end = _compute_period_dates(period, start_date, end_date)
+
+    # Extract impressions target from deal terms if available
+    terms = deal.get("terms", {})
+    impressions_target = terms.get("impressions")
+
+    # Phase 1: return placeholder/zero-delivery metrics
+    # Real delivery data comes from bid request tracking in a future phase
+    return DealPerformanceResponseModel(
         deal_id=deal_id,
-        impressions_available=1000000,
-        impressions_served=0,
-        fill_rate=0.0,
-        win_rate=0.0,
-        avg_cpm_actual=0.0,
-        delivery_pacing="not_started",
-        last_updated=now,
+        period=period,
+        period_start=p_start,
+        period_end=p_end,
+        impressions_delivered=0,
+        impressions_target=impressions_target,
+        spend=0.0,
+        currency="USD",
+        fill_rate=None,
+        win_rate=None,
+        pacing_percentage=None,
+        avg_cpm=None,
+        last_delivery_at=None,
+        daily_breakdown=[],
     )
 
 
