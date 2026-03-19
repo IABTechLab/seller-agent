@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from crewai.flow.flow import Flow, start, listen
+from crewai.flow.flow import Flow, start, listen, or_
 
 from ..models.flow_state import (
     ExecutionStatus,
@@ -233,7 +233,7 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
             self.state.errors.append(f"IO sync failed: {e}")
             self.state.status = ExecutionStatus.FAILED
 
-    @listen(sync_deal_id_to_ad_server, sync_io_order_to_ad_server)
+    @listen(or_(sync_deal_id_to_ad_server, sync_io_order_to_ad_server))
     async def update_execution_status(self) -> None:
         """Update execution order status after sync."""
         if self.state.status == ExecutionStatus.FAILED:
