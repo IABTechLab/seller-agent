@@ -2729,7 +2729,7 @@ class TemplateDealRequestModel(BaseModel):
 
     product_id: str
     deal_type: str  # "PG", "PD", or "PA"
-    max_cpm: float
+    max_cpm: Optional[float] = None  # Required by contract; Optional here for custom 400 error
     impressions: Optional[int] = None
     flight_start: Optional[str] = None  # YYYY-MM-DD
     flight_end: Optional[str] = None  # YYYY-MM-DD
@@ -2785,6 +2785,16 @@ async def create_deal_from_template(
         )
 
     # --- Validate max_cpm ---
+    if request.max_cpm is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "missing_max_cpm",
+                "message": "max_cpm is required for template-based deal creation.",
+                "status_code": 400,
+            },
+        )
+
     if request.max_cpm <= 0:
         raise HTTPException(
             status_code=400,
@@ -2822,6 +2832,59 @@ async def create_deal_from_template(
                 "status_code": 400,
             },
         )
+
+    # --- Validate flight dates ---
+    if request.flight_start or request.flight_end:
+        from datetime import date as date_type
+
+        today = date_type.today()
+        parsed_start = None
+        parsed_end = None
+
+        if request.flight_start:
+            try:
+                parsed_start = date_type.fromisoformat(request.flight_start)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_flight_dates",
+                        "message": f"Invalid flight_start date format: {request.flight_start}. Use YYYY-MM-DD.",
+                        "status_code": 400,
+                    },
+                )
+            if parsed_start < today:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_flight_dates",
+                        "message": f"flight_start ({request.flight_start}) is in the past.",
+                        "status_code": 400,
+                    },
+                )
+
+        if request.flight_end:
+            try:
+                parsed_end = date_type.fromisoformat(request.flight_end)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_flight_dates",
+                        "message": f"Invalid flight_end date format: {request.flight_end}. Use YYYY-MM-DD.",
+                        "status_code": 400,
+                    },
+                )
+
+        if parsed_start and parsed_end and parsed_end < parsed_start:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_flight_dates",
+                    "message": f"flight_end ({request.flight_end}) is before flight_start ({request.flight_start}).",
+                    "status_code": 400,
+                },
+            )
 
     # --- Load product catalog ---
     setup_flow = ProductSetupFlow()
@@ -2952,7 +3015,7 @@ async def create_deal_from_template(
             "id": deal_id,
             "bidfloor": final_cpm,
             "bidfloorcur": "USD",
-            "at": 3 if deal_type_str == "PA" else 1,
+            "at": 1 if deal_type_str == "PG" else 3,
             "wseat": [],
             "wadomain": [],
         },
