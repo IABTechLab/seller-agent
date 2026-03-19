@@ -2698,6 +2698,267 @@ async def get_supply_chain():
 
 
 # =============================================================================
+# Template-Based Deal Creation (Deal Jockey — bead: buyer-te6b.1.9)
+# =============================================================================
+
+
+class TemplateDealBuyerIdentityModel(BaseModel):
+    """Buyer identity in a from-template request."""
+
+    seat_id: Optional[str] = None
+    agency_id: Optional[str] = None
+    advertiser_id: Optional[str] = None
+    dsp_platform: Optional[str] = None
+
+
+class TemplateDealRequestModel(BaseModel):
+    """API request model for POST /api/v1/deals/from-template."""
+
+    product_id: str
+    deal_type: str  # "PG", "PD", or "PA"
+    max_cpm: float
+    impressions: Optional[int] = None
+    flight_start: Optional[str] = None  # YYYY-MM-DD
+    flight_end: Optional[str] = None  # YYYY-MM-DD
+    buyer_identity: Optional[TemplateDealBuyerIdentityModel] = None
+    notes: Optional[str] = None
+
+
+class TemplateDealMetadata(BaseModel):
+    """Metadata specific to template-based deal creation."""
+
+    created_via: str = "from-template"
+    max_cpm_submitted: float
+    price_accepted: bool = True
+
+
+@app.post("/api/v1/deals/from-template", tags=["Deal Booking"], status_code=201)
+async def create_deal_from_template(
+    request: TemplateDealRequestModel,
+    api_key_record=Depends(_get_optional_api_key_record),
+):
+    """Create a deal from structured template parameters.
+
+    Convenience wrapper that internally executes quote-then-book with
+    auto-accept. The buyer sends deal parameters and a max_cpm ceiling;
+    the seller's PricingRulesEngine calculates the price and either
+    creates the deal (if max_cpm >= final_cpm) or rejects (422).
+
+    Authentication required: X-Api-Key or Bearer token.
+    """
+    import uuid
+    from datetime import timedelta
+
+    from ...engines.pricing_rules_engine import PricingRulesEngine
+    from ...flows import ProductSetupFlow
+    from ...models.core import DealType
+    from ...models.pricing_tiers import TieredPricingConfig
+    from ...models.quotes import (
+        QuotePricing,
+        QuoteProductInfo,
+        QuoteTerms,
+    )
+    from ...storage.factory import get_storage
+
+    # --- Authentication check (required for this endpoint) ---
+    if api_key_record is None:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "authentication_required",
+                "message": "X-Api-Key or Bearer token required for template-based deal creation.",
+                "status_code": 401,
+            },
+        )
+
+    # --- Validate max_cpm ---
+    if request.max_cpm <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_max_cpm",
+                "message": "max_cpm must be a positive number.",
+                "status_code": 400,
+            },
+        )
+
+    # --- Validate deal type ---
+    deal_type_map = {
+        "PG": DealType.PROGRAMMATIC_GUARANTEED,
+        "PD": DealType.PREFERRED_DEAL,
+        "PA": DealType.PRIVATE_AUCTION,
+    }
+    deal_type_str = request.deal_type.upper()
+    if deal_type_str not in deal_type_map:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_deal_type",
+                "message": f"Deal type must be one of: PG, PD, PA. Got: {request.deal_type}",
+                "status_code": 400,
+            },
+        )
+
+    # --- PG requires impressions ---
+    if deal_type_str == "PG" and not request.impressions:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "pg_requires_impressions",
+                "message": "Programmatic Guaranteed deals require an impressions count.",
+                "status_code": 400,
+            },
+        )
+
+    # --- Load product catalog ---
+    setup_flow = ProductSetupFlow()
+    await setup_flow.kickoff()
+
+    product = setup_flow.state.products.get(request.product_id)
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "product_not_found",
+                "message": f"Product '{request.product_id}' not found in catalog.",
+                "status_code": 404,
+            },
+        )
+
+    # --- Validate minimum impressions ---
+    if request.impressions and request.impressions < product.minimum_impressions:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "below_minimum_impressions",
+                "message": f"Minimum impressions for this product: {product.minimum_impressions}.",
+                "status_code": 400,
+            },
+        )
+
+    # --- Build buyer context (API key identity takes priority) ---
+    buyer_ident = request.buyer_identity
+    context = _build_buyer_context(
+        buyer_tier=(
+            "advertiser" if (buyer_ident and buyer_ident.advertiser_id) else
+            "agency" if (buyer_ident and buyer_ident.agency_id) else
+            "seat" if (buyer_ident and buyer_ident.seat_id) else
+            "public"
+        ),
+        agency_id=buyer_ident.agency_id if buyer_ident else None,
+        advertiser_id=buyer_ident.advertiser_id if buyer_ident else None,
+        seat_id=buyer_ident.seat_id if buyer_ident else None,
+        api_key_record=api_key_record,
+    )
+
+    # --- Calculate price via PricingRulesEngine ---
+    config = TieredPricingConfig(seller_organization_id="default")
+    engine = PricingRulesEngine(config)
+
+    deal_type_enum = deal_type_map[deal_type_str]
+    decision = engine.calculate_price(
+        product_id=request.product_id,
+        base_price=product.base_cpm,
+        buyer_context=context,
+        deal_type=deal_type_enum,
+        volume=request.impressions or 0,
+        inventory_type=product.inventory_type,
+    )
+
+    final_cpm = decision.final_price
+
+    # --- Check max_cpm vs seller's calculated price ---
+    if request.max_cpm < final_cpm:
+        # Reject: buyer's ceiling is below seller's minimum
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "price_below_seller_minimum",
+                "detail": (
+                    f"Buyer max_cpm (${request.max_cpm:.2f}) is below the seller's "
+                    f"minimum price (${final_cpm:.2f} CPM) for this product and buyer tier. "
+                    f"Use POST /api/v1/quotes for price negotiation."
+                ),
+                "status_code": 422,
+                "seller_minimum_cpm": final_cpm,
+                "pricing_breakdown": {
+                    "base_cpm": decision.base_price,
+                    "tier_discount_pct": round(decision.tier_discount * 100, 1),
+                    "volume_discount_pct": round(decision.volume_discount * 100, 1),
+                    "final_cpm": final_cpm,
+                    "currency": decision.currency,
+                },
+            },
+        )
+
+    # --- Auto-accept: create the deal ---
+    now = datetime.utcnow()
+    deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
+    deal_expires = now + timedelta(days=30)
+
+    # Default flight dates
+    flight_start = request.flight_start or now.strftime("%Y-%m-%d")
+    flight_end = request.flight_end or (now + timedelta(days=30)).strftime("%Y-%m-%d")
+
+    is_guaranteed = deal_type_str == "PG"
+
+    deal_data = {
+        "deal_id": deal_id,
+        "deal_type": deal_type_str,
+        "status": "active",  # Auto-accepted, not "proposed"
+        "product": {
+            "product_id": product.product_id,
+            "name": product.name,
+            "inventory_type": product.inventory_type,
+        },
+        "pricing": {
+            "base_cpm": decision.base_price,
+            "tier_discount_pct": round(decision.tier_discount * 100, 1),
+            "volume_discount_pct": round(decision.volume_discount * 100, 1),
+            "final_cpm": final_cpm,
+            "currency": decision.currency,
+            "pricing_model": decision.pricing_model.value,
+            "rationale": decision.rationale,
+        },
+        "terms": {
+            "impressions": request.impressions,
+            "flight_start": flight_start,
+            "flight_end": flight_end,
+            "guaranteed": is_guaranteed,
+        },
+        "buyer_tier": context.effective_tier.value,
+        "expires_at": deal_expires.isoformat() + "Z",
+        "activation_instructions": {
+            "ttd": f"The Trade Desk > Inventory > Private Marketplace > Add Deal ID: {deal_id}",
+            "dv360": f"Display & Video 360 > Inventory > My Inventory > New > Deal ID: {deal_id}",
+            "amazon": f"Amazon DSP > Private Marketplace > Deals > Add Deal: {deal_id}",
+            "xandr": f"Xandr > Inventory > Deals > Create Deal with ID: {deal_id}",
+            "yahoo": f"Yahoo DSP > Inventory > Private Marketplace > Enter Deal ID: {deal_id}",
+        },
+        "openrtb_params": {
+            "id": deal_id,
+            "bidfloor": final_cpm,
+            "bidfloorcur": "USD",
+            "at": 3 if deal_type_str == "PA" else 1,
+            "wseat": [],
+            "wadomain": [],
+        },
+        "created_at": now.isoformat() + "Z",
+        "template_metadata": {
+            "created_via": "from-template",
+            "max_cpm_submitted": request.max_cpm,
+            "price_accepted": True,
+        },
+    }
+
+    # Persist the deal
+    storage = await get_storage()
+    await storage.set_deal(deal_id, deal_data)
+
+    return deal_data
+
+
+# =============================================================================
 # Deal Performance Data (Deal Jockey Phase 5)
 # =============================================================================
 
