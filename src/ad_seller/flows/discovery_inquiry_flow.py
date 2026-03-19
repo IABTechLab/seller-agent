@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from crewai.flow.flow import Flow, start, listen
+from crewai.flow.flow import Flow, start, listen, or_
 
 from ..models.flow_state import ExecutionStatus, SellerFlowState
 from ..models.buyer_identity import BuyerContext, BuyerIdentity, AccessTier
@@ -249,7 +249,7 @@ class DiscoveryInquiryFlow(Flow[DiscoveryState]):
 
         self.state.response_data["targeting"] = targeting_info
 
-    @listen(prepare_catalog_response, prepare_pricing_response, prepare_availability_response, prepare_targeting_response)
+    @listen(or_(prepare_catalog_response, prepare_pricing_response, prepare_availability_response, prepare_targeting_response))
     async def finalize_response(self) -> None:
         """Finalize the discovery response."""
         self.state.status = ExecutionStatus.COMPLETED

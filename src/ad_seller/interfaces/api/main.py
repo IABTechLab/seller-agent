@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 app = FastAPI(
@@ -214,8 +214,8 @@ class DealBookingRequestModel(BaseModel):
 
 
 async def _get_optional_api_key_record(
-    authorization: Optional[str] = None,
-    x_api_key: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="X-Api-Key"),
 ):
     """FastAPI dependency: validate API key from headers if present.
 
