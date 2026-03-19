@@ -2635,65 +2635,78 @@ async def get_order_audit(
 # =============================================================================
 
 
-class SupplyChainNodeModel(BaseModel):
-    """A node in the supply chain (sellers.json format)."""
+class SupplyChainNode(BaseModel):
+    """OpenRTB 2.6 supply chain node per source.schain.nodes[]."""
 
-    asi: str  # Account System Identifier (domain)
-    sid: str  # Seller ID within the exchange
-    name: str
-    domain: str
-    seller_type: str  # PUBLISHER, INTERMEDIARY, BOTH
-    is_direct: bool
-    comment: Optional[str] = None
+    asi: str  # Canonical domain (ads.txt / sellers.json)
+    sid: str  # Seller/reseller account ID
+    hp: int  # Payment flow participation (1 = yes, 0 = no)
+    rid: Optional[str] = None  # Request ID
+    name: Optional[str] = None  # Human-readable name
+    domain: Optional[str] = None  # Business domain
+
+
+class SellerContact(BaseModel):
+    """Optional seller contact information."""
+
+    programmatic_email: Optional[str] = None
+    sales_url: Optional[str] = None
 
 
 class SupplyChainResponse(BaseModel):
-    """Supply chain transparency response (sellers.json-like self-description)."""
+    """Seller's supply chain self-description per DealJockey API contract."""
 
     seller_id: str
+    seller_domain: str
     seller_name: str
-    seller_type: str  # PUBLISHER, INTERMEDIARY, BOTH
-    domain: str
+    seller_type: str  # PUBLISHER, SSP, DSP, INTERMEDIARY
     is_direct: bool
-    supported_deal_types: list[str]
-    contact_email: Optional[str] = None
-    schain: list[SupplyChainNodeModel]
-    version: str = "1.0"
+    schain_node: SupplyChainNode
+    sellers_json_url: Optional[str] = None
+    supported_deal_types: list[str]  # ["PG", "PD", "PA"]
+    supported_media_types: list[str]  # ["DIGITAL", "CTV", ...]
+    contact: Optional[SellerContact] = None
 
 
 @app.get("/api/v1/supply-chain", tags=["Supply Chain"], response_model=SupplyChainResponse)
 async def get_supply_chain():
-    """Return sellers.json-like self-description of this seller instance.
+    """Return the seller's supply chain self-description.
 
-    Provides supply chain transparency for buyer agents (Deal Jockey)
-    to evaluate supply paths. Hardcoded for this seller instance —
-    real sellers.json parsing comes in a future phase (5E).
+    Unauthenticated endpoint — public transparency data analogous to
+    IAB sellers.json. Returns seller identity, schain node per OpenRTB 2.6,
+    supported deal types, and supported media types.
+
+    DealJockey uses this for supply path analysis, price comparison,
+    and portfolio enrichment.
     """
     from ...config import get_settings
 
     settings = get_settings()
     seller_domain = getattr(settings, "seller_domain", "demo-publisher.example.com")
     seller_name = getattr(settings, "seller_name", "Demo Publisher")
-    seller_id = getattr(settings, "seller_organization_id", "default")
+    seller_id = getattr(settings, "seller_organization_id", None) or "seller-demo-pub-001"
 
     return SupplyChainResponse(
         seller_id=seller_id,
+        seller_domain=seller_domain,
         seller_name=seller_name,
         seller_type="PUBLISHER",
-        domain=seller_domain,
         is_direct=True,
-        supported_deal_types=["programmatic_guaranteed", "preferred_deal", "private_auction"],
-        schain=[
-            SupplyChainNodeModel(
-                asi=seller_domain,
-                sid=seller_id,
-                name=seller_name,
-                domain=seller_domain,
-                seller_type="PUBLISHER",
-                is_direct=True,
-                comment="Direct seller — no intermediaries",
-            ),
-        ],
+        schain_node=SupplyChainNode(
+            asi=seller_domain,
+            sid=seller_id,
+            hp=1,
+            rid="",
+            name=seller_name,
+            domain=seller_domain,
+        ),
+        sellers_json_url=f"https://{seller_domain}/sellers.json",
+        supported_deal_types=["PG", "PD", "PA"],
+        supported_media_types=["DIGITAL", "CTV"],
+        contact=SellerContact(
+            programmatic_email=f"programmatic@{seller_domain}",
+            sales_url=f"https://{seller_domain}/advertising",
+        ),
     )
 
 
