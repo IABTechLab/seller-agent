@@ -502,3 +502,195 @@ class TestFromTemplateValidation:
 
         assert resp.status_code == 400
         assert resp.json()["detail"]["error"] == "invalid_max_cpm"
+
+
+# =============================================================================
+# POST /api/v1/deals/from-template — Flight Date Validation (buyer-947)
+# =============================================================================
+
+
+class TestFromTemplateFlightDateValidation:
+    """Test flight date validation returns 400 with invalid_flight_dates."""
+
+    async def test_flight_start_in_past_returns_400(self, authenticated_client, mock_storage):
+        """flight_start in the past returns 400 with invalid_flight_dates."""
+        with (
+            patch("ad_seller.flows.ProductSetupFlow",
+                  return_value=_mock_product_setup_flow(_products())),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await authenticated_client.post("/api/v1/deals/from-template", json={
+                "product_id": "ctv-premium-sports",
+                "deal_type": "PD",
+                "max_cpm": 40.00,
+                "flight_start": "2020-01-01",
+                "flight_end": "2020-01-31",
+            })
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["error"] == "invalid_flight_dates"
+
+    async def test_flight_end_before_flight_start_returns_400(self, authenticated_client, mock_storage):
+        """flight_end before flight_start returns 400 with invalid_flight_dates."""
+        with (
+            patch("ad_seller.flows.ProductSetupFlow",
+                  return_value=_mock_product_setup_flow(_products())),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await authenticated_client.post("/api/v1/deals/from-template", json={
+                "product_id": "ctv-premium-sports",
+                "deal_type": "PD",
+                "max_cpm": 40.00,
+                "flight_start": "2027-06-15",
+                "flight_end": "2027-06-01",
+            })
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["error"] == "invalid_flight_dates"
+
+    async def test_flight_start_today_is_valid(self, authenticated_client, mock_storage):
+        """flight_start of today should be accepted (not in the past)."""
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        end = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
+        with (
+            patch("ad_seller.flows.ProductSetupFlow",
+                  return_value=_mock_product_setup_flow(_products())),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await authenticated_client.post("/api/v1/deals/from-template", json={
+                "product_id": "ctv-premium-sports",
+                "deal_type": "PD",
+                "max_cpm": 40.00,
+                "flight_start": today,
+                "flight_end": end,
+            })
+
+        # Should succeed (201), not fail with invalid_flight_dates
+        assert resp.status_code == 201
+
+    async def test_flight_start_equals_flight_end_is_valid(self, authenticated_client, mock_storage):
+        """Same start and end date should be valid (single-day flight)."""
+        future = (datetime.utcnow() + timedelta(days=10)).strftime("%Y-%m-%d")
+        with (
+            patch("ad_seller.flows.ProductSetupFlow",
+                  return_value=_mock_product_setup_flow(_products())),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await authenticated_client.post("/api/v1/deals/from-template", json={
+                "product_id": "ctv-premium-sports",
+                "deal_type": "PD",
+                "max_cpm": 40.00,
+                "flight_start": future,
+                "flight_end": future,
+            })
+
+        assert resp.status_code == 201
+
+
+# =============================================================================
+# POST /api/v1/deals/from-template — OpenRTB at Value (buyer-4xi)
+# =============================================================================
+
+
+class TestFromTemplateOpenRtbAtValue:
+    """Test OpenRTB at value is correct per deal type."""
+
+    async def test_pd_deal_returns_at_3(self, authenticated_client, mock_storage):
+        """PD (Preferred Deal) should use at=3 (private marketplace)."""
+        with (
+            patch("ad_seller.flows.ProductSetupFlow",
+                  return_value=_mock_product_setup_flow(_products())),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await authenticated_client.post("/api/v1/deals/from-template", json={
+                "product_id": "ctv-premium-sports",
+                "deal_type": "PD",
+                "max_cpm": 40.00,
+            })
+
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["openrtb_params"]["at"] == 3, (
+            f"PD deal should have at=3 (private marketplace), got at={data['openrtb_params']['at']}"
+        )
+
+    async def test_pa_deal_returns_at_3(self, authenticated_client, mock_storage):
+        """PA (Private Auction) should use at=3."""
+        pa_product = _make_product(
+            supported_deal_types=[
+                __import__("ad_seller.models.core", fromlist=["DealType"]).DealType.PRIVATE_AUCTION,
+            ],
+        )
+        products = {"ctv-premium-sports": pa_product}
+        with (
+            patch("ad_seller.flows.ProductSetupFlow",
+                  return_value=_mock_product_setup_flow(products)),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await authenticated_client.post("/api/v1/deals/from-template", json={
+                "product_id": "ctv-premium-sports",
+                "deal_type": "PA",
+                "max_cpm": 40.00,
+            })
+
+        assert resp.status_code == 201
+        assert resp.json()["openrtb_params"]["at"] == 3
+
+    async def test_pg_deal_returns_at_1(self, authenticated_client, mock_storage):
+        """PG (Programmatic Guaranteed) should use at=1 (fixed price)."""
+        with (
+            patch("ad_seller.flows.ProductSetupFlow",
+                  return_value=_mock_product_setup_flow(_products())),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await authenticated_client.post("/api/v1/deals/from-template", json={
+                "product_id": "ctv-premium-sports",
+                "deal_type": "PG",
+                "max_cpm": 40.00,
+                "impressions": 5000000,
+            })
+
+        assert resp.status_code == 201
+        assert resp.json()["openrtb_params"]["at"] == 1
+
+
+# =============================================================================
+# POST /api/v1/deals/from-template — Missing max_cpm (buyer-111)
+# =============================================================================
+
+
+class TestFromTemplateMissingMaxCpm:
+    """Test missing max_cpm returns 400 with missing_max_cpm error code."""
+
+    async def test_missing_max_cpm_returns_400(self, authenticated_client, mock_storage):
+        """Request without max_cpm returns 400 with missing_max_cpm error code."""
+        with (
+            patch("ad_seller.flows.ProductSetupFlow",
+                  return_value=_mock_product_setup_flow(_products())),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await authenticated_client.post("/api/v1/deals/from-template", json={
+                "product_id": "ctv-premium-sports",
+                "deal_type": "PD",
+            })
+
+        assert resp.status_code == 400, (
+            f"Expected 400 for missing max_cpm, got {resp.status_code}"
+        )
+        assert resp.json()["detail"]["error"] == "missing_max_cpm"
+
+    async def test_missing_max_cpm_returns_400_not_422(self, authenticated_client, mock_storage):
+        """Ensure missing max_cpm specifically does NOT return 422 (Pydantic default)."""
+        with (
+            patch("ad_seller.flows.ProductSetupFlow",
+                  return_value=_mock_product_setup_flow(_products())),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await authenticated_client.post("/api/v1/deals/from-template", json={
+                "product_id": "ctv-premium-sports",
+                "deal_type": "PD",
+            })
+
+        assert resp.status_code != 422, (
+            "missing max_cpm should return 400 per contract, not 422 from Pydantic"
+        )
