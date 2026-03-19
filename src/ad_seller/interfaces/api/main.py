@@ -329,6 +329,102 @@ async def _resolve_and_enforce_agent(
 
 
 # =============================================================================
+# Product Catalog (lightweight, no crewai dependency)
+# =============================================================================
+
+
+def _get_product_catalog() -> dict:
+    """Return the default product catalog as a dict of ProductDefinition objects.
+
+    This bypasses the crewai ProductSetupFlow which is incompatible with
+    being called inside a FastAPI async request handler. The catalog is
+    built directly using the same product definitions that
+    ProductSetupFlow.create_default_products() would create, but with
+    stable product IDs suitable for live API usage.
+    """
+    from ...models.flow_state import ProductDefinition
+    from ...models.core import DealType, PricingModel
+
+    products = [
+        ProductDefinition(
+            product_id="premium-display-homepage",
+            name="Premium Display - Homepage",
+            description="High-impact display on homepage",
+            inventory_type="display",
+            base_cpm=15.0,
+            floor_cpm=10.0,
+            supported_deal_types=[DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+            supported_pricing_models=[PricingModel.CPM],
+        ),
+        ProductDefinition(
+            product_id="standard-display-ros",
+            name="Standard Display - ROS",
+            description="Run of site display inventory",
+            inventory_type="display",
+            base_cpm=8.0,
+            floor_cpm=5.0,
+            supported_deal_types=[DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            supported_pricing_models=[PricingModel.CPM],
+        ),
+        ProductDefinition(
+            product_id="pre-roll-video",
+            name="Pre-Roll Video",
+            description="In-stream pre-roll video ads",
+            inventory_type="video",
+            base_cpm=25.0,
+            floor_cpm=18.0,
+            supported_deal_types=[DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+            supported_pricing_models=[PricingModel.CPM, PricingModel.CPCV],
+        ),
+        ProductDefinition(
+            product_id="ctv-premium-sports",
+            name="Premium CTV - Sports",
+            description="Connected TV inventory on premium streaming apps",
+            inventory_type="ctv",
+            base_cpm=35.0,
+            floor_cpm=28.0,
+            supported_deal_types=[DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL,
+                                  DealType.PRIVATE_AUCTION],
+            supported_pricing_models=[PricingModel.CPM],
+        ),
+        ProductDefinition(
+            product_id="mobile-app-rewarded",
+            name="Mobile App Rewarded Video",
+            description="User-initiated rewarded video in mobile apps",
+            inventory_type="mobile_app",
+            base_cpm=20.0,
+            floor_cpm=15.0,
+            supported_deal_types=[DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            supported_pricing_models=[PricingModel.CPM, PricingModel.CPCV],
+        ),
+        ProductDefinition(
+            product_id="native-in-feed",
+            name="Native In-Feed",
+            description="Native ads in content feeds",
+            inventory_type="native",
+            base_cpm=12.0,
+            floor_cpm=8.0,
+            supported_deal_types=[DealType.PREFERRED_DEAL],
+            supported_pricing_models=[PricingModel.CPM, PricingModel.CPC],
+        ),
+    ]
+
+    return {p.product_id: p for p in products}
+
+
+# Module-level cache so catalog is built once
+_PRODUCT_CATALOG: dict | None = None
+
+
+def _get_products() -> dict:
+    """Return the cached product catalog."""
+    global _PRODUCT_CATALOG
+    if _PRODUCT_CATALOG is None:
+        _PRODUCT_CATALOG = _get_product_catalog()
+    return _PRODUCT_CATALOG
+
+
+# =============================================================================
 # Endpoints
 # =============================================================================
 
@@ -2763,7 +2859,6 @@ async def create_deal_from_template(
     from datetime import timedelta
 
     from ...engines.pricing_rules_engine import PricingRulesEngine
-    from ...flows import ProductSetupFlow
     from ...models.core import DealType
     from ...models.pricing_tiers import TieredPricingConfig
     from ...models.quotes import (
@@ -2886,11 +2981,9 @@ async def create_deal_from_template(
                 },
             )
 
-    # --- Load product catalog ---
-    setup_flow = ProductSetupFlow()
-    await setup_flow.kickoff()
-
-    product = setup_flow.state.products.get(request.product_id)
+    # --- Load product catalog (lightweight, no crewai dependency) ---
+    catalog = _get_products()
+    product = catalog.get(request.product_id)
     if not product:
         raise HTTPException(
             status_code=404,
@@ -3003,6 +3096,11 @@ async def create_deal_from_template(
             "guaranteed": is_guaranteed,
         },
         "buyer_tier": context.effective_tier.value,
+        "buyer_identity": {
+            "seat_id": context.identity.seat_id,
+            "agency_id": context.identity.agency_id,
+            "advertiser_id": context.identity.advertiser_id,
+        },
         "expires_at": deal_expires.isoformat() + "Z",
         "activation_instructions": {
             "ttd": f"The Trade Desk > Inventory > Private Marketplace > Add Deal ID: {deal_id}",
