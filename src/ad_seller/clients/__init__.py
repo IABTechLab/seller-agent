@@ -13,6 +13,7 @@ from .freewheel_adapter import FreeWheelAdServerClient
 from .ssp_base import SSPClient, SSPRegistry, SSPType, SSPDeal, SSPDealCreateRequest
 from .ssp_mcp_client import MCPSSPClient
 from .ssp_rest_client import RESTSSPClient
+from .ssp_index_exchange import IndexExchangeSSPClient
 from .ssp_factory import build_ssp_registry
 from .ad_server_base import (
     AdServerClient,
@@ -60,4 +61,5 @@ __all__ = [
     "MCPSSPClient",
     "RESTSSPClient",
     "build_ssp_registry",
+    "IndexExchangeSSPClient",
 ]

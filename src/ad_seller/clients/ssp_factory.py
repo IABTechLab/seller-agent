@@ -101,15 +101,13 @@ def _create_ssp_client(name: str, settings: Any) -> Any:
         )
 
     elif name_lower == "index_exchange":
-        from .ssp_rest_client import RESTSSPClient
+        from .ssp_index_exchange import IndexExchangeSSPClient
 
         if not settings.index_exchange_api_url:
             logger.warning("Index Exchange configured but INDEX_EXCHANGE_API_URL not set")
             return None
 
-        return RESTSSPClient(
-            ssp_type=SSPType.INDEX_EXCHANGE,
-            ssp_name="Index Exchange",
+        return IndexExchangeSSPClient(
             base_url=settings.index_exchange_api_url,
             api_key=settings.index_exchange_api_key,
         )
