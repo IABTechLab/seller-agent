@@ -97,6 +97,21 @@ class Settings(BaseSettings):
     freewheel_bc_password: Optional[str] = None
     freewheel_bc_buzz_key: Optional[str] = None
 
+    # SSP Connectors (publishers can configure multiple SSPs)
+    # Comma-separated list of SSP names to enable
+    ssp_connectors: str = ""  # e.g. "pubmatic,magnite"
+    # Routing rules: inventory_type:ssp_name pairs, comma-separated
+    ssp_routing_rules: str = ""  # e.g. "ctv:pubmatic,display:magnite"
+    # PubMatic SSP
+    pubmatic_mcp_url: Optional[str] = None  # e.g. https://mcp.pubmatic.com/sses
+    pubmatic_api_key: Optional[str] = None
+    # Magnite SSP (REST API)
+    magnite_api_url: Optional[str] = None
+    magnite_api_key: Optional[str] = None
+    # Index Exchange SSP (REST API)
+    index_exchange_api_url: Optional[str] = None
+    index_exchange_api_key: Optional[str] = None
+
     # Pricing Configuration
     default_currency: str = "USD"
     min_deal_value: float = 1000.0
