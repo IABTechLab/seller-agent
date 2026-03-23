@@ -76,8 +76,20 @@ class Settings(BaseSettings):
     gam_default_trafficker_id: Optional[str] = None  # Default trafficker user ID
 
     # FreeWheel Configuration (alternative ad server)
-    freewheel_api_url: Optional[str] = None
-    freewheel_api_key: Optional[str] = None
+    freewheel_enabled: bool = False  # Feature flag to enable FreeWheel integration
+    freewheel_api_url: Optional[str] = None  # Legacy — use MCP URLs below
+    freewheel_api_key: Optional[str] = None  # Legacy — use MCP auth below
+    # Streaming Hub MCP (publisher-side: inventory, deals, audiences)
+    freewheel_sh_mcp_url: Optional[str] = None  # e.g. https://shmcp.freewheel.com
+    freewheel_sh_username: Optional[str] = None
+    freewheel_sh_password: Optional[str] = None
+    # Buyer Cloud MCP (demand-side: campaign execution, creatives, reporting)
+    freewheel_bc_mcp_url: Optional[str] = None  # e.g. https://bcmcp.freewheel.com
+    freewheel_bc_client_id: Optional[str] = None  # OAuth 2.0
+    freewheel_bc_client_secret: Optional[str] = None
+    freewheel_bc_email: Optional[str] = None  # Session auth
+    freewheel_bc_password: Optional[str] = None
+    freewheel_bc_buzz_key: Optional[str] = None
 
     # Pricing Configuration
     default_currency: str = "USD"

@@ -56,11 +56,11 @@ The seller agent's internal adapter layer will route each operation to the corre
 |---|---|---|
 | Inventory discovery, ad slots, sites | **Streaming Hub** | Publisher's view of what's available |
 | Audiences, segments, forecasting | **Streaming Hub** | Publisher-side targeting data |
-| IOs, campaigns, placements, deal setup | **Streaming Hub** | Publisher ad server trafficking |
+| Programmatic deal setup | **Streaming Hub** | Direct deal creation (no IO/campaign/placement needed) |
 | Deal activation in DSP, campaign execution | **Buyer Cloud** | Demand-side execution |
 | Campaign reporting, delivery metrics | **Buyer Cloud** | Beeswax campaign performance |
 | Creative management, attachment | **Buyer Cloud** | Demand-side creative workflow |
-| PG booking (full) | **Both** | SH for deal + IO setup, BC for campaign binding |
+| PG booking (full) | **Both** | SH for deal setup, BC for campaign binding |
 
 ---
 
@@ -193,14 +193,17 @@ The Streaming Hub MCP (`shmcp.freewheel.com`) is the publisher-side ad server. T
 
 **Normalization:** SH audience items → `AdServerAudienceSegment` (id, name, description, size, status, ad_server_type="freewheel")
 
-### 1.4 Insertion Order (IO) Management
+### 1.4 Insertion Order (IO) Management — DIRECT-SOLD ONLY
+
+> **NOT USED for programmatic deals.** IOs are a direct-sold concept on FreeWheel.
+> Programmatic deals are created directly via `book_deal()` without IO/campaign/placement.
 
 | SH Tool | Seller Agent Method | What We Use It For |
 |---|---|---|
-| `sh_1_1_create-an-insertion-order` | `create_order()` | Create IO for PG bookings |
-| `sh_1_1_get-a-insertion-order` | `get_order()` | Retrieve IO status |
-| `sh_1_1_book-an-insertion-order` | `approve_order()` | Commit budget, activate IO |
-| `sh_1_1_update-an-insertion-order` | — | Update IO dates/budget |
+| `sh_1_1_create-an-insertion-order` | — | Direct-sold only (not used by seller agent) |
+| `sh_1_1_get-a-insertion-order` | — | Direct-sold only |
+| `sh_1_1_book-an-insertion-order` | — | Direct-sold only |
+| `sh_1_1_update-an-insertion-order` | — | Direct-sold only |
 
 **Normalization:** SH IO responses → `AdServerOrder` (id, name, advertiser_id, status → OrderStatus enum, ad_server_type="freewheel")
 
@@ -215,20 +218,18 @@ The Streaming Hub MCP (`shmcp.freewheel.com`) is the publisher-side ad server. T
 | CANCELLED | `"canceled"` |
 | COMPLETED | `"completed"` |
 
-### 1.5 Campaign & Placement (Line Item)
+### 1.5 Campaign & Placement (Line Item) — DIRECT-SOLD ONLY
 
-FreeWheel splits what we call a "line item" into two entities: **Campaign** (container with targeting and budget) and **Placement** (inventory assignment under a campaign). The seller agent's `create_line_item()` creates both in sequence and returns a composite ID.
+> **NOT USED for programmatic deals.** Campaigns and placements are direct-sold
+> concepts on Streaming Hub. Philippe has offered to recycle `*_line_item()` for
+> Buyer Cloud campaign/line item management in a future phase.
 
 | SH Tool | Seller Agent Method | What We Use It For |
 |---|---|---|
-| `sh_1_1_create-a-campaign` | `create_line_item()` (step 1) | Create campaign container under IO |
-| `sh_1_1_create-a-placement` | `create_line_item()` (step 2) | Assign inventory + budget under campaign |
-| `sh_1_1_update-a-placement` | `update_line_item()` | Modify flight dates, targeting, pricing |
-| `sh_1_1_get-a-campaign` | — | Retrieve campaign details |
-
-**Composite ID:** The seller agent stores `"campaign_id:placement_id"` as the line item ID to track both FreeWheel entities.
-
-**Normalization:** SH campaign+placement → `AdServerLineItem` (id, order_id, name, status → LineItemStatus, cost_type, cost_micros, currency, impressions_goal, start_time, end_time, ad_server_type="freewheel")
+| `sh_1_1_create-a-campaign` | — | Direct-sold only (not used by seller agent) |
+| `sh_1_1_create-a-placement` | — | Direct-sold only |
+| `sh_1_1_update-a-placement` | — | Direct-sold only |
+| `sh_1_1_get-a-campaign` | — | Direct-sold only |
 
 ### 1.6 Programmatic Deal Management
 
@@ -314,13 +315,17 @@ The **external deal ID** (the OpenRTB deal ID used in bid requests) is the share
 ```
 ┌─ Streaming Hub ─────────────────┐     ┌─ Buyer Cloud ──────────────────┐
 │                                 │     │                                │
-│  IO ──── Campaign ──── Deal ────┼──►──┼──── Campaign ──── Line Items  │
-│            │                    │     │       │                        │
-│         Placement         deal_id     │    Creatives                   │
-│            │           (shared key)   │                                │
-│         Inventory                     │                                │
+│  Inventory ──── Deal ───────────┼──►──┼──── Campaign ──── Line Items  │
+│                           deal_id     │       │                        │
+│  Audiences            (shared key)    │    Creatives                   │
+│                                 │     │                                │
+│  Forecasting                    │     │    Reporting                   │
 └─────────────────────────────────┘     └────────────────────────────────┘
 ```
+
+> **CONFIRMED by Philippe (FreeWheel):** Streaming Hub programmatic deals do NOT
+> require IO, Campaign, or Placement objects. Those are direct-sold concepts only.
+> The SH side is simpler: deals are created directly via `book_deal()`.
 
 ### 3.2 Cross-MCP Binding Record
 
@@ -423,51 +428,35 @@ Seller Agent Response (BookingResult):
 
 **MCP:** Streaming Hub only
 
-### UC4: Book PG Deal (IO Path — Cross-MCP)
+### UC4: Book PG Deal (Cross-MCP)
 
-Programmatic Guaranteed deals require server-side setup in **both** MCPs. The Streaming Hub holds the deal and IO; the Buyer Cloud executes the campaign.
+> **REVISED per Philippe's feedback:** No IO/campaign/placement needed on SH.
+> Philippe's `book_deal()` handles both SH and BC deal creation in one call.
+
+Programmatic Guaranteed deals require setup in **both** MCPs. Philippe's
+`book_deal()` creates the deal on SH and BC. BC campaign/line item/creative
+management is a separate step (Phase 3).
 
 ```
-Negotiation accepted → ExecutionActivationFlow (IO path):
+Negotiation accepted → ExecutionActivationFlow:
 
-  ── Streaming Hub (deal + IO setup) ──────────────────────
+  ── Step 1: Deal creation (SH + BC) ─────────────────────
 
-  1. SH: sh_1_1_create-a-campaign
-     - Create advertiser container campaign
+  1. Philippe's book_deal()
+     - Creates deal on Streaming Hub (with external deal_id, pricing, inventory)
+     - Creates deal on Buyer Cloud (linked via deal_id)
+     - Does NOT create BC campaign/line item/creative
 
-  2. SH: sh_1_1_create-an-insertion-order
-     - IO under campaign with budget, dates
+  ← Return: BookingResult with deal_id
 
-  3. SH: sh_1_1_create-a-placement
-     - Inventory assignment + delivery goal under IO
+  ── Step 2: BC campaign setup (Phase 3 — future) ────────
 
-  4. SH: sh_1_0_createdeal
-     - External deal_id linking to the IO/placement
-
-  5. SH: sh_1_1_book-an-insertion-order
-     - Commit budget, activate IO
-
-  6. SH: sh_1_0_activatedeal
-     - Make deal live in exchange
-
-  ── Buyer Cloud (campaign execution binding) ─────────────
-
-  7. BC: bc_v2_create_campaign
-     - Create campaign referencing shared deal_id
-
-  8. BC: bc_v2_create_line_item
-     - Budget and targeting under BC campaign
-
-  9. BC: bc_v2_attach_creative_to_line_item
-     - Associate creatives with BC line item
-
-  10. BC: bc_v2_activate_campaign
-      - Activate campaign for delivery
-
-  ← Return: BookingResult + FWCrossMCPBinding
+  2. BC: campaign + line item creation (when Philippe adds *_line_item() for BC)
+  3. BC: creative attachment
+  4. BC: campaign activation
 ```
 
-**MCP:** Both (Streaming Hub steps 1-6, then Buyer Cloud steps 7-10)
+**MCP:** Both (via Philippe's `book_deal()` which orchestrates SH + BC)
 
 ### UC5: Campaign Reporting
 
@@ -498,15 +487,24 @@ This table shows every `AdServerClient` method and which MCP tool(s) the seller 
 | `disconnect()` | Both | `streaming_hub_logout` | `buyer_cloud_logout` |
 | `list_inventory()` | SH | `sh_1_0_list-sites` + `sh_1_0_site-sections` | — |
 | `list_audience_segments()` | SH | `sh_1_0_list-audience-items` | — |
-| `create_order()` | SH | `sh_1_1_create-an-insertion-order` | — |
-| `get_order()` | SH | `sh_1_1_get-a-insertion-order` | — |
-| `approve_order()` | SH | `sh_1_1_book-an-insertion-order` | — |
-| `create_line_item()` | SH | `sh_1_1_create-a-campaign` + `sh_1_1_create-a-placement` | — |
-| `update_line_item()` | SH | `sh_1_1_update-a-placement` | — |
+| `create_order()` | — | Not used (direct-sold only) | — |
+| `get_order()` | — | Not used (direct-sold only) | — |
+| `approve_order()` | — | Not used (direct-sold only) | — |
+| `create_line_item()` | — | Not used on SH (direct-sold only) | Phase 3: BC campaign/line item |
+| `update_line_item()` | — | Not used on SH (direct-sold only) | Phase 3: BC line item updates |
 | `create_deal()` | SH | `sh_1_0_createdeal` + `sh_1_0_activatedeal` | — |
 | `update_deal()` | SH | `sh_1_0_updatedeal` | — |
-| `book_deal()` — PD/PA | SH | `sh_1_0_createdeal` → `sh_1_0_activatedeal` | — |
-| `book_deal()` — PG | Both | IO + campaign + placement + deal + book (steps 1-6) | campaign + line item + creative + activate (steps 7-10) |
+| `book_deal()` — PD/PA | Both | Philippe's `book_deal` (creates deal on SH + BC) | — |
+| `book_deal()` — PG | Both | Philippe's `book_deal` (creates deal on SH + BC) | Phase 3: campaign + line item + creative |
+
+### Philippe's Implemented MCP Tools (CONFIRMED)
+
+| MCP Tool | Status | Description |
+|---|---|---|
+| `list_inventory()` | ✅ Implemented | Returns "template deals" from SH representing packages. Not yet OpenDirect compliant but maps to IAB taxonomy. |
+| `list_audience_segments()` | ⚠️ Partial | Audience segment listing from SH. |
+| `book_deal()` | ✅ Implemented | Creates deal on BOTH SH and BC. Does NOT create campaign/line item/creative on BC. |
+| `update_deal()` | ✅ Implemented | Updates deal on SH and BC. |
 
 ---
 

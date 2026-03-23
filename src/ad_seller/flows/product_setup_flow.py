@@ -110,7 +110,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         AdServerClient.list_inventory() and creates Layer 1 synced packages.
         Otherwise, creates mock synced packages for development.
         """
-        if not self._settings.gam_network_code and not self._settings.freewheel_api_url:
+        if not self._settings.gam_network_code and not self._settings.freewheel_sh_mcp_url:
             self.state.warnings.append("No ad server configured, creating mock synced packages")
             await self._create_mock_synced_packages()
             return

@@ -30,17 +30,23 @@ async def _run_sync(include_archived: bool = False) -> dict:
     """
     global _last_sync, _sync_count
 
-    from ..tools.gam.sync_inventory import SyncGAMInventoryTool
+    from ..clients.ad_server_base import get_ad_server_client
+    from ..config import get_settings as _get_settings
 
-    logger.info("Starting scheduled inventory sync...")
-    tool = SyncGAMInventoryTool()
+    settings = _get_settings()
+    logger.info("Starting scheduled inventory sync (ad_server=%s)...", settings.ad_server_type)
 
     try:
-        result = tool._run(update_pricing=True, include_archived=include_archived)
+        # Use the polymorphic ad server client for any backend (GAM, FreeWheel, etc.)
+        client = get_ad_server_client()
+        filter_str = None if include_archived else "status:ACTIVE"
+        async with client:
+            items = await client.list_inventory(filter_str=filter_str)
+
         _last_sync = datetime.now(timezone.utc).isoformat()
         _sync_count += 1
-        logger.info("Scheduled inventory sync completed (count=%d)", _sync_count)
-        return {"status": "success", "result": result, "synced_at": _last_sync}
+        logger.info("Scheduled inventory sync completed (count=%d, items=%d)", _sync_count, len(items))
+        return {"status": "success", "items_synced": len(items), "synced_at": _last_sync}
     except Exception as e:
         logger.error("Scheduled inventory sync failed: %s", e)
         return {"status": "error", "error": str(e)}

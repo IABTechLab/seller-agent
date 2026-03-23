@@ -54,6 +54,7 @@ class LineItemStatus(str, Enum):
 class DealStatus(str, Enum):
     """Normalized programmatic deal status."""
 
+    DRAFT = "draft"
     ACTIVE = "active"
     PAUSED = "paused"
     ARCHIVED = "archived"
@@ -315,10 +316,7 @@ def get_ad_server_client(ad_server_type: Optional[str] = None) -> AdServerClient
         from .gam_adapter import GAMAdServerClient
         return GAMAdServerClient()
     elif ad_server_type == "freewheel":
-        # Will be implemented in seller-dcd (1A: FreeWheel Integration)
-        raise NotImplementedError(
-            "FreeWheel ad server client not yet implemented. "
-            "Awaiting FreeWheel API/MCP access."
-        )
+        from .freewheel_adapter import FreeWheelAdServerClient
+        return FreeWheelAdServerClient()
     else:
         raise ValueError(f"Unsupported ad server type: {ad_server_type}")

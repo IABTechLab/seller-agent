@@ -9,6 +9,7 @@ from .a2a_client import A2AClient, A2AResponse
 from .ucp_client import UCPClient, UCPExchangeResult
 from .gam_rest_client import GAMRestClient
 from .gam_soap_client import GAMSoapClient
+from .freewheel_adapter import FreeWheelAdServerClient
 from .ad_server_base import (
     AdServerClient,
     AdServerType,
@@ -44,4 +45,6 @@ __all__ = [
     "AdServerAudienceSegment",
     "BookingResult",
     "get_ad_server_client",
+    # FreeWheel adapter
+    "FreeWheelAdServerClient",
 ]
