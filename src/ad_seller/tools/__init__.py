@@ -15,6 +15,7 @@ from .deal_jockey import (
     GetSupplyChainTool,
     GetDealPerformanceTool,
     BulkDealOperationsTool,
+    CreateDealFromTemplateTool,
 )
 from .gam import (
     # Inventory tools
@@ -65,4 +66,5 @@ __all__ = [
     "GetSupplyChainTool",
     "GetDealPerformanceTool",
     "BulkDealOperationsTool",
+    "CreateDealFromTemplateTool",
 ]

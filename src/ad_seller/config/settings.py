@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     seller_organization_id: Optional[str] = None
     seller_organization_name: str = "Default Publisher"
 
+    # Supply Chain Transparency
+    sellers_json_path: Optional[str] = None  # Path to sellers.json file (IAB spec)
+
+    # Inventory Sync Scheduling
+    inventory_sync_enabled: bool = False  # Enable periodic inventory sync
+    inventory_sync_interval_minutes: int = 60  # Sync interval in minutes
+    inventory_sync_include_archived: bool = False  # Include archived ad units
+
     # Ad Server Configuration
     ad_server_type: str = "google_ad_manager"  # google_ad_manager, freewheel
 

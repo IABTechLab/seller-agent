@@ -55,6 +55,23 @@ app = FastAPI(
 
 
 # =============================================================================
+# Lifecycle: start/stop background services
+# =============================================================================
+
+
+@app.on_event("startup")
+async def _startup():
+    from ...services.inventory_sync_scheduler import start_sync_scheduler
+    start_sync_scheduler()
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    from ...services.inventory_sync_scheduler import stop_sync_scheduler
+    stop_sync_scheduler()
+
+
+# =============================================================================
 # Request/Response Models
 # =============================================================================
 
@@ -2631,7 +2648,233 @@ async def get_order_audit(
 
 
 # =============================================================================
-# Supply Chain Transparency (Deal Jockey Phase 5)
+# Template-Based Deal Creation (DealJockey Phase 4)
+# =============================================================================
+
+
+class DealFromTemplateRequest(BaseModel):
+    """Request model for POST /api/v1/deals/from-template."""
+
+    deal_type: str  # PG, PD, PA
+    product_id: str
+    impressions: Optional[int] = None
+    max_cpm: Optional[float] = None
+    flight_start: Optional[str] = None
+    flight_end: Optional[str] = None
+    buyer_identity: Optional[QuoteBuyerIdentityModel] = None
+    notes: Optional[str] = None
+
+
+class DealFromTemplateResponse(BaseModel):
+    """Response for template-based deal creation."""
+
+    deal_id: str
+    status: str
+    deal_type: str
+    product_id: str
+    actual_price_cpm: float
+    currency: str = "USD"
+    impressions: Optional[int] = None
+    flight_start: str
+    flight_end: str
+    buyer_tier: str
+    activation_instructions: dict[str, str]
+    schain: Optional[dict[str, Any]] = None
+    created_at: str
+
+
+class DealRejectionDetail(BaseModel):
+    """Rejection detail when max_cpm is below seller floor."""
+
+    error: str
+    message: str
+    seller_minimum_cpm: float
+    buyer_max_cpm: float
+    product_id: str
+    deal_type: str
+
+
+@app.post(
+    "/api/v1/deals/from-template",
+    tags=["Deal Booking"],
+    response_model=DealFromTemplateResponse,
+    status_code=201,
+)
+async def create_deal_from_template(
+    request: DealFromTemplateRequest,
+    api_key_record=Depends(_get_optional_api_key_record),
+):
+    """Create a deal directly from template parameters (quote + auto-book).
+
+    Accepts structured template params instead of requiring a pre-existing
+    quote. Internally runs the pricing engine, validates the buyer's max_cpm
+    against the floor price, and auto-books the deal if acceptable.
+
+    Returns 201 with the created deal on success.
+    Returns 422 when max_cpm is below the seller's floor price, including
+    the seller's minimum price in the response.
+    Returns 401 for unauthenticated requests.
+    """
+    from datetime import timedelta
+
+    from ...engines.pricing_rules_engine import PricingRulesEngine
+    from ...flows import ProductSetupFlow
+    from ...models.core import DealType
+    from ...models.pricing_tiers import TieredPricingConfig
+    from ...models.quotes import DealBookingStatus
+    from ...storage.factory import get_storage
+
+    # Require authentication
+    if not api_key_record:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "authentication_required", "message": "API key required for deal creation."},
+        )
+
+    # Validate deal type
+    deal_type_map = {"PG": DealType.PROGRAMMATIC_GUARANTEED, "PD": DealType.PREFERRED_DEAL, "PA": DealType.PRIVATE_AUCTION}
+    deal_type_str = request.deal_type.upper()
+    if deal_type_str not in deal_type_map:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_deal_type", "message": f"Deal type must be one of: PG, PD, PA. Got: {request.deal_type}"},
+        )
+
+    # PG requires impressions
+    if deal_type_str == "PG" and not request.impressions:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "pg_requires_impressions", "message": "Programmatic Guaranteed deals require an impressions count."},
+        )
+
+    # Get product catalog
+    setup_flow = ProductSetupFlow()
+    await setup_flow.kickoff()
+
+    product = setup_flow.state.products.get(request.product_id)
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "product_not_found", "message": f"Product '{request.product_id}' not found in catalog."},
+        )
+
+    # Resolve buyer context from API key + body
+    buyer_ident = request.buyer_identity
+    context = _build_buyer_context(
+        buyer_tier=(
+            "advertiser" if (buyer_ident and buyer_ident.advertiser_id) else
+            "agency" if (buyer_ident and buyer_ident.agency_id) else
+            "seat" if (buyer_ident and buyer_ident.seat_id) else
+            "public"
+        ),
+        agency_id=buyer_ident.agency_id if buyer_ident else None,
+        advertiser_id=buyer_ident.advertiser_id if buyer_ident else None,
+        seat_id=buyer_ident.seat_id if buyer_ident else None,
+        api_key_record=api_key_record,
+    )
+
+    # Calculate price
+    config = TieredPricingConfig(seller_organization_id="default")
+    engine = PricingRulesEngine(config)
+    deal_type_enum = deal_type_map[deal_type_str]
+
+    decision = engine.calculate_price(
+        product_id=request.product_id,
+        base_price=product.base_cpm,
+        buyer_context=context,
+        deal_type=deal_type_enum,
+        volume=request.impressions or 0,
+        inventory_type=product.inventory_type,
+    )
+
+    final_cpm = decision.final_price
+
+    # Check max_cpm against floor
+    if request.max_cpm is not None and request.max_cpm < final_cpm:
+        raise HTTPException(
+            status_code=422,
+            detail=DealRejectionDetail(
+                error="below_floor_price",
+                message=f"Buyer max CPM ${request.max_cpm:.2f} is below seller minimum ${final_cpm:.2f}.",
+                seller_minimum_cpm=final_cpm,
+                buyer_max_cpm=request.max_cpm,
+                product_id=request.product_id,
+                deal_type=deal_type_str,
+            ).model_dump(),
+        )
+
+    # Auto-book: generate deal directly (skip separate quote step)
+    now = datetime.utcnow()
+    deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
+
+    flight_start = request.flight_start or now.strftime("%Y-%m-%d")
+    flight_end = request.flight_end or (now + timedelta(days=30)).strftime("%Y-%m-%d")
+
+    deal_data = {
+        "deal_id": deal_id,
+        "deal_type": deal_type_str,
+        "status": DealBookingStatus.CONFIRMED.value,
+        "product_id": request.product_id,
+        "actual_price_cpm": final_cpm,
+        "currency": "USD",
+        "impressions": request.impressions,
+        "flight_start": flight_start,
+        "flight_end": flight_end,
+        "buyer_tier": context.effective_tier.value,
+        "notes": request.notes,
+        "created_at": now.isoformat() + "Z",
+        "activation_instructions": {
+            "ttd": f"In The Trade Desk, create a new PMP deal with Deal ID: {deal_id}",
+            "dv360": f"In DV360, add deal {deal_id} under Inventory > My Inventory > Deals",
+            "amazon": f"In Amazon DSP, navigate to Supply > Deals and add Deal ID: {deal_id}",
+            "xandr": f"In Xandr, navigate to Deals and enter Deal ID: {deal_id}",
+        },
+    }
+
+    # Build schain for the deal response
+    from ...config import get_settings as _get_settings
+    from ...models.supply_chain import load_sellers_json, build_schain_from_sellers_json
+
+    _settings = _get_settings()
+    _sellers_json_path = getattr(_settings, "sellers_json_path", None)
+    _sellers_json = load_sellers_json(_sellers_json_path) if _sellers_json_path else None
+    schain_data = None
+    if _sellers_json:
+        _seller_id = getattr(_settings, "seller_organization_id", "default")
+        schain_obj = build_schain_from_sellers_json(_sellers_json, _seller_id)
+        schain_data = schain_obj.model_dump()
+        deal_data["schain"] = schain_data
+    else:
+        _seller_domain = getattr(_settings, "seller_domain", "demo-publisher.example.com")
+        _seller_org_name = getattr(_settings, "seller_organization_name", "Demo Publisher")
+        schain_data = {
+            "ver": "1.0",
+            "complete": 1,
+            "nodes": [{"asi": _seller_domain, "sid": "default", "hp": 1, "name": _seller_org_name, "domain": _seller_domain}],
+        }
+        deal_data["schain"] = schain_data
+
+    storage = await get_storage()
+    await storage.set_deal(deal_id, deal_data)
+
+    return DealFromTemplateResponse(
+        deal_id=deal_id,
+        status="confirmed",
+        deal_type=deal_type_str,
+        product_id=request.product_id,
+        actual_price_cpm=final_cpm,
+        impressions=request.impressions,
+        flight_start=flight_start,
+        flight_end=flight_end,
+        buyer_tier=context.effective_tier.value,
+        activation_instructions=deal_data["activation_instructions"],
+        schain=schain_data,
+        created_at=deal_data["created_at"],
+    )
+
+
+# =============================================================================
+# Supply Chain Transparency (DealJockey Phase 4)
 # =============================================================================
 
 
@@ -2663,19 +2906,59 @@ class SupplyChainResponse(BaseModel):
 
 @app.get("/api/v1/supply-chain", tags=["Supply Chain"], response_model=SupplyChainResponse)
 async def get_supply_chain():
-    """Return sellers.json-like self-description of this seller instance.
+    """Return sellers.json-based self-description of this seller instance.
 
-    Provides supply chain transparency for buyer agents (Deal Jockey)
-    to evaluate supply paths. Hardcoded for this seller instance —
-    real sellers.json parsing comes in a future phase (5E).
+    If SELLERS_JSON_PATH is configured, parses the real sellers.json file
+    per IAB spec. Otherwise returns a default single-node chain.
+    Also includes an OpenRTB-compatible schain object.
     """
     from ...config import get_settings
+    from ...models.supply_chain import load_sellers_json, build_schain_from_sellers_json
 
     settings = get_settings()
     seller_domain = getattr(settings, "seller_domain", "demo-publisher.example.com")
     seller_name = getattr(settings, "seller_name", "Demo Publisher")
     seller_id = getattr(settings, "seller_organization_id", "default")
+    sellers_json_path = getattr(settings, "sellers_json_path", None)
 
+    sellers_json = load_sellers_json(sellers_json_path)
+
+    if sellers_json:
+        # Build from real sellers.json
+        primary = next(
+            (s for s in sellers_json.sellers if s.seller_id == seller_id),
+            sellers_json.sellers[0] if sellers_json.sellers else None,
+        )
+
+        schain_obj = build_schain_from_sellers_json(sellers_json, seller_id)
+        schain_nodes = [
+            SupplyChainNodeModel(
+                asi=node.asi,
+                sid=node.sid,
+                name=node.name or "",
+                domain=node.domain or node.asi,
+                seller_type=(
+                    next((s.seller_type for s in sellers_json.sellers if s.seller_id == node.sid), "PUBLISHER")
+                ),
+                is_direct=(node == schain_obj.nodes[0]) if schain_obj.nodes else False,
+                comment=next((s.comment for s in sellers_json.sellers if s.seller_id == node.sid), None),
+            )
+            for node in schain_obj.nodes
+        ]
+
+        return SupplyChainResponse(
+            seller_id=primary.seller_id if primary else seller_id,
+            seller_name=primary.name if primary else seller_name,
+            seller_type=primary.seller_type if primary else "PUBLISHER",
+            domain=primary.domain if primary else seller_domain,
+            is_direct=primary.seller_type == "PUBLISHER" if primary else True,
+            supported_deal_types=["programmatic_guaranteed", "preferred_deal", "private_auction"],
+            contact_email=sellers_json.contact_email,
+            schain=schain_nodes,
+            version=sellers_json.version,
+        )
+
+    # Default: single-node chain (no sellers.json configured)
     return SupplyChainResponse(
         seller_id=seller_id,
         seller_name=seller_name,
@@ -2800,9 +3083,8 @@ async def bulk_deal_operations(
     and returns per-operation success/failure.
     """
     import uuid as uuid_mod
-    from datetime import timedelta
 
-    from ...models.quotes import DealBookingResponse, DealBookingStatus, QuoteStatus
+    from ...models.quotes import DealBookingStatus, QuoteStatus
     from ...storage.factory import get_storage
 
     storage = await get_storage()
@@ -2923,4 +3205,369 @@ async def bulk_deal_operations(
         results=results,
     )
 
+
+# =============================================================================
+# Inventory Sync Scheduler
+# =============================================================================
+
+
+# =============================================================================
+# Inventory Type Mapping / Override
+# =============================================================================
+
+
+class InventoryTypeOverride(BaseModel):
+    """Override inventory type classification for a product."""
+
+    product_id: str
+    inventory_type: str  # display, video, ctv, mobile_app, native, audio
+    reason: Optional[str] = None
+
+
+class InventoryTypeOverrideResponse(BaseModel):
+    """Response confirming the override."""
+
+    product_id: str
+    previous_type: Optional[str] = None
+    new_type: str
+    applied_at: str
+
+
+@app.post("/api/v1/products/{product_id}/inventory-type", tags=["Products"])
+async def override_inventory_type(
+    product_id: str,
+    request: InventoryTypeOverride,
+    api_key_record=Depends(_get_optional_api_key_record),
+):
+    """Override the auto-detected inventory type for a product.
+
+    Publishers can correct misclassified inventory types from ad server sync
+    or apply custom categorization. The override persists across future syncs.
+    """
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+
+    # Get current product data
+    product_data = await storage.get(f"product:{product_id}")
+    previous_type = None
+
+    if product_data:
+        previous_type = product_data.get("inventory_type")
+        product_data["inventory_type"] = request.inventory_type
+        product_data["inventory_type_override"] = True
+        product_data["inventory_type_override_reason"] = request.reason
+        await storage.set(f"product:{product_id}", product_data)
+    else:
+        # Create override record even if product not yet synced
+        override_data = {
+            "product_id": product_id,
+            "inventory_type": request.inventory_type,
+            "inventory_type_override": True,
+            "inventory_type_override_reason": request.reason,
+        }
+        await storage.set(f"product:{product_id}", override_data)
+
+    now = datetime.utcnow().isoformat() + "Z"
+
+    # Store override in a separate key for persistence across syncs
+    await storage.set(f"inventory_override:{product_id}", {
+        "product_id": product_id,
+        "inventory_type": request.inventory_type,
+        "reason": request.reason,
+        "applied_at": now,
+    })
+
+    return InventoryTypeOverrideResponse(
+        product_id=product_id,
+        previous_type=previous_type,
+        new_type=request.inventory_type,
+        applied_at=now,
+    )
+
+
+@app.get("/api/v1/products/{product_id}/inventory-type", tags=["Products"])
+async def get_inventory_type_override(product_id: str):
+    """Get the current inventory type override for a product, if any."""
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    override = await storage.get(f"inventory_override:{product_id}")
+
+    if not override:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "no_override", "message": f"No inventory type override for product '{product_id}'."},
+        )
+
+    return override
+
+
+@app.delete("/api/v1/products/{product_id}/inventory-type", tags=["Products"])
+async def delete_inventory_type_override(product_id: str):
+    """Remove an inventory type override, reverting to auto-detected type."""
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    override = await storage.get(f"inventory_override:{product_id}")
+
+    if not override:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "no_override", "message": f"No inventory type override for product '{product_id}'."},
+        )
+
+    await storage.delete(f"inventory_override:{product_id}")
+
+    # Remove override flag from product
+    product_data = await storage.get(f"product:{product_id}")
+    if product_data:
+        product_data.pop("inventory_type_override", None)
+        product_data.pop("inventory_type_override_reason", None)
+        await storage.set(f"product:{product_id}", product_data)
+
+    return {"status": "removed", "product_id": product_id}
+
+
+# =============================================================================
+# Rate Card Management
+# =============================================================================
+
+
+class RateCardEntry(BaseModel):
+    """Rate card entry mapping inventory type to base CPM."""
+
+    inventory_type: str  # display, video, ctv, mobile_app, native, audio
+    base_cpm: float
+    currency: str = "USD"
+    effective_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class RateCardResponse(BaseModel):
+    """Full rate card for the seller."""
+
+    entries: list[RateCardEntry]
+    updated_at: str
+
+
+@app.get("/api/v1/rate-card", tags=["Pricing"])
+async def get_rate_card():
+    """Get the current rate card (base CPMs by inventory type).
+
+    The rate card drives floor pricing during inventory sync and
+    deal creation. Can be updated via PUT to reflect ad server rate cards.
+    """
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    rate_card = await storage.get("rate_card:current")
+
+    if not rate_card:
+        # Return default rate card
+        return RateCardResponse(
+            entries=[
+                RateCardEntry(inventory_type="display", base_cpm=12.0),
+                RateCardEntry(inventory_type="video", base_cpm=25.0),
+                RateCardEntry(inventory_type="ctv", base_cpm=35.0),
+                RateCardEntry(inventory_type="mobile_app", base_cpm=18.0),
+                RateCardEntry(inventory_type="native", base_cpm=10.0),
+                RateCardEntry(inventory_type="audio", base_cpm=15.0),
+            ],
+            updated_at="default",
+        )
+
+    return rate_card
+
+
+@app.put("/api/v1/rate-card", tags=["Pricing"])
+async def update_rate_card(entries: list[RateCardEntry]):
+    """Update the rate card with current base CPMs from ad server.
+
+    Publishers should update this when their ad server rate cards change.
+    The pricing engine uses these values as base prices before applying
+    tier discounts and volume adjustments.
+    """
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    now = datetime.utcnow().isoformat() + "Z"
+
+    rate_card = {
+        "entries": [e.model_dump() for e in entries],
+        "updated_at": now,
+    }
+    await storage.set("rate_card:current", rate_card)
+
+    return RateCardResponse(entries=entries, updated_at=now)
+
+
+# =============================================================================
+# Inventory Sync Status & Trigger
+# =============================================================================
+
+
+@app.get("/api/v1/inventory-sync/status", tags=["Core"])
+async def get_inventory_sync_status():
+    """Get the current status of the periodic inventory sync scheduler."""
+    from ...services.inventory_sync_scheduler import get_sync_status
+    return get_sync_status()
+
+
+@app.post("/api/v1/inventory-sync/trigger", tags=["Core"])
+async def trigger_inventory_sync(
+    incremental: bool = False,
+):
+    """Manually trigger an inventory sync.
+
+    Args:
+        incremental: If true, only sync items changed since last sync
+            (based on stored sync watermark). Full sync if false or no
+            previous watermark exists.
+    """
+    from ...services.inventory_sync_scheduler import _run_sync
+    from ...config import get_settings
+    from ...storage.factory import get_storage
+
+    settings = get_settings()
+    storage = await get_storage()
+
+    since_timestamp = None
+    if incremental:
+        watermark = await storage.get("sync_watermark:inventory")
+        if watermark:
+            since_timestamp = watermark.get("last_sync_at")
+
+    result = await _run_sync(include_archived=settings.inventory_sync_include_archived)
+
+    # Store sync watermark for incremental support
+    now = datetime.utcnow().isoformat() + "Z"
+    await storage.set("sync_watermark:inventory", {
+        "last_sync_at": now,
+        "was_incremental": incremental,
+        "since_timestamp": since_timestamp,
+    })
+
+    result["incremental"] = incremental
+    result["since_timestamp"] = since_timestamp
+    return result
+
+
+# =============================================================================
+# Deal Export Formats for DSP Connectors (DealJockey Phase 4)
+# =============================================================================
+
+
+@app.get("/api/v1/deals/export", tags=["Deal Booking"])
+async def export_deals(
+    format: str = "generic",
+    status: Optional[str] = None,
+):
+    """Export deals in DSP-native format for platform connectors.
+
+    Args:
+        format: Export format — generic, ttd, dv360, amazon, xandr
+        status: Filter by deal status (confirmed, proposed, cancelled)
+
+    Returns deals formatted for the target DSP's import requirements.
+    Enables buyer Phase 4D platform connectors to pull deals natively.
+    """
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+
+    # Collect all deals (scan deal:* keys)
+    all_deals = []
+    # Storage doesn't have a list_deals method, so we track deal IDs
+    deal_index = await storage.get("deal_index") or {"deal_ids": []}
+
+    for deal_id in deal_index.get("deal_ids", []):
+        deal = await storage.get_deal(deal_id)
+        if deal:
+            if status and deal.get("status") != status:
+                continue
+            all_deals.append(deal)
+
+    if format == "ttd":
+        # The Trade Desk format
+        return {
+            "format": "ttd",
+            "deals": [
+                {
+                    "DealId": d.get("deal_id"),
+                    "DealType": "ProgrammaticGuaranteed" if d.get("deal_type") == "PG" else "PreferredDeal" if d.get("deal_type") == "PD" else "PrivateAuction",
+                    "BidFloor": d.get("actual_price_cpm") or d.get("pricing", {}).get("final_cpm", 0),
+                    "Currency": "USD",
+                    "Status": "Active" if d.get("status") == "confirmed" else "Inactive",
+                }
+                for d in all_deals
+            ],
+        }
+    elif format == "dv360":
+        # Display & Video 360 format
+        return {
+            "format": "dv360",
+            "deals": [
+                {
+                    "dealId": d.get("deal_id"),
+                    "displayName": f"Deal {d.get('deal_id')}",
+                    "dealType": d.get("deal_type", "PD"),
+                    "fixedCpm": {"currencyCode": "USD", "units": str(int(d.get("actual_price_cpm", 0) or 0)), "nanos": 0},
+                    "status": "ACCEPTED" if d.get("status") == "confirmed" else "PENDING",
+                }
+                for d in all_deals
+            ],
+        }
+    elif format == "amazon":
+        # Amazon DSP format
+        return {
+            "format": "amazon",
+            "deals": [
+                {
+                    "dealId": d.get("deal_id"),
+                    "dealName": f"Deal {d.get('deal_id')}",
+                    "auctionType": "FIXED_PRICE" if d.get("deal_type") in ("PG", "PD") else "SECOND_PRICE",
+                    "priceAmount": d.get("actual_price_cpm") or d.get("pricing", {}).get("final_cpm", 0),
+                    "priceCurrency": "USD",
+                }
+                for d in all_deals
+            ],
+        }
+    elif format == "xandr":
+        # Xandr format
+        return {
+            "format": "xandr",
+            "deals": [
+                {
+                    "id": d.get("deal_id"),
+                    "name": f"Deal {d.get('deal_id')}",
+                    "type": {"1": "PG", "2": "PD", "3": "PA"}.get(d.get("deal_type"), d.get("deal_type")),
+                    "floor_price": d.get("actual_price_cpm") or d.get("pricing", {}).get("final_cpm", 0),
+                    "currency": "USD",
+                    "active": d.get("status") == "confirmed",
+                }
+                for d in all_deals
+            ],
+        }
+    else:
+        # Generic format
+        return {
+            "format": "generic",
+            "deals": all_deals,
+            "count": len(all_deals),
+        }
+
+
+@app.get("/api/v1/inventory-sync/watermark", tags=["Core"])
+async def get_sync_watermark():
+    """Get the last sync watermark (used for incremental sync)."""
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    watermark = await storage.get("sync_watermark:inventory")
+
+    if not watermark:
+        return {"last_sync_at": None, "message": "No sync has been performed yet."}
+
+    return watermark
 

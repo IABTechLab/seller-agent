@@ -1,0 +1,31 @@
+{
+  "contact_email": "programmatic@example-publisher.com",
+  "contact_address": "https://example-publisher.com/sellers-json",
+  "version": "1.0",
+  "identifiers": [
+    {
+      "name": "TAG-ID",
+      "value": "example-pub-tag-123"
+    }
+  ],
+  "sellers": [
+    {
+      "seller_id": "pub-example-001",
+      "name": "Example Publisher",
+      "domain": "example-publisher.com",
+      "seller_type": "PUBLISHER",
+      "is_confidential": 0,
+      "is_passthrough": 0,
+      "comment": "Direct publisher — premium CTV and display inventory"
+    },
+    {
+      "seller_id": "ssp-partner-001",
+      "name": "Partner SSP",
+      "domain": "partner-ssp.com",
+      "seller_type": "INTERMEDIARY",
+      "is_confidential": 0,
+      "is_passthrough": 0,
+      "comment": "Authorized reseller for overflow inventory"
+    }
+  ]
+}
