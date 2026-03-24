@@ -11,7 +11,6 @@ The wizard tracks which steps are complete and guides the user through
 any remaining configuration. Steps are skippable with sensible defaults.
 """
 
-import json
 import logging
 from enum import Enum
 from typing import Any, Optional
@@ -148,7 +147,7 @@ BUSINESS_STEPS = [
         phase=WizardPhase.BUSINESS,
         order=7,
         title="Curator Configuration",
-        description="Confirm Agent Range (10% fee), register additional curators",
+        description="Agent Range is set up to curate deals. Add any other curation partners?",
     ),
     WizardStep(
         step_id="b8_review",

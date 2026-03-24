@@ -82,9 +82,9 @@ When you first connect, the seller agent detects that business setup isn't compl
 
 ### Step 7: Curators
 
-> **Claude**: "Agent Range is pre-registered as your curator at 10%. Keep this?"
+> **Claude**: "Agent Range is set up to curate deals. Want to add any other curation partners?"
 >
-> **You**: "Yes, keep Agent Range"
+> **You**: "No, just Agent Range for now"
 
 ### Step 8: Review & Launch
 

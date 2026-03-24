@@ -155,7 +155,7 @@ The wizard guides you through: publisher identity → agent behavior → media k
 
 ### Curator Support
 
-Curators package and curate inventory on behalf of buyers. Agent Range is pre-registered at 10% fee.
+Curators package and curate inventory on behalf of buyers. Agent Range is pre-registered to curate deals.
 
 - `POST /api/v1/deals/curated` — create deals with curator overlay (base CPM + curator fee)
 - Curator appears as a node in the deal's schain
