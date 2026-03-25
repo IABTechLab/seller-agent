@@ -7,16 +7,15 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pyproject.toml first for layer caching
-COPY pyproject.toml ./
+# Copy pyproject.toml and README.md first (required by pyproject.toml metadata)
+COPY pyproject.toml README.md ./
+
+# Copy source code (needed for editable install)
+COPY src/ ./src/
 
 # Install the package with production dependencies
 # Include postgres and redis for production use
 RUN pip install --no-cache-dir -e ".[postgres,redis,gam]"
-
-# Copy application source
-COPY src/ ./src/
-COPY README.md ./
 
 # Cloud Run injects PORT automatically; default to 8080 as fallback
 ENV PORT=8080
