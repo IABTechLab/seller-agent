@@ -117,7 +117,7 @@ substitutions:
   # To set expiry, add: _API_KEY_DEFAULT_EXPIRY_DAYS: "90" (90 days)
 
   # --- Cloud Run Scaling Configuration ---
-  _MIN_INSTANCES: "0"                               # Minimum instances (0 for staging, 1 for production)
+  _MIN_INSTANCES: "1"                               # Minimum instances (0 for staging, 1 for production)
   _MAX_INSTANCES: "10"                              # Maximum instances
   _MEMORY: "1Gi"                                    # Memory allocation (512Mi, 1Gi, 2Gi, 4Gi)
   _CPU: "1"                                         # CPU allocation (1, 2, 4)
@@ -191,7 +191,7 @@ steps:
       - "--cpu=${_CPU}"
       - "--timeout=${_TIMEOUT}"
       - "--port=8080"
-      - "--startup-cpu-boost"
+      - "--cpu-boost"
       - "--no-cpu-throttling"
       - "--env-vars-file=/workspace/.env.deploy"
 
