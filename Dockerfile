@@ -27,4 +27,5 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Start the FastAPI application with uvicorn
-CMD ["uvicorn", "ad_seller.interfaces.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Use shell form to read $PORT environment variable
+CMD uvicorn ad_seller.interfaces.api.main:app --host 0.0.0.0 --port $PORT
