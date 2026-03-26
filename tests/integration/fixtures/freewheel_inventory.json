@@ -1,0 +1,64 @@
+{
+  "products": [
+    {
+      "product_id": "fw-ctv-premium-001",
+      "name": "Premium CTV - Live Sports",
+      "description": "Live sports streaming inventory on connected TV devices",
+      "inventory_type": "ctv",
+      "base_cpm": 38.00,
+      "floor_cpm": 30.00,
+      "supported_deal_types": ["programmaticguaranteed", "preferreddeal"],
+      "supported_pricing_models": ["cpm"],
+      "minimum_impressions": 50000,
+      "content_targeting": {"cat": ["IAB17", "IAB17-12"]}
+    },
+    {
+      "product_id": "fw-ctv-entertainment-002",
+      "name": "CTV Entertainment - On Demand",
+      "description": "On-demand entertainment streaming inventory",
+      "inventory_type": "ctv",
+      "base_cpm": 32.00,
+      "floor_cpm": 25.00,
+      "supported_deal_types": ["programmaticguaranteed", "preferreddeal", "privateauction"],
+      "supported_pricing_models": ["cpm"],
+      "minimum_impressions": 25000,
+      "content_targeting": {"cat": ["IAB1"]}
+    },
+    {
+      "product_id": "fw-display-ros-003",
+      "name": "Display ROS - News Sites",
+      "description": "Run-of-site display ads on premium news properties",
+      "inventory_type": "display",
+      "base_cpm": 14.00,
+      "floor_cpm": 9.00,
+      "supported_deal_types": ["preferreddeal", "privateauction"],
+      "supported_pricing_models": ["cpm"],
+      "minimum_impressions": 10000,
+      "content_targeting": {"cat": ["IAB12"]}
+    },
+    {
+      "product_id": "fw-video-preroll-004",
+      "name": "Video Pre-Roll - Premium Publishers",
+      "description": "Pre-roll video ads across premium publisher network",
+      "inventory_type": "video",
+      "base_cpm": 28.00,
+      "floor_cpm": 20.00,
+      "supported_deal_types": ["programmaticguaranteed", "preferreddeal"],
+      "supported_pricing_models": ["cpm", "cpcv"],
+      "minimum_impressions": 15000,
+      "content_targeting": {"cat": ["IAB1", "IAB9"]}
+    },
+    {
+      "product_id": "fw-display-mobile-005",
+      "name": "Mobile Display - In-App",
+      "description": "Mobile in-app display inventory across top apps",
+      "inventory_type": "mobile_app",
+      "base_cpm": 18.00,
+      "floor_cpm": 12.00,
+      "supported_deal_types": ["preferreddeal", "privateauction"],
+      "supported_pricing_models": ["cpm"],
+      "minimum_impressions": 20000,
+      "content_targeting": {"cat": ["IAB9"]}
+    }
+  ]
+}

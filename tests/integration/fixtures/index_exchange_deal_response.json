@@ -1,0 +1,15 @@
+{
+  "deal_id": "IX-DEAL-20260326-001",
+  "ssp_name": "index_exchange",
+  "status": "active",
+  "deal_type": "PREFERRED",
+  "name": "Test Preferred Deal via Index Exchange",
+  "cpm": 22.50,
+  "currency": "USD",
+  "buyer_seats": ["seat-dv360-001"],
+  "start_date": "2026-03-26",
+  "end_date": "2026-05-26",
+  "created_at": "2026-03-26T10:00:00Z",
+  "publisher_id": "pub-12345",
+  "inventory_source": "video"
+}
