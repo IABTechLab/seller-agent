@@ -16,6 +16,10 @@
 
 ### Task 0A: Rename Deal Jockey → Deal Library
 
+> **Context:** In the buyer agent, "Deal Library" is the v2 storage/schema layer (the deal data store), while "DealJockey" remains the agent name (Level 2 agent, portfolio manager role). On the seller side, "Deal Jockey" was used for the Phase 4 API layer. We are renaming the seller's "Deal Jockey" to "Deal Library" to align with the buyer's terminology — both sides use "Deal Library" for the deal data/API layer.
+>
+> **Do NOT rename** the buyer agent's "DealJockey" agent name — that stays as-is. This task only affects the seller agent codebase.
+
 **Files:**
 - All files containing "deal jockey", "DealJockey", "Deal Jockey", "deal-jockey"
 - `.beads/PROGRESS.md`
@@ -117,6 +121,80 @@ Expected: All existing tests still pass
 ```bash
 git add -A
 git commit -m "style: lint and format entire codebase with ruff"
+```
+
+---
+
+### Task 0C: Buyer Agent Compatibility Check
+
+> **Context:** The buyer agent at `/Users/bjt/Documents/crewAITechLabAgent/ad_buyer_system` was built by Aidan in parallel. The seller and buyer agents must be compatible: shared models, API contracts, deal formats, MCP tool expectations, and authentication must align.
+
+**Files:**
+- Reference: `/Users/bjt/Documents/crewAITechLabAgent/ad_buyer_system/src/`
+- Reference: `/Users/bjt/Documents/crewAITechLabAgent/ad_buyer_system/docs/`
+- Create: `docs/validation/buyer-compatibility-report.md`
+
+- [ ] **Step 1: Compare deal models**
+
+Read the buyer agent's deal models (`ad_buyer_system/src/ad_buyer/models/`) and the seller agent's deal models (`src/ad_seller/models/core.py`, `models/quotes.py`). Verify:
+- Deal ID format matches (both sides generate/consume the same format)
+- Deal type enums align (PG, PD, PA naming)
+- Deal status values are compatible
+- CPM/price field names and units match
+
+- [ ] **Step 2: Compare API contracts**
+
+Check the buyer agent's seller-facing API calls against our REST endpoints:
+- Does the buyer's `DealRequestFlow` call our `/api/v1/deals/from-template` endpoint correctly?
+- Does the buyer's deal push consumption match our IAB Deals API v1.0 push format?
+- Does the buyer's supply chain query match our `/api/v1/supply-chain` response format?
+- Do export formats (`/api/v1/deals/export`) match what the buyer expects for DSP connectors?
+
+- [ ] **Step 3: Compare MCP tool expectations**
+
+If the buyer agent connects to the seller via MCP:
+- Does it expect tools that exist? (e.g., `request_quote`, `list_packages`, `get_pricing`)
+- Do the tool parameter names and return formats match?
+- Does the buyer's auth (API key, bearer token) work with our auth middleware?
+
+- [ ] **Step 4: Compare authentication flow**
+
+Verify the buyer agent's API key / bearer token format matches what our `auth/dependencies.py` expects:
+- Key prefix format (`ask_live_` on seller side)
+- Header format (`Authorization: Bearer` vs `X-Api-Key`)
+- Access tier mapping (buyer sends seat_id → seller resolves to tier)
+
+- [ ] **Step 5: Compare deal lifecycle events**
+
+Check if the buyer agent emits or expects events that the seller's event bus should handle:
+- `proposal.received` / `proposal.accepted` / `proposal.rejected` event payloads
+- Negotiation round event formats
+- Deal booking confirmation format
+
+- [ ] **Step 6: Check for naming inconsistencies**
+
+After Task 0A renamed "Deal Jockey" → "Deal Library" on the seller side, verify no cross-references break:
+- Buyer docs referencing seller's "Deal Jockey" API
+- Buyer code importing or calling seller endpoints by old names
+- Shared documentation (root-level `.md` files in the parent directory)
+
+- [ ] **Step 7: Document findings**
+
+Write `docs/validation/buyer-compatibility-report.md` with:
+- Aligned items (confirmed compatible)
+- Mismatches (need fixes, with specific file paths and line numbers)
+- Missing integration points (things the buyer expects but seller doesn't have, or vice versa)
+
+- [ ] **Step 8: Fix any critical mismatches found**
+
+If deal models, API contracts, or auth flows are incompatible, fix them. Prioritize anything that would prevent a buyer agent from completing a deal request against the seller.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add docs/validation/buyer-compatibility-report.md
+git add -A  # if any fixes were made
+git commit -m "audit: buyer agent compatibility check and fixes"
 ```
 
 ---
@@ -1306,7 +1384,7 @@ Expected: Clean push, all changes on origin
 
 | Phase | Tasks | Focus |
 |-------|-------|-------|
-| 0: Rename & Lint | 0A-0B | Rename Deal Jockey → Deal Library, lint entire codebase |
+| 0: Rename, Lint & Compat | 0A-0C | Rename Deal Jockey → Deal Library, lint codebase, buyer agent compatibility check |
 | A: Git Hygiene | 1-2 | Clean state, fix doc numbers |
 | B: Unit Tests | 3-9 | Pricing, negotiation, media kit, MCP, SSP, events, orders |
 | C: Integration Tests | 10-12 | E2E deal flow, MCP integration, setup wizard |
