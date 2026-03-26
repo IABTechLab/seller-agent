@@ -1187,6 +1187,82 @@ async def get_inbound_queue(limit: int = 50) -> str:
 
 
 # =============================================================================
+# Buyer Activity
+# =============================================================================
+
+
+@mcp.tool()
+async def get_buyer_activity(days: int = 7, limit: int = 50) -> str:
+    """Show buyer agent engagement: who accessed inventory, initiated deals,
+    or negotiated recently. Grouped by buyer identity."""
+    from datetime import timedelta
+
+    warnings: list[str] = []
+    buyers_map: dict[str, dict] = {}
+
+    try:
+        bus = await get_event_bus()
+        cutoff = datetime.utcnow() - timedelta(days=days)
+
+        # Fetch events with session_id (buyer-facing interactions)
+        all_events = await bus.list_events(limit=500)
+
+        for ev in all_events:
+            if not ev.session_id:
+                continue
+            # Filter by time window
+            if ev.timestamp and ev.timestamp < cutoff:
+                continue
+
+            agent_id = ev.metadata.get("agent_id", ev.session_id)
+            agent_url = ev.metadata.get("agent_url", "")
+            buyer_name = ev.payload.get("buyer", agent_id)
+
+            if agent_id not in buyers_map:
+                buyers_map[agent_id] = {
+                    "agent_id": agent_id,
+                    "agent_url": agent_url,
+                    "buyer_name": buyer_name,
+                    "trust_level": ev.metadata.get("trust_level", "unknown"),
+                    "last_seen": ev.timestamp.isoformat() if ev.timestamp else "",
+                    "activity_summary": [],
+                    "deals_initiated": 0,
+                }
+
+            entry = buyers_map[agent_id]
+            entry["activity_summary"].append({
+                "event_type": ev.event_type.value,
+                "timestamp": ev.timestamp.isoformat() if ev.timestamp else "",
+                "proposal_id": ev.proposal_id or None,
+                "deal_id": ev.deal_id or None,
+            })
+
+            # Update last_seen
+            if ev.timestamp:
+                ts_iso = ev.timestamp.isoformat()
+                if ts_iso > entry["last_seen"]:
+                    entry["last_seen"] = ts_iso
+
+            # Count deal initiations
+            if ev.event_type.value in ("proposal.received", "deal.created"):
+                entry["deals_initiated"] += 1
+
+    except Exception as e:
+        warnings.append(f"Event bus unavailable: {e}")
+
+    buyers_list = sorted(
+        buyers_map.values(),
+        key=lambda b: b["last_seen"],
+        reverse=True,
+    )[:limit]
+
+    result: dict = {"buyers": buyers_list, "count": len(buyers_list)}
+    if warnings:
+        result["warnings"] = warnings
+    return json.dumps(result, indent=2, default=str)
+
+
+# =============================================================================
 # .env file helper
 # =============================================================================
 

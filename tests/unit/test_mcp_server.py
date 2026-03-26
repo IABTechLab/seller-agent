@@ -293,3 +293,88 @@ class TestGetInboundQueue:
 
         assert "warnings" in result
         assert len(result["warnings"]) > 0
+
+
+# =============================================================================
+# Task 15: get_buyer_activity tests
+# =============================================================================
+
+
+class TestGetBuyerActivity:
+    """Tests for get_buyer_activity composite tool."""
+
+    @pytest.mark.asyncio
+    async def test_returns_buyers_grouped_by_identity(self):
+        from ad_seller.interfaces.mcp_server import get_buyer_activity
+        from ad_seller.events.models import Event, EventType
+
+        # Two events from the same buyer session
+        ev1 = Event(
+            event_type=EventType.PROPOSAL_RECEIVED,
+            session_id="sess-buyer-a",
+            proposal_id="prop-100",
+            payload={"buyer": "BuyerAgentA"},
+            metadata={"agent_id": "agent-a", "agent_url": "https://buyer-a.example.com"},
+        )
+        ev2 = Event(
+            event_type=EventType.NEGOTIATION_STARTED,
+            session_id="sess-buyer-a",
+            payload={"buyer": "BuyerAgentA"},
+            metadata={"agent_id": "agent-a", "agent_url": "https://buyer-a.example.com"},
+        )
+        # One event from a different buyer
+        ev3 = Event(
+            event_type=EventType.PROPOSAL_RECEIVED,
+            session_id="sess-buyer-b",
+            proposal_id="prop-200",
+            payload={"buyer": "BuyerAgentB"},
+            metadata={"agent_id": "agent-b", "agent_url": "https://buyer-b.example.com"},
+        )
+
+        mock_bus = AsyncMock()
+        mock_bus.list_events = AsyncMock(return_value=[ev1, ev2, ev3])
+
+        with patch(
+            "ad_seller.interfaces.mcp_server.get_event_bus",
+            new_callable=AsyncMock, return_value=mock_bus,
+        ):
+            result = json.loads(await get_buyer_activity(days=7))
+
+        assert "buyers" in result
+        assert len(result["buyers"]) == 2
+        # Check that activity counts are correct
+        buyer_a = next((b for b in result["buyers"] if b["agent_id"] == "agent-a"), None)
+        assert buyer_a is not None
+        assert len(buyer_a["activity_summary"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_respects_days_parameter(self):
+        from ad_seller.interfaces.mcp_server import get_buyer_activity
+
+        mock_bus = AsyncMock()
+        mock_bus.list_events = AsyncMock(return_value=[])
+
+        with patch(
+            "ad_seller.interfaces.mcp_server.get_event_bus",
+            new_callable=AsyncMock, return_value=mock_bus,
+        ):
+            result = json.loads(await get_buyer_activity(days=3))
+
+        assert "buyers" in result
+        assert result["buyers"] == []
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_gracefully(self):
+        from ad_seller.interfaces.mcp_server import get_buyer_activity
+
+        mock_bus = AsyncMock()
+        mock_bus.list_events = AsyncMock(return_value=[])
+
+        with patch(
+            "ad_seller.interfaces.mcp_server.get_event_bus",
+            new_callable=AsyncMock, return_value=mock_bus,
+        ):
+            result = json.loads(await get_buyer_activity())
+
+        assert result["buyers"] == []
+        assert result["count"] == 0
