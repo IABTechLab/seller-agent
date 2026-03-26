@@ -40,6 +40,22 @@ ChatGPT natively supports MCP servers via Developer Mode.
 
 ChatGPT will call your seller agent's MCP tools and show the results inline.
 
+### Getting Started After Setup
+
+Unlike Claude Desktop, ChatGPT does not display slash commands. Instead, use natural language to trigger the same actions:
+
+| Instead of... | Say... |
+|---|---|
+| `/setup` | "Help me set up my seller agent" |
+| `/status` | "Show me my seller agent status" |
+| `/inventory` | "What inventory do I have?" |
+| `/deals` | "Give me a deal status report" |
+| `/queue` | "Show me what's in my inbound queue" |
+| `/new-deal` | "Help me create a new deal" |
+| `/configure` | "Show me my automation rules" |
+| `/buyers` | "Who's been looking at my inventory?" |
+| `/help` | "What can you do?" |
+
 ---
 
 ## OpenAI Codex
