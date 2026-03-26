@@ -12,9 +12,9 @@ Covers:
 
 import json
 import types
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 
 def _make_settings(**overrides):
@@ -206,11 +206,15 @@ class TestGetInboundQueue:
 
     @pytest.mark.asyncio
     async def test_returns_pending_approvals_and_proposals(self):
-        from ad_seller.interfaces.mcp_server import get_inbound_queue
-        from ad_seller.events.models import (
-            ApprovalRequest, ApprovalStatus, Event, EventType,
-        )
         from datetime import datetime, timedelta
+
+        from ad_seller.events.models import (
+            ApprovalRequest,
+            ApprovalStatus,
+            Event,
+            EventType,
+        )
+        from ad_seller.interfaces.mcp_server import get_inbound_queue
 
         # Create mock approval
         future = datetime.utcnow() + timedelta(hours=12)
@@ -305,8 +309,8 @@ class TestGetBuyerActivity:
 
     @pytest.mark.asyncio
     async def test_returns_buyers_grouped_by_identity(self):
-        from ad_seller.interfaces.mcp_server import get_buyer_activity
         from ad_seller.events.models import Event, EventType
+        from ad_seller.interfaces.mcp_server import get_buyer_activity
 
         # Two events from the same buyer session
         ev1 = Event(

@@ -10,8 +10,9 @@ Covers:
 - Empty media kit returns graceful response
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from ad_seller.engines.media_kit_service import MediaKitService
 from ad_seller.engines.pricing_rules_engine import PricingRulesEngine

@@ -14,8 +14,6 @@ All .env writes are mocked via _update_env to avoid side effects.
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from .conftest import InMemoryStorage, make_settings
 
 
@@ -101,7 +99,7 @@ class TestSetupWizardFlow:
             )
             assert result1["status"] == "created"
             assert result1["name"] == "Premium CTV Sports"
-            pkg_id_1 = result1["package_id"]
+            result1["package_id"]
 
             # Create display package
             result2 = json.loads(
@@ -114,7 +112,7 @@ class TestSetupWizardFlow:
                 )
             )
             assert result2["status"] == "created"
-            pkg_id_2 = result2["package_id"]
+            result2["package_id"]
 
         # Verify packages are in storage
         packages = await storage.list_packages()

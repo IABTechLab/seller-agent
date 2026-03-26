@@ -11,10 +11,10 @@ Covers:
 """
 
 import types
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from ad_seller.clients.ssp_base import (
     SSPClient,

@@ -11,18 +11,17 @@ Covers:
 - Package-aware counter (suggest alternative package)
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from ad_seller.engines.negotiation_engine import NegotiationEngine
 from ad_seller.engines.pricing_rules_engine import PricingRulesEngine
 from ad_seller.engines.yield_optimizer import YieldOptimizer
-from ad_seller.models.buyer_identity import AccessTier, BuyerContext, BuyerIdentity
+from ad_seller.models.buyer_identity import BuyerContext, BuyerIdentity
 from ad_seller.models.negotiation import (
     NegotiationAction,
     NegotiationStrategy,
-    STRATEGY_LIMITS,
-    TIER_STRATEGY_MAP,
 )
 from ad_seller.models.pricing_tiers import TieredPricingConfig
 

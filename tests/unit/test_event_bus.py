@@ -12,8 +12,9 @@ Covers:
 - Approve/reject updates status correctly
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from ad_seller.events.bus import InMemoryEventBus
 from ad_seller.events.models import (
@@ -21,7 +22,6 @@ from ad_seller.events.models import (
     Event,
     EventType,
 )
-
 
 # =========================================================================
 # InMemoryEventBus

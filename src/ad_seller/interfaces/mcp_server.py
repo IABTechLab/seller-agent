@@ -1014,7 +1014,7 @@ async def list_agents() -> str:
 # Prompts (Slash Commands)
 # =============================================================================
 
-from mcp.server.fastmcp.prompts.base import Message
+from mcp.server.fastmcp.prompts.base import Message  # noqa: E402
 
 
 @mcp.prompt(name="setup", description="First-time guided setup wizard")
@@ -1112,8 +1112,8 @@ async def help_prompt() -> list[Message]:
 # Inbound Queue
 # =============================================================================
 
-from ..events.approval import ApprovalGate
-from ..events.bus import get_event_bus
+from ..events.approval import ApprovalGate  # noqa: E402
+from ..events.bus import get_event_bus  # noqa: E402
 
 
 @mcp.tool()

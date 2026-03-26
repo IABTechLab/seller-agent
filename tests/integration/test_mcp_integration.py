@@ -8,13 +8,9 @@ Tests MCP tools end-to-end with mocked backends:
 """
 
 import json
-import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from .conftest import InMemoryStorage, make_settings
-
+from .conftest import make_settings
 
 # ============================================================================
 # get_setup_status
@@ -106,7 +102,6 @@ class TestListProductsIntegration:
     """Test list_products via mocked ProductSetupFlow."""
 
     async def test_returns_products_from_flow(self, freewheel_products):
-        from ad_seller.interfaces.mcp_server import list_products
         from ad_seller.models.core import DealType, PricingModel
         from ad_seller.models.flow_state import ProductDefinition
 
@@ -140,12 +135,9 @@ class TestListProductsIntegration:
             {"ad_seller.flows": MagicMock(ProductSetupFlow=mock_flow_cls)},
         ):
             # Re-import to pick up the mock
-            import importlib
-            import ad_seller.interfaces.mcp_server as mcp_mod
 
             # Directly call with our mocked flow
             # We need to patch at the point of import inside list_products
-            original_list_products = mcp_mod.list_products
 
             async def patched_list_products(limit=50):
                 flow = mock_flow_instance

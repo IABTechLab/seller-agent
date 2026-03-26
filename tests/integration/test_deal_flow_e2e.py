@@ -10,16 +10,11 @@ Tests the key flow components with mocked external dependencies:
 import importlib
 import json
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
-
-from ad_seller.models.buyer_identity import AccessTier, BuyerContext, BuyerIdentity
+from ad_seller.models.buyer_identity import BuyerContext, BuyerIdentity
 from ad_seller.models.core import DealType, PricingModel
 from ad_seller.models.flow_state import (
-    DealOutput,
-    ExecutionStatus,
-    PricingDecision,
     ProductDefinition,
 )
 
@@ -39,6 +34,7 @@ def _get_deal_request_flow_class():
     parent_name = "ad_seller.flows"
     if parent_name not in sys.modules:
         import types
+
         import ad_seller  # noqa: F401
 
         stub = types.ModuleType(parent_name)
