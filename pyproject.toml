@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "crewai>=0.95.0",
+    "crewai>=0.86.0",
     "crewai-tools>=0.17.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
