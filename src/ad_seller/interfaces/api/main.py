@@ -392,7 +392,7 @@ async def list_products():
     from ...flows import ProductSetupFlow
 
     flow = ProductSetupFlow()
-    await flow.kickoff()
+    await flow.kickoff_async()
 
     products = []
     for product in flow.state.products.values():
@@ -417,7 +417,7 @@ async def get_product(product_id: str):
     from ...flows import ProductSetupFlow
 
     flow = ProductSetupFlow()
-    await flow.kickoff()
+    await flow.kickoff_async()
 
     product = flow.state.products.get(product_id)
     if not product:
@@ -446,7 +446,7 @@ async def get_pricing(
 
     # Get products
     flow = ProductSetupFlow()
-    await flow.kickoff()
+    await flow.kickoff_async()
 
     product = flow.state.products.get(request.product_id)
     if not product:
@@ -498,7 +498,7 @@ async def submit_proposal(
 
     # Get products
     setup_flow = ProductSetupFlow()
-    await setup_flow.kickoff()
+    await setup_flow.kickoff_async()
 
     # Enforce agent registry
     _, max_tier = await _resolve_and_enforce_agent(request.agent_url)
@@ -613,7 +613,7 @@ async def discovery_query(
 
     # Get products
     setup_flow = ProductSetupFlow()
-    await setup_flow.kickoff()
+    await setup_flow.kickoff_async()
 
     # Enforce agent registry
     _, max_tier = await _resolve_and_enforce_agent(request.agent_url)
@@ -629,7 +629,7 @@ async def discovery_query(
 
     # Process discovery
     flow = DiscoveryInquiryFlow()
-    response = flow.query(
+    response = await flow.query_async(
         query=request.query,
         buyer_context=context,
         products=setup_flow.state.products,
@@ -1415,7 +1415,7 @@ async def sync_packages():
     from ...flows import ProductSetupFlow
 
     flow = ProductSetupFlow()
-    await flow.kickoff()
+    await flow.kickoff_async()
 
     await emit_event(
         event_type=EventType.PACKAGE_SYNCED,
@@ -1578,7 +1578,7 @@ async def agent_card():
     inventory_types = set()
     try:
         flow = ProductSetupFlow()
-        await flow.kickoff()
+        await flow.kickoff_async()
         for product in flow.state.products.values():
             inventory_types.add(product.inventory_type)
     except Exception:
@@ -1828,7 +1828,7 @@ async def create_quote(
 
     # Get product catalog
     setup_flow = ProductSetupFlow()
-    await setup_flow.kickoff()
+    await setup_flow.kickoff_async()
 
     product = setup_flow.state.products.get(request.product_id)
     if not product:
@@ -2830,7 +2830,7 @@ async def create_deal_from_template(
 
     # Get product catalog
     setup_flow = ProductSetupFlow()
-    await setup_flow.kickoff()
+    await setup_flow.kickoff_async()
 
     product = setup_flow.state.products.get(request.product_id)
     if not product:
@@ -4158,7 +4158,7 @@ async def create_curated_deal(request: CuratedDealRequest):
     base_cpm = 12.0  # Default
     if request.product_id:
         setup_flow = ProductSetupFlow()
-        await setup_flow.kickoff()
+        await setup_flow.kickoff_async()
         product = setup_flow.state.products.get(request.product_id)
         if product:
             base_cpm = product.base_cpm

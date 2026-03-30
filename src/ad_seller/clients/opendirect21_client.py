@@ -38,6 +38,8 @@ class OpenDirect21Client:
 
         self._http_client: Optional[httpx.AsyncClient] = None
         self._session: Optional[Any] = None
+        # streamablehttp_client is an async context manager; must __aexit__ to tear down anyio TaskGroup
+        self._mcp_transport_cm: Optional[Any] = None
         self._tools: dict[str, Any] = {}
 
     async def __aenter__(self) -> "OpenDirect21Client":
@@ -66,13 +68,14 @@ class OpenDirect21Client:
             timeout=30.0,
         )
 
-        # Try MCP connection
+        # Try MCP connection (must keep and exit transport CM — it owns an anyio TaskGroup)
         try:
             from mcp import ClientSession
             from mcp.client.streamable_http import streamablehttp_client
 
-            transport = await streamablehttp_client(self.mcp_url).__aenter__()
-            read_stream, write_stream, _ = transport
+            transport_cm = streamablehttp_client(self.mcp_url)
+            read_stream, write_stream, _ = await transport_cm.__aenter__()
+            self._mcp_transport_cm = transport_cm
             self._session = ClientSession(read_stream, write_stream)
             await self._session.__aenter__()
             await self._session.initialize()
@@ -81,14 +84,28 @@ class OpenDirect21Client:
             tools_result = await self._session.list_tools()
             self._tools = {tool.name: tool for tool in tools_result.tools}
         except Exception:
-            # MCP not available, fall back to REST
+            await self._teardown_mcp()
             self._session = None
+            self._tools = {}
+
+    async def _teardown_mcp(self) -> None:
+        """Close MCP session and streamable HTTP transport in order."""
+        if self._session:
+            try:
+                await self._session.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._session = None
+        if self._mcp_transport_cm:
+            try:
+                await self._mcp_transport_cm.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self._mcp_transport_cm = None
 
     async def disconnect(self) -> None:
         """Disconnect from the server."""
-        if self._session:
-            await self._session.__aexit__(None, None, None)
-            self._session = None
+        await self._teardown_mcp()
 
         if self._http_client:
             await self._http_client.aclose()

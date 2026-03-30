@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from crewai.flow.flow import Flow, listen, start
+from crewai.flow.flow import Flow, listen, or_, start
 
 from ..config import get_settings
 from ..models.buyer_identity import AccessTier, BuyerContext
@@ -249,12 +249,12 @@ class DiscoveryInquiryFlow(Flow[DiscoveryState]):
 
         self.state.response_data["targeting"] = targeting_info
 
-    @listen(
+    @listen(or_(
         prepare_catalog_response,
         prepare_pricing_response,
         prepare_availability_response,
         prepare_targeting_response,
-    )
+    ))
     async def finalize_response(self) -> None:
         """Finalize the discovery response."""
         self.state.status = ExecutionStatus.COMPLETED
@@ -266,7 +266,7 @@ class DiscoveryInquiryFlow(Flow[DiscoveryState]):
         buyer_context: Optional[BuyerContext] = None,
         products: Optional[dict] = None,
     ) -> dict[str, Any]:
-        """Execute a discovery query.
+        """Execute a discovery query (synchronous - for CLI use).
 
         Args:
             query: The discovery query
@@ -281,7 +281,33 @@ class DiscoveryInquiryFlow(Flow[DiscoveryState]):
         if products:
             self.state.products = products
 
-        # Run the flow (synchronously for simplicity)
+        # Run the flow synchronously
         self.kickoff()
+
+        return self.state.response_data
+
+    async def query_async(
+        self,
+        query: str,
+        buyer_context: Optional[BuyerContext] = None,
+        products: Optional[dict] = None,
+    ) -> dict[str, Any]:
+        """Execute a discovery query (async - for API use).
+
+        Args:
+            query: The discovery query
+            buyer_context: Optional buyer identity context
+            products: Product catalog to query against
+
+        Returns:
+            Discovery response data
+        """
+        self.state.query = query
+        self.state.buyer_context = buyer_context
+        if products:
+            self.state.products = products
+
+        # Run the flow asynchronously
+        await self.kickoff_async()
 
         return self.state.response_data

@@ -46,7 +46,7 @@ def init(
     console.print(Panel("Initializing Ad Seller System...", title="Setup"))
 
     flow = ProductSetupFlow()
-    asyncio.run(flow.kickoff())
+    flow.kickoff()
 
     console.print(f"[green]✓[/green] Organization '{organization_name}' initialized")
     console.print(f"[green]✓[/green] Created {len(flow.state.products)} default products")
@@ -75,7 +75,7 @@ def catalog():
     from ...flows import ProductSetupFlow
 
     flow = ProductSetupFlow()
-    asyncio.run(flow.kickoff())
+    flow.kickoff()
 
     table = Table(title="Product Catalog")
     table.add_column("ID", style="cyan")
@@ -115,7 +115,7 @@ def price(
 
     # Get products
     flow = ProductSetupFlow()
-    asyncio.run(flow.kickoff())
+    flow.kickoff()
 
     product = flow.state.products.get(product_id)
     if not product:

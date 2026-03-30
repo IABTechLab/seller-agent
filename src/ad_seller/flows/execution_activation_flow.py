@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from crewai.flow.flow import Flow, listen, start
+from crewai.flow.flow import Flow, listen, or_, start
 
 from ..clients import UnifiedClient, get_ad_server_client
 from ..events.helpers import emit_event
@@ -233,7 +233,7 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
             self.state.errors.append(f"IO sync failed: {e}")
             self.state.status = ExecutionStatus.FAILED
 
-    @listen(sync_deal_id_to_ad_server, sync_io_order_to_ad_server)
+    @listen(or_(sync_deal_id_to_ad_server, sync_io_order_to_ad_server))
     async def distribute_to_ssps(self) -> None:
         """Distribute deal to configured SSPs after ad server sync.
 

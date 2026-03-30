@@ -195,15 +195,15 @@ class SellerFlowState(BaseModel):
     """Complete state for seller workflow execution."""
 
     # Workflow identity
-    flow_id: str
-    flow_type: str  # product_setup, proposal_handling, deal_generation, execution
+    flow_id: str = ""
+    flow_type: str = ""  # product_setup, proposal_handling, deal_generation, execution
     status: ExecutionStatus = ExecutionStatus.INITIALIZED
     started_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
 
     # Seller identity
-    seller_organization_id: str
-    seller_name: str
+    seller_organization_id: str = ""
+    seller_name: str = ""
 
     # Product catalog state
     products: dict[str, ProductDefinition] = Field(default_factory=dict)

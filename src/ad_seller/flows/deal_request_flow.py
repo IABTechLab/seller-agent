@@ -311,7 +311,7 @@ Ready to create a deal? Just let me know and I'll generate a Deal ID for you.
         buyer_context: Optional[BuyerContext] = None,
         seller_organization_id: Optional[str] = None,
     ) -> dict[str, Any]:
-        """Process a request from a buyer.
+        """Process a request from a buyer (synchronous - for CLI use).
 
         Args:
             request_text: Natural language request
@@ -327,8 +327,41 @@ Ready to create a deal? Just let me know and I'll generate a Deal ID for you.
             seller_organization_id or self._settings.seller_organization_id or ""
         )
 
-        # Run the flow
+        # Run the flow synchronously
         self.kickoff()
+
+        return {
+            "request_type": self.state.request_type,
+            "response": self.state.response_text,
+            "deal": self.state.deal_output.model_dump() if self.state.deal_output else None,
+            "status": self.state.status.value,
+            "errors": self.state.errors,
+        }
+
+    async def process_request_async(
+        self,
+        request_text: str,
+        buyer_context: Optional[BuyerContext] = None,
+        seller_organization_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Process a request from a buyer (async - for API use).
+
+        Args:
+            request_text: Natural language request
+            buyer_context: Buyer identity context
+            seller_organization_id: Seller organization ID
+
+        Returns:
+            Response with deal info or inquiry response
+        """
+        self.state.request_text = request_text
+        self.state.buyer_context = buyer_context
+        self.state.seller_organization_id = (
+            seller_organization_id or self._settings.seller_organization_id or ""
+        )
+
+        # Run the flow asynchronously
+        await self.kickoff_async()
 
         return {
             "request_type": self.state.request_type,
