@@ -18,6 +18,8 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .pricing_type import PricingType
+
 # =============================================================================
 # Enums
 # =============================================================================
@@ -337,6 +339,7 @@ class Pricing(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+    pricing_type: PricingType = PricingType.FIXED
     pricing_model: Optional[PricingModel] = Field(default=None, alias="pricingmodel")
     price: Optional[float] = None
     currency: Optional[str] = None

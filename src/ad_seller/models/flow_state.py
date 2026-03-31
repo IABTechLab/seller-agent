@@ -14,6 +14,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 from .core import DealType, PricingModel
+from .pricing_type import PricingType
 
 
 class ExecutionStatus(str, Enum):
@@ -44,8 +45,9 @@ class ProductDefinition(BaseModel):
     inventory_segment_ids: list[str] = Field(default_factory=list)
     supported_deal_types: list[DealType] = Field(default_factory=list)
     supported_pricing_models: list[PricingModel] = Field(default_factory=list)
-    base_cpm: float
-    floor_cpm: float
+    pricing_type: PricingType = PricingType.FIXED
+    base_cpm: Optional[float] = None
+    floor_cpm: Optional[float] = None
     audience_targeting: Optional[dict[str, Any]] = None
     content_targeting: Optional[dict[str, Any]] = None
     ad_product_targeting: Optional[dict[str, Any]] = None
