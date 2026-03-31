@@ -115,6 +115,16 @@ class ProposalEvaluation(BaseModel):
         description="UCP embedding similarity score (0-1)",
     )
 
+    # Quote-based pricing verification (Layer 4 — CPM hallucination defense)
+    pricing_verified: bool = Field(
+        default=False,
+        description="Whether the proposed CPM matches a quote the seller issued",
+    )
+    pricing_verification_reason: str = Field(
+        default="",
+        description="Explanation of pricing verification result",
+    )
+
     # Overall recommendation
     recommendation: str  # accept, counter, reject
     counter_terms: Optional[dict[str, Any]] = None
