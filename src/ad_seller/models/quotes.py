@@ -15,6 +15,8 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
+from .pricing_type import PricingType
+
 
 class QuoteStatus(str, Enum):
     """Status of a price quote."""
@@ -84,7 +86,8 @@ class QuoteProductInfo(BaseModel):
 class QuotePricing(BaseModel):
     """Pricing breakdown in a quote response."""
 
-    base_cpm: float
+    pricing_type: PricingType = PricingType.FIXED
+    base_cpm: Optional[float] = None
     tier_discount_pct: float = 0.0
     volume_discount_pct: float = 0.0
     final_cpm: float
