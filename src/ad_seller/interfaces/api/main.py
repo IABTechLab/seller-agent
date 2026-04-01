@@ -56,6 +56,7 @@ app = FastAPI(
         },
         {"name": "Deal Performance", "description": "Deal delivery and performance metrics"},
         {"name": "Bulk Operations", "description": "Batch deal create/update/cancel"},
+        {"name": "Webhooks", "description": "Webhook subscription and delivery management"},
     ],
 )
 
@@ -81,12 +82,41 @@ async def _startup():
     except Exception as e:
         logger.warning("MCP SSE server not mounted: %s", e)
 
+    # Setup webhook dispatcher to forward events
+    try:
+        from ...events.bus import get_event_bus
+        from ...storage.factory import get_storage
+        from ...webhooks.dispatcher import WebhookDispatcher
+        from ...webhooks.registry import WebhookRegistry
+
+        storage = await get_storage()
+        registry = WebhookRegistry(storage)
+        dispatcher = WebhookDispatcher(registry)
+        bus = await get_event_bus()
+
+        async def forward_to_webhooks(event):
+            await dispatcher.dispatch_event(event)
+
+        await bus.subscribe("*", forward_to_webhooks)
+        logger.info("Webhook dispatcher connected to event bus")
+    except Exception as e:
+        logger.warning("Webhook dispatcher not connected: %s", e)
+
 
 @app.on_event("shutdown")
 async def _shutdown():
     from ...services.inventory_sync_scheduler import stop_sync_scheduler
 
     stop_sync_scheduler()
+
+
+# =============================================================================
+# Include webhook router
+# =============================================================================
+
+from .webhooks import router as webhooks_router
+
+app.include_router(webhooks_router)
 
 
 # =============================================================================
