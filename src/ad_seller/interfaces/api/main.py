@@ -71,15 +71,19 @@ async def _startup():
 
     start_sync_scheduler()
 
-    # Mount MCP SSE server for Claude Desktop / ChatGPT
+    # Mount MCP server with both transports:
+    # - Streamable HTTP at /mcp (current MCP standard, protocol 2025-06-18) — default
+    #   for buyer agents and current MCP SDK clients.
+    # - HTTP+SSE at /mcp-sse (deprecated but kept for backwards compat with older
+    #   Claude Desktop / ChatGPT clients on protocol 2024-11-05).
     try:
         from ..mcp_server import mcp as mcp_server
 
-        mcp_sse_app = mcp_server.sse_app()
-        app.mount("/mcp", mcp_sse_app)
-        logger.info("MCP SSE server mounted at /mcp/sse")
+        app.mount("/mcp", mcp_server.streamable_http_app())
+        app.mount("/mcp-sse", mcp_server.sse_app())
+        logger.info("MCP server mounted: Streamable HTTP at /mcp, legacy SSE at /mcp-sse/sse")
     except Exception as e:
-        logger.warning("MCP SSE server not mounted: %s", e)
+        logger.warning("MCP server not mounted: %s", e)
 
 
 @app.on_event("shutdown")

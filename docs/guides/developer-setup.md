@@ -113,7 +113,7 @@ Create `claude_desktop_config.json` for your business team:
 {
   "mcpServers": {
     "seller-agent": {
-      "url": "http://your-server:8000/mcp/sse",
+      "url": "http://your-server:8000/mcp",
       "headers": {
         "Authorization": "Bearer <operator-api-key-from-step-6>"
       }

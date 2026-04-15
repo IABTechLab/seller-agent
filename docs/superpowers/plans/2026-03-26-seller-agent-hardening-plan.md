@@ -1036,7 +1036,7 @@ Expected: `{"status": "healthy", ...}`
 
 - [ ] **Step 4: Hit MCP SSE endpoint**
 
-Run: `curl -s http://localhost:8000/mcp/sse -H "Accept: text/event-stream" --max-time 5`
+Run: `curl -s http://localhost:8000/mcp-sse/sse -H "Accept: text/event-stream" --max-time 5` (legacy SSE) or `curl -s http://localhost:8000/mcp -X POST -H "Accept: application/json, text/event-stream" --max-time 5` (Streamable HTTP)
 Expected: SSE connection established (may timeout after 5s, that's fine)
 
 - [ ] **Step 5: Tear down**
