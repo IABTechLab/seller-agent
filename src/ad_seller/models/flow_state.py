@@ -192,18 +192,23 @@ class DealOutput(BaseModel):
 
 
 class SellerFlowState(BaseModel):
-    """Complete state for seller workflow execution."""
+    """Complete state for seller workflow execution.
+
+    CrewAI 1.10+ constructs state eagerly at Flow.__init__ time, so all
+    fields need defaults.  The flow's ``initialize_setup`` / equivalent
+    start step overwrites them with real values.
+    """
 
     # Workflow identity
-    flow_id: str
-    flow_type: str  # product_setup, proposal_handling, deal_generation, execution
+    flow_id: str = ""
+    flow_type: str = ""  # product_setup, proposal_handling, deal_generation, execution
     status: ExecutionStatus = ExecutionStatus.INITIALIZED
     started_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
 
     # Seller identity
-    seller_organization_id: str
-    seller_name: str
+    seller_organization_id: str = ""
+    seller_name: str = ""
 
     # Product catalog state
     products: dict[str, ProductDefinition] = Field(default_factory=dict)
