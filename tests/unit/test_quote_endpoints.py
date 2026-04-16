@@ -44,6 +44,7 @@ def _mock_product_setup_flow(products_dict):
     mock_flow.state = MagicMock()
     mock_flow.state.products = products_dict
     mock_flow.kickoff = AsyncMock()
+    mock_flow.kickoff_async = AsyncMock()
     return mock_flow
 
 

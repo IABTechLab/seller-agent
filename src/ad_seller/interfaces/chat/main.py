@@ -60,7 +60,7 @@ class ChatInterface:
     async def initialize(self) -> None:
         """Initialize products and resources."""
         flow = ProductSetupFlow()
-        await flow.kickoff()
+        await flow.kickoff_async()
         self._products = flow.state.products
 
     def set_buyer_context(self, context: BuyerContext) -> None:

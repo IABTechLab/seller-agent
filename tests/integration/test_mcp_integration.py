@@ -127,6 +127,7 @@ class TestListProductsIntegration:
         mock_flow_state.products = products
         mock_flow_instance.state = mock_flow_state
         mock_flow_instance.kickoff = AsyncMock()
+        mock_flow_instance.kickoff_async = AsyncMock()
 
         mock_flow_cls = MagicMock(return_value=mock_flow_instance)
 

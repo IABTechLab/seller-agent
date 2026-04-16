@@ -279,6 +279,7 @@ class TestQuoteToDealFlow:
         mock_flow.state = MagicMock()
         mock_flow.state.products = products
         mock_flow.kickoff = AsyncMock()
+        mock_flow.kickoff_async = AsyncMock()
 
         with (
             patch("ad_seller.flows.ProductSetupFlow", return_value=mock_flow),

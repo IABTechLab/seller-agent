@@ -17,7 +17,6 @@ from typing import Any, Optional
 
 from crewai.flow.flow import Flow, listen, start
 
-from ..clients import Protocol, UnifiedClient
 from ..config import get_settings
 from ..models.core import DealType, PricingModel
 from ..models.flow_state import (
@@ -78,37 +77,6 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         self.state.seller_name = self._settings.seller_organization_name
 
     @listen(initialize_setup)
-    async def ensure_seller_organization(self) -> None:
-        """Ensure seller organization exists in OpenDirect."""
-        async with UnifiedClient(protocol=Protocol.OPENDIRECT_21) as client:
-            # Check if organization exists
-            result = await client.list_organizations(role="seller")
-
-            if result.success:
-                orgs = result.data or []
-                existing = next(
-                    (
-                        o
-                        for o in orgs
-                        if o.get("organizationid") == self.state.seller_organization_id
-                    ),
-                    None,
-                )
-
-                if not existing:
-                    # Create seller organization
-                    create_result = await client.create_organization(
-                        name=self.state.seller_name,
-                        role="seller",
-                        organization_id=self.state.seller_organization_id,
-                    )
-
-                    if not create_result.success:
-                        self.state.errors.append(
-                            f"Failed to create organization: {create_result.error}"
-                        )
-
-    @listen(ensure_seller_organization)
     async def sync_from_ad_server(self) -> None:
         """Sync inventory from ad server if configured.
 
@@ -368,155 +336,153 @@ class ProductSetupFlow(Flow[ProductSetupState]):
     @listen(sync_from_ad_server)
     async def create_default_products(self) -> None:
         """Create default products for common inventory types."""
-        async with UnifiedClient() as _client:
-            # Define default products
-            default_products = [
-                {
-                    "name": "Premium Display - Homepage",
-                    "description": "High-impact display on homepage",
-                    "inventory_type": "display",
-                    "base_cpm": 15.0,
-                    "floor_cpm": 10.0,
-                    "supported_deal_types": [
-                        DealType.PROGRAMMATIC_GUARANTEED,
-                        DealType.PREFERRED_DEAL,
-                    ],
-                    "supported_pricing_models": [PricingModel.CPM],
-                },
-                {
-                    "name": "Standard Display - ROS",
-                    "description": "Run of site display inventory",
-                    "inventory_type": "display",
-                    "base_cpm": 8.0,
-                    "floor_cpm": 5.0,
-                    "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
-                    "supported_pricing_models": [PricingModel.CPM],
-                },
-                {
-                    "name": "Pre-Roll Video",
-                    "description": "In-stream pre-roll video ads",
-                    "inventory_type": "video",
-                    "base_cpm": 25.0,
-                    "floor_cpm": 18.0,
-                    "supported_deal_types": [
-                        DealType.PROGRAMMATIC_GUARANTEED,
-                        DealType.PREFERRED_DEAL,
-                    ],
-                    "supported_pricing_models": [PricingModel.CPM, PricingModel.CPCV],
-                },
-                {
-                    "name": "CTV Premium Streaming",
-                    "description": "Connected TV inventory on premium streaming apps",
-                    "inventory_type": "ctv",
-                    "base_cpm": 35.0,
-                    "floor_cpm": 28.0,
-                    "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
-                    "supported_pricing_models": [PricingModel.CPM],
-                },
-                {
-                    "name": "Mobile App Rewarded Video",
-                    "description": "User-initiated rewarded video in mobile apps",
-                    "inventory_type": "mobile_app",
-                    "base_cpm": 20.0,
-                    "floor_cpm": 15.0,
-                    "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
-                    "supported_pricing_models": [PricingModel.CPM, PricingModel.CPCV],
-                },
-                {
-                    "name": "Native In-Feed",
-                    "description": "Native ads in content feeds",
-                    "inventory_type": "native",
-                    "base_cpm": 12.0,
-                    "floor_cpm": 8.0,
-                    "supported_deal_types": [DealType.PREFERRED_DEAL],
-                    "supported_pricing_models": [PricingModel.CPM, PricingModel.CPC],
-                },
-                # Linear TV — Direct seller (NBCU)
-                {
-                    "name": "NBC Primetime :30",
-                    "description": "NBC broadcast primetime 30-second national spot",
-                    "inventory_type": "linear_tv",
-                    "base_cpm": 55.0,
-                    "floor_cpm": 40.0,
-                    "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
-                    "supported_pricing_models": [PricingModel.CPM],
-                },
-                {
-                    "name": "NBCU Cable Network :30 (Bravo/USA)",
-                    "description": "NBCU cable network 30-second spot across Bravo, USA, CNBC",
-                    "inventory_type": "linear_tv",
-                    "base_cpm": 22.0,
-                    "floor_cpm": 15.0,
-                    "supported_deal_types": [
-                        DealType.PROGRAMMATIC_GUARANTEED,
-                        DealType.PREFERRED_DEAL,
-                    ],
-                    "supported_pricing_models": [PricingModel.CPM],
-                },
-                {
-                    "name": "Telemundo Primetime :30",
-                    "description": "Telemundo Spanish-language primetime 30-second spot",
-                    "inventory_type": "linear_tv",
-                    "base_cpm": 18.0,
-                    "floor_cpm": 12.0,
-                    "supported_deal_types": [
-                        DealType.PROGRAMMATIC_GUARANTEED,
-                        DealType.PREFERRED_DEAL,
-                        DealType.PRIVATE_AUCTION,
-                    ],
-                    "supported_pricing_models": [PricingModel.CPM],
-                },
-                # Linear TV — MVPD operator (Comcast/Spectrum)
-                {
-                    "name": "Comcast Local Avails — Top 10 DMAs",
-                    "description": "Comcast Xfinity local cable insertion avails in top 10 markets",
-                    "inventory_type": "linear_tv",
-                    "base_cpm": 15.0,
-                    "floor_cpm": 8.0,
-                    "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
-                    "supported_pricing_models": [PricingModel.CPM],
-                },
-                {
-                    "name": "Comcast Addressable Linear — National",
-                    "description": "Comcast addressable linear TV with household-level targeting",
-                    "inventory_type": "linear_tv",
-                    "base_cpm": 55.0,
-                    "floor_cpm": 40.0,
-                    "supported_deal_types": [
-                        DealType.PROGRAMMATIC_GUARANTEED,
-                        DealType.PRIVATE_AUCTION,
-                    ],
-                    "supported_pricing_models": [PricingModel.CPM],
-                },
-                # Linear TV — Reseller/SSP (PubMatic/Magnite)
-                {
-                    "name": "Programmatic Linear Reach — A25-54 Primetime",
-                    "description": "Aggregated primetime linear reach across multiple networks via SSP",
-                    "inventory_type": "linear_tv",
-                    "base_cpm": 30.0,
-                    "floor_cpm": 20.0,
-                    "supported_deal_types": [
-                        DealType.PROGRAMMATIC_GUARANTEED,
-                        DealType.PRIVATE_AUCTION,
-                    ],
-                    "supported_pricing_models": [PricingModel.CPM],
-                },
-            ]
+        default_products = [
+            {
+                "name": "Premium Display - Homepage",
+                "description": "High-impact display on homepage",
+                "inventory_type": "display",
+                "base_cpm": 15.0,
+                "floor_cpm": 10.0,
+                "supported_deal_types": [
+                    DealType.PROGRAMMATIC_GUARANTEED,
+                    DealType.PREFERRED_DEAL,
+                ],
+                "supported_pricing_models": [PricingModel.CPM],
+            },
+            {
+                "name": "Standard Display - ROS",
+                "description": "Run of site display inventory",
+                "inventory_type": "display",
+                "base_cpm": 8.0,
+                "floor_cpm": 5.0,
+                "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+                "supported_pricing_models": [PricingModel.CPM],
+            },
+            {
+                "name": "Pre-Roll Video",
+                "description": "In-stream pre-roll video ads",
+                "inventory_type": "video",
+                "base_cpm": 25.0,
+                "floor_cpm": 18.0,
+                "supported_deal_types": [
+                    DealType.PROGRAMMATIC_GUARANTEED,
+                    DealType.PREFERRED_DEAL,
+                ],
+                "supported_pricing_models": [PricingModel.CPM, PricingModel.CPCV],
+            },
+            {
+                "name": "CTV Premium Streaming",
+                "description": "Connected TV inventory on premium streaming apps",
+                "inventory_type": "ctv",
+                "base_cpm": 35.0,
+                "floor_cpm": 28.0,
+                "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
+                "supported_pricing_models": [PricingModel.CPM],
+            },
+            {
+                "name": "Mobile App Rewarded Video",
+                "description": "User-initiated rewarded video in mobile apps",
+                "inventory_type": "mobile_app",
+                "base_cpm": 20.0,
+                "floor_cpm": 15.0,
+                "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+                "supported_pricing_models": [PricingModel.CPM, PricingModel.CPCV],
+            },
+            {
+                "name": "Native In-Feed",
+                "description": "Native ads in content feeds",
+                "inventory_type": "native",
+                "base_cpm": 12.0,
+                "floor_cpm": 8.0,
+                "supported_deal_types": [DealType.PREFERRED_DEAL],
+                "supported_pricing_models": [PricingModel.CPM, PricingModel.CPC],
+            },
+            # Linear TV — Direct seller (NBCU)
+            {
+                "name": "NBC Primetime :30",
+                "description": "NBC broadcast primetime 30-second national spot",
+                "inventory_type": "linear_tv",
+                "base_cpm": 55.0,
+                "floor_cpm": 40.0,
+                "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
+                "supported_pricing_models": [PricingModel.CPM],
+            },
+            {
+                "name": "NBCU Cable Network :30 (Bravo/USA)",
+                "description": "NBCU cable network 30-second spot across Bravo, USA, CNBC",
+                "inventory_type": "linear_tv",
+                "base_cpm": 22.0,
+                "floor_cpm": 15.0,
+                "supported_deal_types": [
+                    DealType.PROGRAMMATIC_GUARANTEED,
+                    DealType.PREFERRED_DEAL,
+                ],
+                "supported_pricing_models": [PricingModel.CPM],
+            },
+            {
+                "name": "Telemundo Primetime :30",
+                "description": "Telemundo Spanish-language primetime 30-second spot",
+                "inventory_type": "linear_tv",
+                "base_cpm": 18.0,
+                "floor_cpm": 12.0,
+                "supported_deal_types": [
+                    DealType.PROGRAMMATIC_GUARANTEED,
+                    DealType.PREFERRED_DEAL,
+                    DealType.PRIVATE_AUCTION,
+                ],
+                "supported_pricing_models": [PricingModel.CPM],
+            },
+            # Linear TV — MVPD operator (Comcast/Spectrum)
+            {
+                "name": "Comcast Local Avails — Top 10 DMAs",
+                "description": "Comcast Xfinity local cable insertion avails in top 10 markets",
+                "inventory_type": "linear_tv",
+                "base_cpm": 15.0,
+                "floor_cpm": 8.0,
+                "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+                "supported_pricing_models": [PricingModel.CPM],
+            },
+            {
+                "name": "Comcast Addressable Linear — National",
+                "description": "Comcast addressable linear TV with household-level targeting",
+                "inventory_type": "linear_tv",
+                "base_cpm": 55.0,
+                "floor_cpm": 40.0,
+                "supported_deal_types": [
+                    DealType.PROGRAMMATIC_GUARANTEED,
+                    DealType.PRIVATE_AUCTION,
+                ],
+                "supported_pricing_models": [PricingModel.CPM],
+            },
+            # Linear TV — Reseller/SSP (PubMatic/Magnite)
+            {
+                "name": "Programmatic Linear Reach — A25-54 Primetime",
+                "description": "Aggregated primetime linear reach across multiple networks via SSP",
+                "inventory_type": "linear_tv",
+                "base_cpm": 30.0,
+                "floor_cpm": 20.0,
+                "supported_deal_types": [
+                    DealType.PROGRAMMATIC_GUARANTEED,
+                    DealType.PRIVATE_AUCTION,
+                ],
+                "supported_pricing_models": [PricingModel.CPM],
+            },
+        ]
 
-            for product_config in default_products:
-                product_def = ProductDefinition(
-                    product_id=f"prod-{uuid.uuid4().hex[:8]}",
-                    name=product_config["name"],
-                    description=product_config.get("description"),
-                    inventory_type=product_config["inventory_type"],
-                    supported_deal_types=product_config["supported_deal_types"],
-                    supported_pricing_models=product_config["supported_pricing_models"],
-                    base_cpm=product_config["base_cpm"],
-                    floor_cpm=product_config["floor_cpm"],
-                )
+        for product_config in default_products:
+            product_def = ProductDefinition(
+                product_id=f"prod-{uuid.uuid4().hex[:8]}",
+                name=product_config["name"],
+                description=product_config.get("description"),
+                inventory_type=product_config["inventory_type"],
+                supported_deal_types=product_config["supported_deal_types"],
+                supported_pricing_models=product_config["supported_pricing_models"],
+                base_cpm=product_config["base_cpm"],
+                floor_cpm=product_config["floor_cpm"],
+            )
 
-                self.state.products[product_def.product_id] = product_def
-                self.state.created_products.append(product_def.product_id)
+            self.state.products[product_def.product_id] = product_def
+            self.state.created_products.append(product_def.product_id)
 
     @listen(create_default_products)
     async def finalize_setup(self) -> None:
