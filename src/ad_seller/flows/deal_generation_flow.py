@@ -9,6 +9,7 @@ This flow handles:
 - Output: Deal ID + pricing (floor or fixed) - NO budget in deal
 """
 
+import asyncio
 import uuid
 from datetime import datetime
 from typing import Any, Optional
@@ -190,37 +191,40 @@ class DealGenerationFlow(Flow[DealGenerationState]):
         # Store deal in state
         self.state.deals[self.state.deal_output.deal_id] = self.state.deal_output
 
-        # Register with OpenDirect server (if available)
+        # Register with OpenDirect server (if available).
+        # Isolated via create_task to prevent httpcore/anyio CancelScope
+        # from leaking into the parent flow listener task.
         try:
-            async with UnifiedClient() as client:
-                # Create execution order representing the deal
-                result = await client.create_execution_order(
-                    proposal_id=self.state.proposal_id,
-                    execution_order_id=self.state.deal_output.deal_id,
-                    status="booked",
-                    external_ids={
-                        "openrtb_deal_id": self.state.deal_output.deal_id,
-                        "deal_type": self.state.deal_output.deal_type.value,
-                    },
-                )
-
-                if result.success:
-                    self.state.deal_output.ad_server_deal_id = result.data.get("executionorderid")
-
-                # Emit deal.registered event
-                await emit_event(
-                    event_type=EventType.DEAL_REGISTERED,
-                    flow_id=self.state.flow_id,
-                    flow_type=self.state.flow_type,
-                    proposal_id=self.state.proposal_id,
-                    deal_id=self.state.deal_output.deal_id,
-                    payload={
-                        "deal_type": self.state.deal_output.deal_type.value,
-                        "price": self.state.deal_output.price,
-                    },
-                )
+            await asyncio.create_task(self._od_register_deal())
         except Exception as e:
             self.state.warnings.append(f"Failed to register deal with server: {e}")
+
+        await emit_event(
+            event_type=EventType.DEAL_REGISTERED,
+            flow_id=self.state.flow_id,
+            flow_type=self.state.flow_type,
+            proposal_id=self.state.proposal_id,
+            deal_id=self.state.deal_output.deal_id,
+            payload={
+                "deal_type": self.state.deal_output.deal_type.value,
+                "price": self.state.deal_output.price,
+            },
+        )
+
+    async def _od_register_deal(self) -> None:
+        """Register deal with OpenDirect — runs in an isolated task."""
+        async with UnifiedClient() as client:
+            result = await client.create_execution_order(
+                proposal_id=self.state.proposal_id,
+                execution_order_id=self.state.deal_output.deal_id,
+                status="booked",
+                external_ids={
+                    "openrtb_deal_id": self.state.deal_output.deal_id,
+                    "deal_type": self.state.deal_output.deal_type.value,
+                },
+            )
+            if result.success:
+                self.state.deal_output.ad_server_deal_id = result.data.get("executionorderid")
 
     @listen(register_deal)
     async def finalize(self) -> None:
