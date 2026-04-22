@@ -1,0 +1,202 @@
+# Cloud Build configuration for seller-agent
+# Deploys to Cloud Run via a Docker image pushed to Artifact Registry.
+# Runtime: Python 3.12.8 (see Dockerfile). lancedb is pinned to 0.25.3
+# via uv --override because crewai>=1.10 requires >=0.29.2 but no wheels
+# above 0.25.3 are published on PyPI for any platform as of April 2026.
+#
+# Prerequisites:
+#   1. Artifact Registry repository created (update _REPO and _REGION below)
+#   2. Cloud Build service account has roles:
+#        - roles/artifactregistry.writer
+#        - roles/run.admin
+#        - roles/iam.serviceAccountUser (on the Cloud Run SA)
+#   3. Override the _* substitution variables in the Cloud Build Trigger.
+#        They are passed through to Cloud Run via --set-env-vars at deploy time.
+#
+# Environment-specific configuration:
+#   - Staging: Use _MIN_INSTANCES=0 to scale to zero and save costs
+#   - Production: Use _MIN_INSTANCES=1 to keep 1 instance always running for faster response times
+
+substitutions:
+  # --- Infrastructure ---
+  _REGION: "us-east4"                               # Cloud Run / Artifact Registry region
+  _REPO: "seller-agent-repo"                        # Artifact Registry repository name
+  _SERVICE_NAME: "seller-agent"                     # Cloud Run service name
+  _IMAGE_TAG: "${COMMIT_SHA}"                       # Tag image with the triggering commit SHA
+
+  # --- Required: LLM Configuration ---
+  _ANTHROPIC_API_KEY: ""                            # Required — Anthropic API key for CrewAI agents
+
+  # --- OpenDirect Server Configuration ---
+  _OPENDIRECT_BASE_URL: "https://agentic-direct-server-hwgrypmndq-uk.a.run.app"  # IAB Tech Lab OpenDirect 2.1 server
+  _OPENDIRECT_API_KEY: ""                           # Optional — API key for OpenDirect server
+  _OPENDIRECT_TOKEN: ""                             # Optional — Auth token for OpenDirect server
+  _DEFAULT_PROTOCOL: "opendirect21"                 # Protocol: opendirect21 or a2a
+
+  # --- Seller Identity ---
+  _SELLER_ORGANIZATION_ID: ""                       # Required — Your organization ID
+  _SELLER_ORGANIZATION_NAME: ""                     # Required — Your organization name
+  _SELLER_AGENT_URL: ""                             # Required for A2A — Your agent's public URL (e.g., https://seller-agent-xyz.run.app)
+  _SELLER_AGENT_NAME: "Ad Seller Agent"             # Display name for your agent
+  _SELLERS_JSON_PATH: ""                            # Optional — Path to sellers.json file for supply chain transparency
+
+  # --- Ad Server Configuration ---
+  _AD_SERVER_TYPE: "google_ad_manager"              # Ad server: google_ad_manager or freewheel
+  _GAM_ENABLED: "false"                             # Enable GAM integration (true/false)
+  _GAM_NETWORK_CODE: ""                             # GAM network code (from Admin > Global Settings)
+  _GAM_JSON_KEY_PATH: ""                            # Path to GAM service account JSON key
+  _GAM_APPLICATION_NAME: "AdSellerSystem"           # GAM application name
+  _GAM_API_VERSION: "v202411"                       # GAM SOAP API version
+  _GAM_DEFAULT_TRAFFICKER_ID: ""                    # GAM user ID for order management
+  _FREEWHEEL_ENABLED: "false"                       # Enable FreeWheel integration (true/false)
+  _FREEWHEEL_API_URL: ""                            # Legacy — FreeWheel API URL
+  _FREEWHEEL_API_KEY: ""                            # Legacy — FreeWheel API key
+  _FREEWHEEL_NETWORK_ID: ""                         # FreeWheel publisher network/account ID
+  _FREEWHEEL_INVENTORY_MODE: "deals_only"           # Inventory mode: full or deals_only
+
+  # --- SSP Connectors (for deal distribution) ---
+  _SSP_CONNECTORS: ""                               # Comma-separated SSP names (e.g., "pubmatic,magnite,index_exchange")
+  _SSP_ROUTING_RULES: ""                            # Routing rules: inventory_type:ssp_name pairs (e.g., "ctv:pubmatic,display:magnite")
+  _PUBMATIC_MCP_URL: ""                             # PubMatic MCP URL
+  _PUBMATIC_API_KEY: ""                             # PubMatic API key
+  _MAGNITE_API_URL: ""                              # Magnite REST API URL
+  _MAGNITE_API_KEY: ""                              # Magnite API key
+  _INDEX_EXCHANGE_API_URL: ""                       # Index Exchange REST API URL
+  _INDEX_EXCHANGE_API_KEY: ""                       # Index Exchange API key
+
+  # --- Inventory Sync Configuration ---
+  _INVENTORY_SYNC_ENABLED: "false"                  # Enable periodic inventory sync from ad server
+  _INVENTORY_SYNC_INTERVAL_MINUTES: "60"            # Sync interval in minutes
+  _INVENTORY_SYNC_INCLUDE_ARCHIVED: "false"         # Include archived ad units in sync
+
+  # --- Database / Storage Configuration ---
+  _STORAGE_TYPE: "sqlite"                           # Storage: sqlite, redis, or hybrid
+  _DATABASE_URL: "sqlite:///./ad_seller.db"         # Database connection string (sqlite:/// or postgresql://)
+  _REDIS_URL: ""                                    # Redis URL (if STORAGE_TYPE=redis)
+  _POSTGRES_POOL_MIN: "2"                           # PostgreSQL min pool size
+  _POSTGRES_POOL_MAX: "10"                          # PostgreSQL max pool size
+
+  # --- Pricing Configuration ---
+  _DEFAULT_CURRENCY: "USD"                          # Default currency
+  _MIN_DEAL_VALUE: "1000.0"                         # Minimum deal value
+  _DEFAULT_PRICE_FLOOR_CPM: "5.0"                   # Default price floor CPM
+
+  # --- Yield Optimization ---
+  _YIELD_OPTIMIZATION_ENABLED: "true"               # Enable yield optimization
+  _PROGRAMMATIC_FLOOR_MULTIPLIER: "1.2"             # Programmatic floor multiplier
+  _PREFERRED_DEAL_DISCOUNT_MAX: "0.15"              # Max preferred deal discount
+
+  # --- LLM Model Configuration ---
+  _DEFAULT_LLM_MODEL: "anthropic/claude-sonnet-4-5-20250929"  # Default LLM model
+  _MANAGER_LLM_MODEL: "anthropic/claude-opus-4-20250514"      # Manager LLM model
+  _LLM_TEMPERATURE: "0.3"                           # LLM temperature
+  _LLM_MAX_TOKENS: "4096"                           # Max tokens per LLM request
+
+  # --- CrewAI Configuration ---
+  _CREW_MEMORY_ENABLED: "true"                      # Enable CrewAI memory
+  _CREW_VERBOSE: "true"                             # Enable verbose logging
+  _CREW_MAX_ITERATIONS: "15"                        # Max CrewAI iterations
+
+  # --- Event Bus & Approval Workflow ---
+  _EVENT_BUS_ENABLED: "true"                        # Enable event bus for audit logging
+  _APPROVAL_GATE_ENABLED: "false"                   # Enable human-in-the-loop approval gates
+  _APPROVAL_TIMEOUT_HOURS: "24"                     # Approval timeout in hours
+  _APPROVAL_REQUIRED_FLOWS: ""                      # Comma-separated gate names (e.g., "proposal_decision,deal_registration")
+
+  # --- Session Configuration ---
+  _SESSION_TTL_SECONDS: "604800"                    # Session TTL in seconds (default: 7 days)
+  _SESSION_MAX_MESSAGES: "200"                      # Max messages per session
+
+  # --- Agent Registry & A2A Configuration ---
+  _AGENT_REGISTRY_ENABLED: "true"                   # Enable agent registry integration
+  _AGENT_REGISTRY_URL: "https://tools.iabtechlab.com/agent-registry"  # IAB Tech Lab AAMP registry
+  _AGENT_REGISTRY_EXTRA_URLS: ""                    # Comma-separated additional registry URLs
+  _AUTO_APPROVE_REGISTERED_AGENTS: "true"           # Auto-approve agents from registry
+  _REQUIRE_APPROVAL_FOR_UNREGISTERED: "true"        # Require approval for unregistered agents
+
+  # --- API Key Authentication ---
+  _API_KEY_AUTH_ENABLED: "true"                     # Enable API key authentication
+  # API_KEY_DEFAULT_EXPIRY_DAYS not set - defaults to None (never expires)
+  # To set expiry, add: _API_KEY_DEFAULT_EXPIRY_DAYS: "90" (90 days)
+
+  # --- Cloud Run Scaling Configuration ---
+  _MIN_INSTANCES: "1"                               # Minimum instances (0 for staging, 1 for production)
+  _MAX_INSTANCES: "10"                              # Maximum instances
+  _MEMORY: "1Gi"                                    # Memory allocation (512Mi, 1Gi, 2Gi, 4Gi)
+  _CPU: "1"                                         # CPU allocation (1, 2, 4)
+  _TIMEOUT: "300s"                                  # Request timeout (max 3600s for 2nd gen)
+
+steps:
+  # ---------- Build the Docker image ----------
+  - name: "gcr.io/cloud-builders/docker"
+    id: "build"
+    args:
+      - "build"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE_NAME}:${_IMAGE_TAG}"
+      - "."
+
+  # ---------- Push to Artifact Registry ----------
+  - name: "gcr.io/cloud-builders/docker"
+    id: "push"
+    waitFor:
+      - "build"
+    args:
+      - "push"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE_NAME}:${_IMAGE_TAG}"
+
+  # ---------- Generate env vars file ----------
+  # Writes substitution variables to a file to avoid gcloud escaping issues
+  # with special characters (e.g. URLs)
+  - name: "gcr.io/cloud-builders/docker"
+    id: "generate-env-file"
+    waitFor:
+      - "push"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      # Cloud Build resolves ${_*} before bash runs.
+      # Single-quoted printf format prevents bash from expanding any $ in the resolved values.
+      - |
+        printf 'ANTHROPIC_API_KEY: "%s"\nOPENDIRECT_BASE_URL: "%s"\nOPENDIRECT_API_KEY: "%s"\nOPENDIRECT_TOKEN: "%s"\nDEFAULT_PROTOCOL: "%s"\nSELLER_ORGANIZATION_ID: "%s"\nSELLER_ORGANIZATION_NAME: "%s"\nSELLER_AGENT_URL: "%s"\nSELLER_AGENT_NAME: "%s"\nSELLERS_JSON_PATH: "%s"\nAD_SERVER_TYPE: "%s"\nGAM_ENABLED: "%s"\nGAM_NETWORK_CODE: "%s"\nGAM_JSON_KEY_PATH: "%s"\nGAM_APPLICATION_NAME: "%s"\nGAM_API_VERSION: "%s"\nGAM_DEFAULT_TRAFFICKER_ID: "%s"\nFREEWHEEL_ENABLED: "%s"\nFREEWHEEL_API_URL: "%s"\nFREEWHEEL_API_KEY: "%s"\nFREEWHEEL_NETWORK_ID: "%s"\nFREEWHEEL_INVENTORY_MODE: "%s"\nSSP_CONNECTORS: "%s"\nSSP_ROUTING_RULES: "%s"\nPUBMATIC_MCP_URL: "%s"\nPUBMATIC_API_KEY: "%s"\nMAGNITE_API_URL: "%s"\nMAGNITE_API_KEY: "%s"\nINDEX_EXCHANGE_API_URL: "%s"\nINDEX_EXCHANGE_API_KEY: "%s"\nINVENTORY_SYNC_ENABLED: "%s"\nINVENTORY_SYNC_INTERVAL_MINUTES: "%s"\nINVENTORY_SYNC_INCLUDE_ARCHIVED: "%s"\nSTORAGE_TYPE: "%s"\nDATABASE_URL: "%s"\nREDIS_URL: "%s"\nPOSTGRES_POOL_MIN: "%s"\nPOSTGRES_POOL_MAX: "%s"\nDEFAULT_CURRENCY: "%s"\nMIN_DEAL_VALUE: "%s"\nDEFAULT_PRICE_FLOOR_CPM: "%s"\nYIELD_OPTIMIZATION_ENABLED: "%s"\nPROGRAMMATIC_FLOOR_MULTIPLIER: "%s"\nPREFERRED_DEAL_DISCOUNT_MAX: "%s"\nDEFAULT_LLM_MODEL: "%s"\nMANAGER_LLM_MODEL: "%s"\nLLM_TEMPERATURE: "%s"\nLLM_MAX_TOKENS: "%s"\nCREW_MEMORY_ENABLED: "%s"\nCREW_VERBOSE: "%s"\nCREW_MAX_ITERATIONS: "%s"\nEVENT_BUS_ENABLED: "%s"\nAPPROVAL_GATE_ENABLED: "%s"\nAPPROVAL_TIMEOUT_HOURS: "%s"\nAPPROVAL_REQUIRED_FLOWS: "%s"\nSESSION_TTL_SECONDS: "%s"\nSESSION_MAX_MESSAGES: "%s"\nAGENT_REGISTRY_ENABLED: "%s"\nAGENT_REGISTRY_URL: "%s"\nAGENT_REGISTRY_EXTRA_URLS: "%s"\nAUTO_APPROVE_REGISTERED_AGENTS: "%s"\nREQUIRE_APPROVAL_FOR_UNREGISTERED: "%s"\nAPI_KEY_AUTH_ENABLED: "%s"\n' \
+          '${_ANTHROPIC_API_KEY}' '${_OPENDIRECT_BASE_URL}' '${_OPENDIRECT_API_KEY}' '${_OPENDIRECT_TOKEN}' '${_DEFAULT_PROTOCOL}' \
+          '${_SELLER_ORGANIZATION_ID}' '${_SELLER_ORGANIZATION_NAME}' '${_SELLER_AGENT_URL}' '${_SELLER_AGENT_NAME}' '${_SELLERS_JSON_PATH}' \
+          '${_AD_SERVER_TYPE}' '${_GAM_ENABLED}' '${_GAM_NETWORK_CODE}' '${_GAM_JSON_KEY_PATH}' '${_GAM_APPLICATION_NAME}' '${_GAM_API_VERSION}' '${_GAM_DEFAULT_TRAFFICKER_ID}' \
+          '${_FREEWHEEL_ENABLED}' '${_FREEWHEEL_API_URL}' '${_FREEWHEEL_API_KEY}' '${_FREEWHEEL_NETWORK_ID}' '${_FREEWHEEL_INVENTORY_MODE}' \
+          '${_SSP_CONNECTORS}' '${_SSP_ROUTING_RULES}' '${_PUBMATIC_MCP_URL}' '${_PUBMATIC_API_KEY}' '${_MAGNITE_API_URL}' '${_MAGNITE_API_KEY}' '${_INDEX_EXCHANGE_API_URL}' '${_INDEX_EXCHANGE_API_KEY}' \
+          '${_INVENTORY_SYNC_ENABLED}' '${_INVENTORY_SYNC_INTERVAL_MINUTES}' '${_INVENTORY_SYNC_INCLUDE_ARCHIVED}' \
+          '${_STORAGE_TYPE}' '${_DATABASE_URL}' '${_REDIS_URL}' '${_POSTGRES_POOL_MIN}' '${_POSTGRES_POOL_MAX}' \
+          '${_DEFAULT_CURRENCY}' '${_MIN_DEAL_VALUE}' '${_DEFAULT_PRICE_FLOOR_CPM}' \
+          '${_YIELD_OPTIMIZATION_ENABLED}' '${_PROGRAMMATIC_FLOOR_MULTIPLIER}' '${_PREFERRED_DEAL_DISCOUNT_MAX}' \
+          '${_DEFAULT_LLM_MODEL}' '${_MANAGER_LLM_MODEL}' '${_LLM_TEMPERATURE}' '${_LLM_MAX_TOKENS}' \
+          '${_CREW_MEMORY_ENABLED}' '${_CREW_VERBOSE}' '${_CREW_MAX_ITERATIONS}' \
+          '${_EVENT_BUS_ENABLED}' '${_APPROVAL_GATE_ENABLED}' '${_APPROVAL_TIMEOUT_HOURS}' '${_APPROVAL_REQUIRED_FLOWS}' \
+          '${_SESSION_TTL_SECONDS}' '${_SESSION_MAX_MESSAGES}' \
+          '${_AGENT_REGISTRY_ENABLED}' '${_AGENT_REGISTRY_URL}' '${_AGENT_REGISTRY_EXTRA_URLS}' '${_AUTO_APPROVE_REGISTERED_AGENTS}' '${_REQUIRE_APPROVAL_FOR_UNREGISTERED}' \
+          '${_API_KEY_AUTH_ENABLED}' > /workspace/.env.deploy
+
+  # ---------- Deploy to Cloud Run ----------
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: "deploy"
+    waitFor:
+      - "generate-env-file"
+    args:
+      - "run"
+      - "deploy"
+      - "${_SERVICE_NAME}"
+      - "--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE_NAME}:${_IMAGE_TAG}"
+      - "--region=${_REGION}"
+      - "--platform=managed"
+      - "--allow-unauthenticated"
+      - "--min-instances=${_MIN_INSTANCES}"
+      - "--max-instances=${_MAX_INSTANCES}"
+      - "--memory=${_MEMORY}"
+      - "--cpu=${_CPU}"
+      - "--timeout=${_TIMEOUT}"
+      - "--port=8080"
+      - "--cpu-boost"
+      - "--no-cpu-throttling"
+      - "--env-vars-file=/workspace/.env.deploy"
+
+images:
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE_NAME}:${_IMAGE_TAG}"
