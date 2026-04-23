@@ -17,7 +17,9 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ app = FastAPI(
     version="1.0.0",
     contact={"name": "IAB Tech Lab", "url": "https://iabtechlab.com"},
     license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
+    root_path_in_servers=False,
     openapi_tags=[
         {"name": "Core", "description": "Health check and API root"},
         {"name": "Products", "description": "Product catalog browsing"},
@@ -64,6 +67,21 @@ app = FastAPI(
 # =============================================================================
 # Lifecycle: start/stop background services
 # =============================================================================
+
+# Trust X-Forwarded-Proto / X-Forwarded-For from Cloud Run so that Starlette
+# generates https:// redirects instead of http:// ones behind the TLS proxy.
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
+# Allow all browser-based clients — buyer UIs, claude.ai, SSP dashboards, etc.
+# The MCP Streamable HTTP protocol requires CORS for browser-originated requests.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    allow_credentials=False,
+    expose_headers=["*"],
+)
 
 _mcp_server_ref = None
 
