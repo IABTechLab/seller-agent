@@ -39,6 +39,9 @@ mcp = FastMCP(
         "and interact with buyer agents. On first connection, check setup status "
         "and offer the guided setup wizard if configuration is incomplete."
     ),
+    # When mounted at /mcp in FastAPI, streamable_http_path="/" makes the
+    # endpoint resolve to /mcp (not /mcp/mcp which is the default behaviour).
+    streamable_http_path="/",
 )
 
 
