@@ -284,6 +284,36 @@ class TestCreateQuote:
         assert resp.status_code == 400
         assert resp.json()["detail"]["error"] == "below_minimum_impressions"
 
+    async def test_quote_recorded_in_history(self, client, mock_storage):
+        """Layer 4: quote creation should persist a quote_history record."""
+        with (
+            patch(
+                "ad_seller.flows.ProductSetupFlow",
+                return_value=_mock_product_setup_flow(_products()),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await client.post(
+                "/api/v1/quotes",
+                json={
+                    "product_id": "ctv-premium-sports",
+                    "deal_type": "PD",
+                    "impressions": 5000000,
+                },
+            )
+
+        assert resp.status_code == 200
+        quote_id = resp.json()["quote_id"]
+
+        # Verify quote_history record was created
+        history_key = f"quote_history:{quote_id}"
+        assert history_key in mock_storage._store
+        record = mock_storage._store[history_key]
+        assert record["product_id"] == "ctv-premium-sports"
+        assert record["quoted_cpm"] > 0
+        assert "buyer_id" in record
+        assert "quoted_at" in record
+
 
 # =============================================================================
 # GET /api/v1/quotes/{quote_id}

@@ -152,6 +152,8 @@ class ProposalResponse(BaseModel):
     status: str
     counter_terms: Optional[dict[str, Any]] = None
     approval_id: Optional[str] = None
+    pricing_verified: bool = False
+    pricing_verification_reason: str = ""
     errors: list[str] = []
 
 
@@ -545,12 +547,24 @@ async def submit_proposal(
         products=setup_flow.state.products,
     )
 
+    # Verify pricing against quote history (Layer 4 — CPM hallucination defense)
+    from ...storage.factory import get_storage
+    from ...storage.quote_history import QuoteHistoryStore
+
+    storage = await get_storage()
+    quote_history = QuoteHistoryStore(storage)
+    verification = await quote_history.verify_pricing(
+        buyer_id=context.get_pricing_key(),
+        product_id=request.product_id,
+        proposed_cpm=request.price,
+    )
+    pricing_verified = verification.pricing_verified
+    pricing_verification_reason = verification.reason
+
     # If pending approval, create the approval request
     if result.get("pending_approval"):
         from ...events.approval import ApprovalGate
-        from ...storage.factory import get_storage
 
-        storage = await get_storage()
         gate = ApprovalGate(storage)
         approval_req = await gate.request_approval(
             flow_id=result["flow_id"],
@@ -561,6 +575,8 @@ async def submit_proposal(
                 "recommendation": result["recommendation"],
                 "evaluation": result.get("evaluation"),
                 "counter_terms": result.get("counter_terms"),
+                "pricing_verified": pricing_verified,
+                "pricing_verification_reason": pricing_verification_reason,
             },
             flow_state_snapshot=result.get("_flow_state_snapshot", {}),
             proposal_id=proposal_id,
@@ -571,6 +587,8 @@ async def submit_proposal(
             status="pending_approval",
             counter_terms=result.get("counter_terms"),
             approval_id=approval_req.approval_id,
+            pricing_verified=pricing_verified,
+            pricing_verification_reason=pricing_verification_reason,
             errors=result.get("errors", []),
         )
 
@@ -579,6 +597,8 @@ async def submit_proposal(
         recommendation=result["recommendation"],
         status=result["status"],
         counter_terms=result.get("counter_terms"),
+        pricing_verified=pricing_verified,
+        pricing_verification_reason=pricing_verification_reason,
         errors=result.get("errors", []),
     )
 
@@ -1950,6 +1970,18 @@ async def create_quote(
     # Persist with 24-hour TTL
     storage = await get_storage()
     await storage.set_quote(quote_id, quote.model_dump(mode="json"), ttl=86400)
+
+    # Record in quote history for pricing verification (Layer 4)
+    from ...storage.quote_history import QuoteHistoryStore
+
+    quote_history = QuoteHistoryStore(storage)
+    await quote_history.record_quote(
+        quote_id=quote_id,
+        buyer_id=context.get_pricing_key(),
+        product_id=request.product_id,
+        quoted_cpm=final_cpm,
+        expires_at=expires_at,
+    )
 
     return quote.model_dump(mode="json")
 
