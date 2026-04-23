@@ -39,9 +39,13 @@ mcp = FastMCP(
         "and interact with buyer agents. On first connection, check setup status "
         "and offer the guided setup wizard if configuration is incomplete."
     ),
-    # When mounted at /mcp in FastAPI, streamable_http_path="/" makes the
-    # endpoint resolve to /mcp (not /mcp/mcp which is the default behaviour).
+    # streamable_http_path="/" so that when mounted at /mcp in FastAPI the
+    # endpoint resolves to /mcp (not /mcp/mcp which is the default).
     streamable_http_path="/",
+    # host="0.0.0.0" disables the auto DNS-rebinding protection that FastMCP
+    # applies when host is 127.0.0.1/localhost. That protection blocks requests
+    # from Cloud Run (Host header is the public *.run.app domain) with 421.
+    host="0.0.0.0",
 )
 
 
