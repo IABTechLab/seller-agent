@@ -17,7 +17,13 @@ from .agent_registry import (
 )
 from .audience_capabilities import (
     AgenticCapabilities,
+    AgenticCapabilityFlag,
     AudienceCapabilities,
+    CapabilityAudienceBlock,
+    MaxRefsPerRole,
+    TaxonomyLockHashes,
+    build_capability_audience_block,
+    load_taxonomy_lock_hashes,
 )
 from .audience_ref import (
     AudienceRef,
@@ -259,8 +265,14 @@ __all__ = [
     # Audience capabilities (proposal §5.7)
     "AudienceCapabilities",
     "AgenticCapabilities",
+    "AgenticCapabilityFlag",
     "AudienceRef",
     "ComplianceContext",
+    "CapabilityAudienceBlock",
+    "MaxRefsPerRole",
+    "TaxonomyLockHashes",
+    "build_capability_audience_block",
+    "load_taxonomy_lock_hashes",
     # Negotiation
     "NegotiationAction",
     "NegotiationHistory",

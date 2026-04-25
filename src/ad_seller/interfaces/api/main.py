@@ -1596,6 +1596,7 @@ async def agent_card():
         AgentProvider,
         AgentSkill,
     )
+    from ...models.audience_capabilities import build_capability_audience_block
 
     settings = _get_api_settings()
 
@@ -1664,6 +1665,13 @@ async def agent_card():
         ),
         inventory_types=sorted(inventory_types),
         supported_deal_types=["pg", "pmp", "preferred_deal", "private_auction"],
+        # Audience capability advertisement (proposal §5.7 layer 1). Demo /
+        # MVP defaults: agentic match endpoint not yet shipped (lands in §11),
+        # constraints filter not yet shipped (lands in §10) but we advertise
+        # support so buyers test the negotiation path. Lock-file hashes are
+        # loaded dynamically from data/taxonomies/taxonomies.lock.json so the
+        # block stays in sync if the lock file is regenerated.
+        audience_capabilities=build_capability_audience_block(),
     )
 
     return card.model_dump()
