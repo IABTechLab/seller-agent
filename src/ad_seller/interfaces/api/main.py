@@ -265,11 +265,31 @@ class QuoteRequestModel(BaseModel):
 
 
 class DealBookingRequestModel(BaseModel):
-    """API request model for POST /api/v1/deals."""
+    """API request model for POST /api/v1/deals.
+
+    `audience_plan` is optional and follows the wire shape documented at
+    `docs/api/audience_plan_wire_format.md`. When present the seller
+    pre-flights it against its own `audience_capabilities` and rejects
+    with a structured `audience_plan_unsupported` error if any part
+    cannot be honored (proposal §5.7 layer 3).
+    """
 
     quote_id: str
     buyer_identity: Optional[QuoteBuyerIdentityModel] = None
     notes: Optional[str] = None
+    audience_plan: Optional[dict] = None
+
+
+class AgenticAudienceMatchRequest(BaseModel):
+    """API request model for POST /agentic-audience/match (proposal §5.7).
+
+    Accepts a single `AudienceRef` (must be `type=agentic`) and an optional
+    package_id scope. Returns a deterministic mock-quality match score and
+    quality bucket. Real model is Epic 2 / E2-2.
+    """
+
+    audience_ref: dict
+    package_id: Optional[str] = None
 
 
 # =============================================================================
@@ -2190,6 +2210,25 @@ async def book_deal(
             },
         )
 
+    # Pre-flight: if the buyer sent an audience_plan with this booking, validate
+    # it against the seller's capability block. Per proposal §5.7 layer 3, any
+    # unsupported part triggers a structured `audience_plan_unsupported` 400 so
+    # the buyer's degrade_plan_for_seller() can retry. (Bead ar-sn8f.)
+    if request.audience_plan:
+        from ...models.audience_capabilities import build_capability_audience_block
+        from ...services.audience_plan_validator import validate_audience_plan
+
+        seller_caps = build_capability_audience_block()
+        unsupported = validate_audience_plan(request.audience_plan, seller_caps)
+        if unsupported:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "audience_plan_unsupported",
+                    "unsupported": unsupported,
+                },
+            )
+
     # Generate deal
     now = datetime.utcnow()
     deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
@@ -2233,6 +2272,116 @@ async def book_deal(
     await storage.set_deal(deal_id, deal_data)
 
     return deal_data
+
+
+# =============================================================================
+# Agentic Audience Match (proposal §5.7 + §6 row 11)
+# =============================================================================
+
+
+def _agentic_match_quality(score: float) -> str:
+    """Bucket a [0, 1] match score into the spec's quality labels."""
+
+    if score >= 0.85:
+        return "STRONG"
+    if score >= 0.65:
+        return "MODERATE"
+    if score >= 0.4:
+        return "WEAK"
+    return "POOR"
+
+
+def _deterministic_score(identifier: str) -> float:
+    """sha256-derived deterministic [0, 1] mock score.
+
+    Mock-quality is fine here -- per proposal §7, the SHA256-seeded mock is
+    explicitly the load-bearing fake under every "agentic match score" we
+    display in Epic 1; the real model is Epic 2 / E2-2.
+    """
+
+    import hashlib
+
+    digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
+    # First 8 hex chars -> 32-bit unsigned int -> normalized to [0, 1].
+    return int(digest[:8], 16) / 0xFFFFFFFF
+
+
+@app.post("/agentic-audience/match", tags=["Audience"])
+async def agentic_audience_match(request: AgenticAudienceMatchRequest):
+    """Match a buyer-supplied agentic `AudienceRef` against this seller.
+
+    Per proposal §5.7 + §6 row 11. Returns a match score and quality bucket.
+    The score is mock-quality (deterministic from sha256 of `identifier`);
+    the real embedding-similarity model is Epic 2 (E2-2).
+
+    Behavior:
+    - Non-agentic refs return HTTP 400.
+    - Sellers with no top-level agentic capability (legacy / agentic
+      decommissioned) return `agentic_supported_by_seller=False`,
+      `match_quality="POOR"`, score 0.
+    - Otherwise the score is deterministic per `identifier` and bucketed
+      into `STRONG | MODERATE | WEAK | POOR`.
+    """
+
+    from ...models.audience_capabilities import build_capability_audience_block
+
+    ref = request.audience_ref or {}
+    if ref.get("type") != "agentic":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_audience_ref",
+                "message": "POST /agentic-audience/match requires audience_ref.type='agentic'",
+            },
+        )
+
+    identifier = ref.get("identifier") or ""
+    if not identifier:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_audience_ref",
+                "message": "audience_ref.identifier is required",
+            },
+        )
+
+    seller_caps = build_capability_audience_block()
+    agentic_supported = bool(seller_caps.agentic.supported)
+
+    if not agentic_supported:
+        return {
+            "audience_ref": ref,
+            "match_confidence": 0.0,
+            "match_quality": "POOR",
+            "matched_capabilities": [],
+            "agentic_supported_by_seller": False,
+            "rationale": (
+                "Seller does not advertise top-level agentic capability "
+                "(audience_capabilities.agentic.supported=false); returning POOR."
+            ),
+        }
+
+    score = _deterministic_score(identifier)
+    quality = _agentic_match_quality(score)
+
+    # `matched_capabilities` is a placeholder for the real model's
+    # per-signal-type breakdown (E2-2). For now we mirror the seller's
+    # advertised top-level agentic flag as a single capability label.
+    matched: list[str] = []
+    if quality != "POOR":
+        matched.append("agentic")
+
+    return {
+        "audience_ref": ref,
+        "match_confidence": round(score, 4),
+        "match_quality": quality,
+        "matched_capabilities": matched,
+        "agentic_supported_by_seller": True,
+        "rationale": (
+            f"Deterministic mock score {round(score, 4)} -> {quality}. "
+            "Real similarity model is tracked in Epic 2 (E2-2)."
+        ),
+    }
 
 
 @app.get("/api/v1/deals/{deal_id}", tags=["Deal Booking"])
