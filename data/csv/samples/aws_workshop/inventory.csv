@@ -1,0 +1,16 @@
+id,name,parent_id,status,sizes,ad_formats,device_types,inventory_type,content_categories,floor_price_cpm,currency,geo_targets,description
+inv-ctv-apex-series,Apex Premium Series,,ACTIVE,1920x1080,video,3|7,ctv,IAB1,45.00,USD,US,Premium scripted drama and thriller series on Apex Streaming
+inv-ctv-apex-sports-nba,Apex Live Sports - Pro Basketball,,ACTIVE,1920x1080,video,3|7,ctv,IAB17|IAB17-12,52.00,USD,US,Live pro basketball regular season and playoffs on Apex Sports
+inv-ctv-apex-sports-nhl,Apex Live Sports - National Ice League,,ACTIVE,1920x1080,video,3|7,ctv,IAB17|IAB17-18,48.00,USD,US,Live ice hockey regular season and championship on Apex Sports
+inv-ctv-crestline-reality,Crestline Reality TV,,ACTIVE,1920x1080,video,3|7,ctv,IAB1|IAB1-6,35.00,USD,US,Unscripted reality and lifestyle programming on Crestline Entertainment
+inv-lin-gnn-primetime,GNN Primetime News,,ACTIVE,1920x1080,video,3|7,linear,IAB12,28.00,USD,US,GNN primetime news programming 7-11pm ET
+inv-lin-sportspulse-live,SportsPulse Live Broadcasts,,ACTIVE,1920x1080,video,3|7,linear,IAB17,32.00,USD,US,Live sports broadcasts including basketball and hockey on SportsPulse
+inv-lin-crestline-entertainment,Crestline Entertainment Block,,ACTIVE,1920x1080,video,3|7,linear,IAB1,22.00,USD,US,Comedy and entertainment programming on Crestline linear
+inv-dig-gnn-preroll,GNN.com Pre-Roll Video,,ACTIVE,640x360|1280x720,video,1|2,digital_video,IAB12,20.00,USD,US,Pre-roll video on GNN.com news articles and video content
+inv-dig-sportspulse-midroll,SportsPulse Mid-Roll Video,,ACTIVE,640x360|1280x720,video,1|2,digital_video,IAB17,18.00,USD,US,Mid-roll in SportsPulse digital sports video content
+inv-dig-gnn-outstream,GNN.com Outstream Video,,ACTIVE,640x360,video,1|2,digital_video,IAB12,15.00,USD,US,Outstream video units on GNN.com article pages
+inv-dsp-horizon-takeover,Horizon Discovery Homepage Takeover,,ACTIVE,1920x1080|1280x720,banner,1|2|3,display,IAB15,18.00,USD,US,Full homepage takeover on Horizon Discovery properties
+inv-dsp-gnn-richmedia,GNN Rich Media Units,,ACTIVE,300x250|728x90|970x250,banner|rich_media,1|2,display,IAB12,14.00,USD,US,Rich media display on GNN.com including expandable and interactive
+inv-dsp-sportspulse-display,SportsPulse Standard Display,,ACTIVE,300x250|728x90|160x600,banner,1|2,display,IAB17,10.00,USD,US,Standard and rich media display on SportsPulse digital
+inv-aud-gnn-podcast,GNN Podcast Sponsorship,,ACTIVE,,audio,,audio,IAB12,10.00,USD,US,Host-read sponsorships on GNN podcast network
+inv-aud-apex-programmatic,Apex Companion Podcast Audio,,ACTIVE,,audio,,audio,IAB1,8.00,USD,US,Programmatic audio on Apex Streaming companion podcasts

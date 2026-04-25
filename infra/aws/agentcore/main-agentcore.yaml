@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Ad Seller System — AgentCore deployment root stack.
+  Orchestrates shared Network + Storage stacks and adds AgentCore-specific
+  security group and VPC endpoints. Does NOT deploy ECS compute.
+
+# =============================================================================
+# Parameters
+# =============================================================================
+Parameters:
+  Environment:
+    Type: String
+    Default: staging
+    AllowedValues: [staging, production]
+    Description: Deployment environment
+  DBMasterPasswordSSMParam:
+    Type: String
+    Default: /ad-seller/db-password
+    Description: SSM SecureString parameter name holding the Aurora password
+  VpcCidr:
+    Type: String
+    Default: "10.20.0.0/16"
+  PrivateRouteTableId:
+    Type: String
+    Default: ""
+    Description: >
+      Private route table ID for S3 gateway endpoint. Required because
+      network.yaml does not export this value. Pass from deploy script
+      or leave empty to skip the S3 gateway endpoint.
+
+# =============================================================================
+# Conditions
+# =============================================================================
+Conditions:
+  HasPrivateRouteTable: !Not [!Equals [!Ref PrivateRouteTableId, ""]]
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # Network stack — VPC, subnets, NAT, security groups (shared with ECS path)
+  # ---------------------------------------------------------------------------
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ../cloudformation/network.yaml
+      Parameters:
+        Environment: !Ref Environment
+        VpcCidr: !Ref VpcCidr
+      Tags:
+        - Key: Project
+          Value: ad-seller-system
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # Storage stack — Aurora Serverless v2, ElastiCache Redis (shared with ECS)
+  # ---------------------------------------------------------------------------
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: ../cloudformation/storage.yaml
+      Parameters:
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnet1Id: !GetAtt NetworkStack.Outputs.PrivateSubnet1Id
+        PrivateSubnet2Id: !GetAtt NetworkStack.Outputs.PrivateSubnet2Id
+        DatabaseSecurityGroupId: !GetAtt NetworkStack.Outputs.DatabaseSecurityGroupId
+        RedisSecurityGroupId: !GetAtt NetworkStack.Outputs.RedisSecurityGroupId
+        DBMasterPasswordSSMParam: !Ref DBMasterPasswordSSMParam
+      Tags:
+        - Key: Project
+          Value: ad-seller-system
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # AgentCore network — security group, ingress rules, VPC endpoints
+  # ---------------------------------------------------------------------------
+  AgentCoreNetworkStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkStack
+      - StorageStack
+    Properties:
+      TemplateURL: ./agentcore-network.yaml
+      Parameters:
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnet1Id: !GetAtt NetworkStack.Outputs.PrivateSubnet1Id
+        PrivateSubnet2Id: !GetAtt NetworkStack.Outputs.PrivateSubnet2Id
+        PrivateRouteTableId: !If [HasPrivateRouteTable, !Ref PrivateRouteTableId, ""]
+        DatabaseSecurityGroupId: !GetAtt NetworkStack.Outputs.DatabaseSecurityGroupId
+        RedisSecurityGroupId: !GetAtt NetworkStack.Outputs.RedisSecurityGroupId
+      Tags:
+        - Key: Project
+          Value: ad-seller-system
+        - Key: Environment
+          Value: !Ref Environment
+
+# =============================================================================
+# Outputs
+# =============================================================================
+Outputs:
+  AuroraEndpoint:
+    Description: Aurora PostgreSQL writer endpoint
+    Value: !GetAtt StorageStack.Outputs.AuroraClusterEndpoint
+
+  AuroraPort:
+    Description: Aurora cluster port
+    Value: !GetAtt StorageStack.Outputs.AuroraClusterPort
+
+  RedisEndpoint:
+    Description: Redis primary endpoint
+    Value: !GetAtt StorageStack.Outputs.RedisEndpoint
+
+  RedisPort:
+    Description: Redis primary port
+    Value: !GetAtt StorageStack.Outputs.RedisPort
+
+  AgentCoreSecurityGroupId:
+    Description: Security group for AgentCore runtime ENIs
+    Value: !GetAtt AgentCoreNetworkStack.Outputs.AgentCoreSecurityGroupId
+
+  PrivateSubnet1Id:
+    Description: Private subnet 1 for AgentCore VPC config
+    Value: !GetAtt NetworkStack.Outputs.PrivateSubnet1Id
+
+  PrivateSubnet2Id:
+    Description: Private subnet 2 for AgentCore VPC config
+    Value: !GetAtt NetworkStack.Outputs.PrivateSubnet2Id
+
+  VpcId:
+    Description: VPC ID
+    Value: !GetAtt NetworkStack.Outputs.VpcId

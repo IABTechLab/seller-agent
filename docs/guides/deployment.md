@@ -173,3 +173,24 @@ aws ecr get-login-password --region us-east-1 | docker login --username AWS --pa
 docker tag ad-seller:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/ad-seller:latest
 docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/ad-seller:latest
 ```
+
+---
+
+## Amazon Bedrock AgentCore
+
+AgentCore provides a managed runtime for the seller agent — no Docker, ECS, or CloudFormation needed. A single CLI command builds and deploys the container.
+
+```bash
+bash infra/aws/agentcore/deploy.sh \
+  --mode http \
+  --name my-seller-agent \
+  --profile my-aws-profile \
+  --test
+```
+
+AgentCore handles container orchestration, IAM roles, ECR, and scaling. The runtime supports two modes:
+
+- **crew**: CrewAI PublisherCrew with Bedrock Converse LLM — full agentic behavior
+- **chat**: Existing ChatInterface keyword router — fast deterministic responses
+
+See the [AgentCore Deployment Guide](agentcore-deployment.md) for full details, architecture diagrams, environment variables, and troubleshooting.

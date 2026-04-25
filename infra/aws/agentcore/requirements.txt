@@ -1,0 +1,20 @@
+# Requirements for AgentCore CLI deployment path.
+# Used by: agentcore configure --requirements-file requirements-agentcore.txt
+#
+# Lists bedrock-agentcore SDK + all deps from pyproject.toml explicitly
+# (can't use -e . because the CLI Dockerfile installs requirements before copying source)
+bedrock-agentcore
+crewai[anthropic]>=1.14.0
+crewai-tools[mcp]>=1.14.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+httpx>=0.27.0
+mcp>=1.0.0
+python-dotenv>=1.0.0
+typer>=0.12.0
+rich>=13.0.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
+aiosqlite>=0.20.0
+asyncpg>=0.30.0
+redis>=5.0.0

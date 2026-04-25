@@ -66,6 +66,8 @@ Part of the IAB Tech Lab Agent Ecosystem --- see also the [Buyer Agent](https://
 ### Publisher Guide
 
 - [Publisher Setup](guides/publisher-setup.md) --- setup checklist (or use the wizard)
+- [Deployment](guides/deployment.md) --- Docker, CloudFormation, Terraform, and AgentCore
+- [AgentCore Deployment](guides/agentcore-deployment.md) --- Bedrock AgentCore managed runtime
 - [Configuration](guides/configuration.md) --- all environment variables
 - [Inventory Sync](guides/inventory-sync.md) --- GAM, FreeWheel, scheduled sync, overrides
 - [Media Kit](guides/media-kit.md) --- packages, tiers, featured items
@@ -76,6 +78,7 @@ Part of the IAB Tech Lab Agent Ecosystem --- see also the [Buyer Agent](https://
 ### Architecture
 
 - [System Overview](architecture/overview.md) --- components and how they connect
+- [AgentCore Architecture](architecture/agentcore.md) --- Bedrock AgentCore deployment topology and data flow
 - [Data Flow](architecture/data-flow.md) --- sequence diagrams for key workflows
 - [Storage](architecture/storage.md) --- backend interface and key conventions
 

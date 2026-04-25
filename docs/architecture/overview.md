@@ -168,6 +168,17 @@ graph TB
 
 The seller agent is one side of the IAB Tech Lab Agent Ecosystem. See the [Buyer Agent architecture](https://iabtechlab.github.io/buyer-agent/architecture/overview/) for the other side.
 
+### Deployment Options
+
+The seller agent supports two deployment targets:
+
+| Target | Infrastructure | LLM Provider | Guide |
+|--------|---------------|-------------|-------|
+| **ECS/Docker** | CloudFormation or Terraform, Aurora + Redis | Anthropic API (direct) | [Deployment](../guides/deployment.md) |
+| **AgentCore** | Managed by Bedrock AgentCore, SQLite in-memory | Bedrock Converse (native) | [AgentCore Deployment](../guides/agentcore-deployment.md) |
+
+Both targets use the same business logic, pricing engine, and deal creation code. The AgentCore deployment adds `interfaces/agentcore/` and `patches/` without modifying community code. See [AgentCore Architecture](agentcore.md) for the component map and data flow.
+
 ```mermaid
 graph LR
     subgraph "Buyer Side"

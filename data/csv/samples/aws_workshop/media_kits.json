@@ -1,0 +1,41 @@
+[
+  {
+    "id": "PKG-APEX-SPORTS",
+    "name": "Apex Premium Sports Bundle",
+    "description": "Pro Basketball + National Ice League CTV inventory on Apex Sports — premium live sports audiences",
+    "products": ["inv-ctv-apex-sports-nba", "inv-ctv-apex-sports-nhl", "inv-lin-sportspulse-live"],
+    "cpm_range": {"min": 42, "max": 55},
+    "target_audience": "Sports enthusiasts 18-54, cord-cutters, premium CTV viewers"
+  },
+  {
+    "id": "PKG-GNN-NEWS",
+    "name": "GNN News Reach Package",
+    "description": "GNN linear + digital video + display — cross-platform news audience reach",
+    "products": ["inv-lin-gnn-primetime", "inv-dig-gnn-preroll", "inv-dig-gnn-outstream", "inv-dsp-gnn-richmedia"],
+    "cpm_range": {"min": 18, "max": 28},
+    "target_audience": "News-engaged adults 25-64, high-income professionals"
+  },
+  {
+    "id": "PKG-ENT-UPFRONT",
+    "name": "Entertainment Upfront Package",
+    "description": "Apex premium series + Crestline entertainment — upfront commitment pricing",
+    "products": ["inv-ctv-apex-series", "inv-ctv-crestline-reality", "inv-lin-crestline-entertainment"],
+    "cpm_range": {"min": 35, "max": 48},
+    "target_audience": "Entertainment seekers 18-49, streaming-first households"
+  },
+  {
+    "id": "PKG-CROSS-PLATFORM",
+    "name": "Cross-Platform Reach",
+    "description": "All channels combined — maximum reach with volume discount pricing",
+    "products": [
+      "inv-ctv-apex-series", "inv-ctv-apex-sports-nba",
+      "inv-lin-gnn-primetime", "inv-lin-crestline-entertainment",
+      "inv-dig-gnn-preroll", "inv-dig-sportspulse-midroll",
+      "inv-dsp-horizon-takeover", "inv-dsp-gnn-richmedia",
+      "inv-aud-gnn-podcast", "inv-aud-apex-programmatic"
+    ],
+    "cpm_range": {"min": 15, "max": 45},
+    "target_audience": "Broad reach, all demographics, frequency-capped cross-platform",
+    "volume_discount": "10% additional discount on orders over $500K"
+  }
+]

@@ -1,0 +1,7 @@
+id,name,description,size,segment_type,status,iab_audience_taxonomy_id
+aud-sports-enthusiasts,Sports Enthusiasts 18-54,Users who frequently watch live sports and sports highlights,12500000,FIRST_PARTY,ACTIVE,6.1.2
+aud-cord-cutters,Cord Cutters 18-34,Young adults who stream but don't have cable subscriptions,8200000,FIRST_PARTY,ACTIVE,6.2.1
+aud-news-engaged,News-Engaged Adults 25-64,Users who consume news content daily across platforms,6100000,FIRST_PARTY,ACTIVE,6.3.1
+aud-entertainment-seekers,Entertainment Seekers 18-49,Streaming-first households consuming drama and reality content,5800000,FIRST_PARTY,ACTIVE,6.4.1
+aud-high-income-pros,High-Income Professionals,Household income $100K+ professionals,3200000,FIRST_PARTY,ACTIVE,6.5.1
+aud-auto-intenders,Auto Intenders,In-market for vehicle purchase within 6 months,2100000,THIRD_PARTY,ACTIVE,6.6.1

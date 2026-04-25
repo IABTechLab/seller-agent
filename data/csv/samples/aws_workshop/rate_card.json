@@ -1,0 +1,30 @@
+{
+  "publisher": "AWS Workshop Publisher",
+  "effective_date": "2026-01-01",
+  "currency": "USD",
+  "tiers": {
+    "public": {
+      "discount_pct": 0,
+      "description": "Base CPM, no authentication required"
+    },
+    "registered_buyer": {
+      "discount_pct": 5,
+      "description": "Registered buyer, 5% discount"
+    },
+    "preferred_agency": {
+      "discount_pct": 12,
+      "description": "Preferred agency partner, 12% discount"
+    },
+    "strategic_advertiser": {
+      "discount_pct": 15,
+      "description": "Strategic advertiser, 15% discount"
+    }
+  },
+  "base_rates": {
+    "ctv": 45.00,
+    "linear": 25.00,
+    "digital_video": 18.00,
+    "display": 12.00,
+    "audio": 8.00
+  }
+}

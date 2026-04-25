@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  AgentCore-specific security group and VPC endpoints.
+  Adds ingress rules to existing Aurora/Redis security groups
+  without modifying network.yaml.
+
+# =============================================================================
+# Parameters
+# =============================================================================
+Parameters:
+  Environment:
+    Type: String
+    Default: staging
+    AllowedValues: [staging, production]
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to deploy into
+  PrivateSubnet1Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: First private subnet for VPC endpoints
+  PrivateSubnet2Id:
+    Type: AWS::EC2::Subnet::Id
+    Description: Second private subnet for VPC endpoints
+  PrivateRouteTableId:
+    Type: String
+    Default: ""
+    Description: Private route table for S3 gateway endpoint (optional)
+  DatabaseSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Existing Aurora security group from network stack
+  RedisSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Existing Redis security group from network stack
+
+# =============================================================================
+# Conditions
+# =============================================================================
+Conditions:
+  HasPrivateRouteTable: !Not [!Equals [!Ref PrivateRouteTableId, ""]]
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # Security group for AgentCore container ENIs (CUSTOMER_VPC mode)
+  # ---------------------------------------------------------------------------
+  AgentCoreSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for AgentCore runtime ENIs in CUSTOMER_VPC mode
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          DestinationSecurityGroupId: !Ref DatabaseSecurityGroupId
+          Description: Aurora PostgreSQL
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          DestinationSecurityGroupId: !Ref RedisSecurityGroupId
+          Description: ElastiCache Redis
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+          Description: HTTPS for VPC endpoints and AWS APIs
+      Tags:
+        - Key: Name
+          Value: !Sub "ad-seller-${Environment}-agentcore-sg"
+        - Key: Project
+          Value: ad-seller-system
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # Ingress rules on EXISTING security groups (no modification to network.yaml)
+  # ---------------------------------------------------------------------------
+  AuroraIngressFromAgentCore:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref AgentCoreSecurityGroup
+      Description: Allow AgentCore ENIs to reach Aurora
+
+  RedisIngressFromAgentCore:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RedisSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 6379
+      ToPort: 6379
+      SourceSecurityGroupId: !Ref AgentCoreSecurityGroup
+      Description: Allow AgentCore ENIs to reach Redis
+
+  # ---------------------------------------------------------------------------
+  # VPC Endpoints — required for AgentCore container image pulls and logging
+  # ---------------------------------------------------------------------------
+  ECRDkrEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.dkr"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1Id
+        - !Ref PrivateSubnet2Id
+      SecurityGroupIds:
+        - !Ref AgentCoreSecurityGroup
+      PrivateDnsEnabled: true
+
+  ECRApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.api"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1Id
+        - !Ref PrivateSubnet2Id
+      SecurityGroupIds:
+        - !Ref AgentCoreSecurityGroup
+      PrivateDnsEnabled: true
+
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: HasPrivateRouteTable
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTableId
+
+  CloudWatchLogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1Id
+        - !Ref PrivateSubnet2Id
+      SecurityGroupIds:
+        - !Ref AgentCoreSecurityGroup
+      PrivateDnsEnabled: true
+
+# =============================================================================
+# Outputs
+# =============================================================================
+Outputs:
+  AgentCoreSecurityGroupId:
+    Description: AgentCore runtime ENI security group
+    Value: !Ref AgentCoreSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentCoreSecurityGroupId"
