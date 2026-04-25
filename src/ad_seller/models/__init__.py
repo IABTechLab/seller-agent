@@ -15,6 +15,14 @@ from .agent_registry import (
     RegistrySource,
     TrustStatus,
 )
+from .audience_capabilities import (
+    AgenticCapabilities,
+    AudienceCapabilities,
+)
+from .audience_ref import (
+    AudienceRef,
+    ComplianceContext,
+)
 from .api_key import (
     ApiKeyCreateRequest,
     ApiKeyCreateResponse,
@@ -117,6 +125,7 @@ from .linear_tv import (
     SupplyPoolEntry,
 )
 from .media_kit import (
+    AudienceCapabilityPublicSummary,
     AuthenticatedPackageView,
     Package,
     PackageLayer,
@@ -246,6 +255,12 @@ __all__ = [
     "PackagePlacement",
     "PublicPackageView",
     "AuthenticatedPackageView",
+    "AudienceCapabilityPublicSummary",
+    # Audience capabilities (proposal §5.7)
+    "AudienceCapabilities",
+    "AgenticCapabilities",
+    "AudienceRef",
+    "ComplianceContext",
     # Negotiation
     "NegotiationAction",
     "NegotiationHistory",

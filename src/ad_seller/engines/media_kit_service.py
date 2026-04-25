@@ -21,6 +21,7 @@ from ..models.media_kit import (
     PackagePlacement,
     PackageStatus,
     PublicPackageView,
+    _public_summary_from_capabilities,
 )
 from ..storage.base import StorageBackend
 from .pricing_rules_engine import PricingRulesEngine
@@ -301,6 +302,11 @@ class MediaKitService:
             device_types=package.device_types,
             cat=package.cat,
             cattax=package.cattax,
+            # Capability metadata only -- versions + supports flags. Segment
+            # lists stay behind the authenticated tier per proposal §5.7.
+            audience_capabilities=_public_summary_from_capabilities(
+                package.audience_capabilities
+            ),
             geo_targets=package.geo_targets,
             tags=package.tags,
             price_range=price_range,
@@ -339,6 +345,9 @@ class MediaKitService:
             device_types=package.device_types,
             cat=package.cat,
             cattax=package.cattax,
+            # Authenticated callers see the full typed capability object
+            # including segment lists.
+            audience_capabilities=package.audience_capabilities,
             geo_targets=package.geo_targets,
             tags=package.tags,
             price_range=price_range,
@@ -348,7 +357,6 @@ class MediaKitService:
             floor_price=package.floor_price,
             currency=package.currency,
             placements=package.placements,
-            audience_segment_ids=package.audience_segment_ids,
             negotiation_enabled=tier_config.negotiation_enabled,
             volume_discounts_available=tier_config.volume_discounts_enabled,
         )

@@ -171,13 +171,28 @@ class DiscoveryRequest(BaseModel):
 
 
 class PackageCreateRequest(BaseModel):
-    """Request to create a curated package."""
+    """Request to create a curated package.
+
+    Accepts the new typed `audience_capabilities` shape (proposal §5.7).
+    Legacy callers may still send `audience_segment_ids: list[str]` as
+    flat input -- the field is retained as deprecated and will be folded
+    into `audience_capabilities.standard_segment_ids` (with implicit
+    AT 1.1) by `create_package`.
+    """
 
     name: str
     description: Optional[str] = None
     product_ids: list[str] = []
     cat: list[str] = []
     cattax: int = 2
+    # New typed shape. Optional so legacy callers that only send
+    # audience_segment_ids do not break. When None and audience_segment_ids
+    # is present, create_package builds the capabilities dict from the
+    # legacy field.
+    audience_capabilities: Optional[dict] = None
+    # Deprecated; retained for backward compat. Folded into
+    # audience_capabilities.standard_segment_ids when audience_capabilities
+    # is None.
     audience_segment_ids: list[str] = []
     device_types: list[int] = []
     ad_formats: list[str] = []
@@ -1337,25 +1352,35 @@ async def create_package(request: PackageCreateRequest):
                 )
             )
 
-    package = Package(
-        package_id=f"pkg-{_uuid.uuid4().hex[:8]}",
-        name=request.name,
-        description=request.description,
-        layer=PackageLayer.CURATED,
-        status=PackageStatus.ACTIVE,
-        placements=placements,
-        cat=request.cat,
-        cattax=request.cattax,
-        audience_segment_ids=request.audience_segment_ids,
-        device_types=request.device_types,
-        ad_formats=request.ad_formats,
-        geo_targets=request.geo_targets,
-        base_price=request.base_price,
-        floor_price=request.floor_price,
-        tags=request.tags,
-        is_featured=request.is_featured,
-        seasonal_label=request.seasonal_label,
-    )
+    # Build kwargs for Package -- prefer the new typed audience_capabilities
+    # when supplied; otherwise pass the legacy audience_segment_ids and let
+    # the Package's model_validator(mode='before') shim migrate it.
+    package_kwargs: dict[str, Any] = {
+        "package_id": f"pkg-{_uuid.uuid4().hex[:8]}",
+        "name": request.name,
+        "description": request.description,
+        "layer": PackageLayer.CURATED,
+        "status": PackageStatus.ACTIVE,
+        "placements": placements,
+        "cat": request.cat,
+        "cattax": request.cattax,
+        "device_types": request.device_types,
+        "ad_formats": request.ad_formats,
+        "geo_targets": request.geo_targets,
+        "base_price": request.base_price,
+        "floor_price": request.floor_price,
+        "tags": request.tags,
+        "is_featured": request.is_featured,
+        "seasonal_label": request.seasonal_label,
+    }
+    if request.audience_capabilities is not None:
+        package_kwargs["audience_capabilities"] = request.audience_capabilities
+    elif request.audience_segment_ids:
+        # Legacy path: forward the flat list, shim will fold it into
+        # audience_capabilities at validation time.
+        package_kwargs["audience_segment_ids"] = request.audience_segment_ids
+
+    package = Package(**package_kwargs)
 
     service = await _get_media_kit_service()
     created = await service.create_package(package)
