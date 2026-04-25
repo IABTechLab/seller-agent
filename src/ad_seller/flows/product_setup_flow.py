@@ -84,7 +84,11 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         AdServerClient.list_inventory() and creates Layer 1 synced packages.
         Otherwise, creates mock synced packages for development.
         """
-        if not self._settings.gam_network_code and not self._settings.freewheel_sh_mcp_url:
+        if (
+            not self._settings.gam_network_code
+            and not self._settings.freewheel_sh_mcp_url
+            and self._settings.ad_server_type not in ("csv",)
+        ):
             self.state.warnings.append("No ad server configured, creating mock synced packages")
             await self._create_mock_synced_packages()
             return
@@ -103,6 +107,27 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             for item in items:
                 inv_type = self._classify_inventory_type(item)
                 grouped.setdefault(inv_type, []).append(item)
+
+            # Also create ProductDefinition entries from CSV items
+            # so the /products REST API endpoint returns real data.
+            for item in items:
+                raw = getattr(item, "raw", {}) or {}
+                floor = raw.get("floor_price_cpm", 10.0)
+                inv_type = self._classify_inventory_type(item)
+                deal_types = self._infer_deal_types(inv_type)
+                product_def = ProductDefinition(
+                    product_id=item.id,
+                    name=item.name,
+                    description=raw.get("description", ""),
+                    inventory_type=inv_type,
+                    supported_deal_types=deal_types,
+                    supported_pricing_models=[PricingModel.CPM],
+                    base_cpm=floor,
+                    floor_cpm=round(floor * 0.85, 2),
+                )
+                self.state.products[product_def.product_id] = product_def
+
+            logger.info("Created %d products from ad server inventory", len(self.state.products))
 
             for inv_type, inv_items in grouped.items():
                 ad_formats = self._classify_ad_formats_from_type(inv_type)
@@ -298,6 +323,18 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         return "display"
 
     @staticmethod
+    def _infer_deal_types(inv_type: str) -> list[DealType]:
+        """Infer supported deal types from inventory type."""
+        return {
+            "display": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "video": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+            "ctv": [DealType.PROGRAMMATIC_GUARANTEED],
+            "mobile_app": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "native": [DealType.PREFERRED_DEAL],
+            "linear_tv": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+        }.get(inv_type, [DealType.PREFERRED_DEAL])
+
+    @staticmethod
     def _classify_ad_formats_from_type(inv_type: str) -> list[str]:
         """Map inventory type to OpenRTB ad format names."""
         return {
@@ -335,7 +372,18 @@ class ProductSetupFlow(Flow[ProductSetupState]):
 
     @listen(sync_from_ad_server)
     async def create_default_products(self) -> None:
-        """Create default products for common inventory types."""
+        """Create default products for common inventory types.
+
+        Skipped when products were already loaded from an ad server
+        (GAM, FreeWheel, or CSV adapter) during sync_from_ad_server.
+        """
+        if self.state.synced_segments:
+            logger.info(
+                "Skipping default products — %d synced segments already loaded from ad server",
+                len(self.state.synced_segments),
+            )
+            return
+
         default_products = [
             {
                 "name": "Premium Display - Homepage",

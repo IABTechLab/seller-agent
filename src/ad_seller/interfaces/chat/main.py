@@ -447,13 +447,22 @@ class ChatInterface:
 
         # Start a new negotiation if none active
         if history is None:
-            # Use the first discussed product, or a default
+            # Use the first discussed product, or default to first CTV product
             product_ids = (
                 self._current_session.negotiation.product_ids_discussed
                 if self._current_session
                 else []
             )
-            product_id = product_ids[0] if product_ids else "display"
+            if product_ids:
+                product_id = product_ids[0]
+            else:
+                # Pick the first CTV product if available, otherwise first product
+                ctv_id = next(
+                    (pid for pid, p in self._products.items()
+                     if getattr(p, "inventory_type", "") == "ctv"),
+                    None,
+                )
+                product_id = ctv_id or next(iter(self._products), "display")
 
             # Get product price info
             product = self._products.get(product_id)
