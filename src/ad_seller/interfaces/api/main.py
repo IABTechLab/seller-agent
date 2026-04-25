@@ -20,6 +20,25 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# Dedicated logger for booking-time forensic events. Per proposal §5.1 Step 2
+# / §6 row 14b, the seller logs the `audience_plan_id` hash at the moment a
+# deal is minted carrying an audience plan. The buyer logs the same hash on
+# its side via `ad_buyer.audience.booking`. Matching log entries are the
+# forensic anchor for any future dispute about what was actually frozen.
+booking_logger = logging.getLogger("ad_seller.audience.booking")
+
+# Wire-format media types accepted on `audience_plan`-bearing requests per
+# proposal §5.6 + wire-format spec §8 (docs/api/audience_plan_wire_format.md).
+# FastAPI's default body parsing reads JSON regardless of `Content-Type`, so
+# both names parse cleanly without custom dependencies; the constants are
+# kept here for documentation, header-echo on responses, and explicit test
+# coverage of the dual-name acceptance contract.
+_UCP_CONTENT_TYPE = "application/vnd.ucp.embedding+json; v=1"
+_AGENTIC_AUDIENCES_CONTENT_TYPE = "application/vnd.iab.agentic-audiences+json; v=1"
+_AUDIENCE_PLAN_CONTENT_TYPES = frozenset(
+    {_UCP_CONTENT_TYPE, _AGENTIC_AUDIENCES_CONTENT_TYPE}
+)
+
 app = FastAPI(
     title="Ad Seller System API",
     description=(
@@ -2166,6 +2185,29 @@ async def book_deal(
 
     The seller validates the quote, generates a Deal ID, and returns
     confirmed terms. This is the commit point — the quote becomes bound.
+
+    **Wire format (proposal §5.6 + §6 row 14b):** the seller accepts both
+    audience-plan content types --
+    ``application/vnd.ucp.embedding+json; v=1`` (legacy UCP carrier) and
+    ``application/vnd.iab.agentic-audiences+json; v=1`` (new IAB Agentic
+    Audiences alias). FastAPI's body parsing is content-type-permissive, so
+    both names round-trip the same Pydantic model with no custom dependency
+    needed; the dual acceptance is exercised by
+    ``tests/unit/test_deal_booking_snapshot.py``.
+
+    **Snapshot (proposal §5.1 Step 2 + wire-format §6.5):** when the request
+    carries an ``audience_plan``, the seller persists it verbatim as
+    ``audience_plan_snapshot`` against the deal record and returns the
+    snapshot plus a per-role ``audience_match_summary`` so the buyer can
+    verify the booking. The snapshot is authoritative for the lifetime of
+    the deal -- if seller capabilities change mid-flight, the snapshot is
+    honored (see ``services/fulfillment.honor_audience_plan_snapshot``).
+
+    **Forensic logging (proposal §5.1 Step 2):** the
+    ``audience_plan_id`` hash is logged at INFO via
+    ``ad_seller.audience.booking``. The buyer logs the same hash on its
+    side; matching entries are the cross-system anchor for dispute
+    resolution.
     """
     import uuid
     from datetime import timedelta
@@ -2263,12 +2305,35 @@ async def book_deal(
 
     deal_data = deal.model_dump(mode="json")
 
+    # Freeze the audience plan onto the deal record + compute per-role match
+    # summary (proposal §5.1 Step 2 + wire-format §6.5). Both fields are added
+    # only when the buyer supplied an audience_plan; legacy bookings remain
+    # byte-for-byte identical.
+    if request.audience_plan:
+        plan_snapshot = dict(request.audience_plan)
+        deal_data["audience_plan_snapshot"] = plan_snapshot
+        deal_data["audience_match_summary"] = _build_audience_match_summary(
+            plan_snapshot
+        )
+
+        # Forensic anchor hash log (proposal §5.1 Step 2 / bead 14b). Buyer
+        # logs the same hash on its side via `ad_buyer.audience.booking`.
+        plan_id = plan_snapshot.get("audience_plan_id") or ""
+        booking_logger.info(
+            "deal_booking deal_id=%s audience_plan_id=%s quote_id=%s",
+            deal_id,
+            plan_id,
+            request.quote_id,
+        )
+
     # Update quote status to "booked" and link deal_id
     quote["status"] = QuoteStatus.BOOKED.value
     quote["deal_id"] = deal_id
     await storage.set_quote(request.quote_id, quote, ttl=86400)
 
-    # Store the deal in deal storage (coexists with proposal-based deals)
+    # Store the deal in deal storage (coexists with proposal-based deals).
+    # The snapshot fields land on the persisted record so
+    # `honor_audience_plan_snapshot()` can read them at fulfillment time.
     await storage.set_deal(deal_id, deal_data)
 
     return deal_data
@@ -2304,6 +2369,68 @@ def _deterministic_score(identifier: str) -> float:
     digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
     # First 8 hex chars -> 32-bit unsigned int -> normalized to [0, 1].
     return int(digest[:8], 16) / 0xFFFFFFFF
+
+
+# Wire-format §6.5 match-bucket labels. Note these differ from the
+# `_agentic_match_quality` labels used by `/agentic-audience/match`
+# (which uses POOR for the lowest bucket); the booking response uses the
+# `BookingResponse.MatchEntry` enum from the wire-format spec, which has
+# `NONE` instead of `POOR`. Keeping the two scales separate avoids breaking
+# the §11 endpoint contract while satisfying §6.5 on the booking surface.
+def _booking_match_label(score: float) -> str:
+    """Wire-format §6.5 match-bucket label for a [0, 1] score."""
+
+    if score >= 0.85:
+        return "STRONG"
+    if score >= 0.65:
+        return "MODERATE"
+    if score >= 0.4:
+        return "WEAK"
+    return "NONE"
+
+
+def _score_for_ref(ref: dict[str, Any]) -> float:
+    """Deterministic mock match score for a single ref.
+
+    Standard / contextual refs score against their `identifier`; agentic
+    refs score against their embedding URI. Score range [0, 1]. Real
+    similarity scoring is Epic 2 / E2-2; for Epic 1 the deterministic mock
+    matches the rest of the seller's scoring surface.
+    """
+
+    identifier = ref.get("identifier") or ""
+    return _deterministic_score(identifier)
+
+
+def _match_entry_for_ref(ref: dict[str, Any]) -> dict[str, Any]:
+    """Build one wire-format §6.5 `MatchEntry` for a single ref."""
+
+    score = _score_for_ref(ref)
+    return {"match": _booking_match_label(score), "score": round(score, 4)}
+
+
+def _build_audience_match_summary(plan: dict[str, Any]) -> dict[str, Any]:
+    """Assemble the wire-format §6.5 `audience_match_summary` for a plan.
+
+    Returns the four-role shape (`primary`, `constraints`, `extensions`,
+    `exclusions`) -- per the schema, empty arrays MAY be omitted but
+    receivers MUST treat absence as empty, so we always emit them so the
+    buyer's typed parser has stable structure.
+    """
+
+    summary: dict[str, Any] = {
+        "primary": _match_entry_for_ref(plan.get("primary") or {}),
+        "constraints": [
+            _match_entry_for_ref(r) for r in (plan.get("constraints") or [])
+        ],
+        "extensions": [
+            _match_entry_for_ref(r) for r in (plan.get("extensions") or [])
+        ],
+        "exclusions": [
+            _match_entry_for_ref(r) for r in (plan.get("exclusions") or [])
+        ],
+    }
+    return summary
 
 
 @app.post("/agentic-audience/match", tags=["Audience"])
