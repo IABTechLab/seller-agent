@@ -211,6 +211,19 @@ class DynamicPackageRequest(BaseModel):
     product_ids: list[str]
 
 
+class AudienceFilterModel(BaseModel):
+    """Optional audience filter sub-object on `POST /media-kit/search`.
+
+    Mirrors the query-param triple on `GET /packages`: type + id + version.
+    When present, search results are restricted to packages whose
+    `audience_capabilities` match. See proposal §5.7 + bead ar-2wxa.
+    """
+
+    audience_type: Optional[str] = None
+    audience_id: Optional[str] = None
+    taxonomy_version: Optional[str] = None
+
+
 class MediaKitSearchRequest(BaseModel):
     """Request to search packages."""
 
@@ -218,6 +231,7 @@ class MediaKitSearchRequest(BaseModel):
     buyer_tier: str = "public"
     agency_id: Optional[str] = None
     advertiser_id: Optional[str] = None
+    audience_filter: Optional[AudienceFilterModel] = None
 
 
 class CounterOfferRequest(BaseModel):
@@ -1187,6 +1201,60 @@ async def _get_media_kit_service():
     return MediaKitService(storage, pricing)
 
 
+_VALID_AUDIENCE_TYPES = {"standard", "contextual", "agentic"}
+
+
+def _build_audience_filter(
+    audience_type: Optional[str],
+    audience_id: Optional[str],
+    audience_taxonomy_version: Optional[str],
+):
+    """Convert raw query params to an `AudienceFilter`, or None if all unset.
+
+    Validates `audience_type` and the type/id pairing rules:
+
+    - Returns None when all three params are unset (skip filtering).
+    - 400 when `audience_type` is set but unrecognized.
+    - 400 when `audience_id` is set without `audience_type` (no corpus to
+      search in).
+
+    Per bead ar-2wxa scope: agentic per-segment filtering is §11's
+    territory; agentic+id collapses to "package supports agentic" at this
+    stage and the filter accepts the param without error so existing buyer
+    code doesn't have to special-case the type.
+    """
+
+    from ...engines.media_kit_service import AudienceFilter
+
+    if (
+        audience_type is None
+        and audience_id is None
+        and audience_taxonomy_version is None
+    ):
+        return None
+
+    if audience_type is not None and audience_type not in _VALID_AUDIENCE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid audience_type: {audience_type!r}. Must be one of "
+                f"{sorted(_VALID_AUDIENCE_TYPES)}."
+            ),
+        )
+
+    if audience_id is not None and audience_type is None:
+        raise HTTPException(
+            status_code=400,
+            detail="audience_id requires audience_type to disambiguate corpus.",
+        )
+
+    return AudienceFilter(
+        audience_type=audience_type,
+        audience_id=audience_id,
+        taxonomy_version=audience_taxonomy_version,
+    )
+
+
 # =============================================================================
 # Media Kit Endpoints (Public — no auth required)
 # =============================================================================
@@ -1211,8 +1279,15 @@ async def media_kit_overview():
 async def list_media_kit_packages(
     layer: Optional[str] = None,
     featured_only: bool = False,
+    audience_type: Optional[str] = None,
+    audience_id: Optional[str] = None,
+    audience_taxonomy_version: Optional[str] = None,
 ):
-    """List packages with public view (price ranges, no exact pricing)."""
+    """List packages with public view (price ranges, no exact pricing).
+
+    Accepts the same audience-filter triple as `GET /packages` so public
+    discovery callers can narrow by audience type without authenticating.
+    """
     from ...models.media_kit import PackageLayer
 
     pkg_layer = None
@@ -1222,8 +1297,16 @@ async def list_media_kit_packages(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid layer: {layer}")
 
+    audience_filter = _build_audience_filter(
+        audience_type, audience_id, audience_taxonomy_version
+    )
+
     service = await _get_media_kit_service()
-    packages = await service.list_packages_public(layer=pkg_layer, featured_only=featured_only)
+    packages = await service.list_packages_public(
+        layer=pkg_layer,
+        featured_only=featured_only,
+        audience_filter=audience_filter,
+    )
     return {"packages": [p.model_dump() for p in packages]}
 
 
@@ -1242,7 +1325,17 @@ async def search_media_kit(
     request: MediaKitSearchRequest,
     api_key_record=Depends(_get_optional_api_key_record),
 ):
-    """Search packages by keyword. Authenticated buyers get richer results."""
+    """Search packages by keyword. Authenticated buyers get richer results.
+
+    Per proposal §5.7 + bead ar-2wxa, the scoring corpus now includes
+    `audience_capabilities.standard_segment_ids` +
+    `audience_capabilities.contextual_segment_ids` alongside keywords/tags
+    -- a query mentioning a known IAB segment ID ranks packages that
+    declare it higher than packages that don't.
+
+    The optional `audience_filter` body field restricts results to packages
+    that match its type/id/version triple, parallel to `GET /packages`.
+    """
     context = None
     if api_key_record is not None or request.buyer_tier != "public":
         context = _build_buyer_context(
@@ -1252,8 +1345,18 @@ async def search_media_kit(
             api_key_record=api_key_record,
         )
 
+    audience_filter = None
+    if request.audience_filter is not None:
+        audience_filter = _build_audience_filter(
+            request.audience_filter.audience_type,
+            request.audience_filter.audience_id,
+            request.audience_filter.taxonomy_version,
+        )
+
     service = await _get_media_kit_service()
-    results = await service.search_packages(request.query, buyer_context=context)
+    results = await service.search_packages(
+        request.query, buyer_context=context, audience_filter=audience_filter
+    )
     return {"results": [r.model_dump() for r in results]}
 
 
@@ -1268,9 +1371,25 @@ async def list_packages(
     agency_id: Optional[str] = None,
     advertiser_id: Optional[str] = None,
     layer: Optional[str] = None,
+    audience_type: Optional[str] = None,
+    audience_id: Optional[str] = None,
+    audience_taxonomy_version: Optional[str] = None,
     api_key_record=Depends(_get_optional_api_key_record),
 ):
-    """List packages with tier-gated view."""
+    """List packages with tier-gated view.
+
+    Audience filter (proposal §5.7 + bead ar-2wxa):
+
+    - `audience_type`: one of `standard` | `contextual` | `agentic`.
+    - `audience_id`: taxonomy ID for standard/contextual; URI for agentic.
+      Requires `audience_type` to disambiguate which capability list to
+      search.
+    - `audience_taxonomy_version`: optional version constraint; when unset
+      the seller's lock-file version is authoritative.
+
+    Empty results return `[]`, not 404 -- matches the existing behavior for
+    layer/featured filters.
+    """
     from ...models.media_kit import PackageLayer
 
     pkg_layer = None
@@ -1280,10 +1399,16 @@ async def list_packages(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid layer: {layer}")
 
+    audience_filter = _build_audience_filter(
+        audience_type, audience_id, audience_taxonomy_version
+    )
+
     service = await _get_media_kit_service()
 
     if api_key_record is None and buyer_tier == "public":
-        packages = await service.list_packages_public(layer=pkg_layer)
+        packages = await service.list_packages_public(
+            layer=pkg_layer, audience_filter=audience_filter
+        )
     else:
         context = _build_buyer_context(
             buyer_tier=buyer_tier,
@@ -1291,7 +1416,9 @@ async def list_packages(
             advertiser_id=advertiser_id,
             api_key_record=api_key_record,
         )
-        packages = await service.list_packages_authenticated(context, layer=pkg_layer)
+        packages = await service.list_packages_authenticated(
+            context, layer=pkg_layer, audience_filter=audience_filter
+        )
 
     return {"packages": [p.model_dump() for p in packages]}
 

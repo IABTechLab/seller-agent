@@ -10,7 +10,9 @@ Delegates pricing to PricingRulesEngine (no duplicated logic).
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
+
+from pydantic import BaseModel, Field
 
 from ..models.buyer_identity import AccessTier, BuyerContext
 from ..models.flow_state import ProductDefinition
@@ -27,6 +29,135 @@ from ..storage.base import StorageBackend
 from .pricing_rules_engine import PricingRulesEngine
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Audience filter (proposal §5.7 + §6 row 10, bead ar-2wxa)
+# =============================================================================
+#
+# A typed filter object covering the three audience types described in
+# proposal §4. Used by both `GET /packages` (discovery filter) and
+# `POST /media-kit/search` (optional scoring restriction). Lives next to the
+# service rather than on the wire so the API surface can construct it from
+# query params or a request-body sub-object without callers reimplementing
+# the matching predicate.
+
+AudienceType = Literal["standard", "contextual", "agentic"]
+
+
+class AudienceFilter(BaseModel):
+    """Filter packages by their declared `audience_capabilities`.
+
+    Semantics (per bead ar-2wxa):
+
+    - When `audience_type` AND `audience_id` are both set, a package matches
+      iff its `audience_capabilities.<type>_segment_ids` contains the ID
+      (after taxonomy-version compatibility check). Agentic IDs are URIs and
+      are matched literally against any future agentic ref list -- §10 has
+      no per-segment list for agentic, so agentic+ID falls back to the
+      "supported" predicate (presence of `agentic_capabilities`).
+    - When only `audience_type` is set, a package matches iff it declares
+      ANY capability in that type (non-empty segment list, or non-null
+      `agentic_capabilities` for type=agentic).
+    - `taxonomy_version`, when set, requires the package's
+      `<type>_taxonomy_version` to equal the requested version. When unset,
+      taxonomy version is not checked (the seller's lock-file version is
+      authoritative).
+
+    The filter is permissive on the "no params" case: an empty filter matches
+    every package. Callers should construct one only when at least one of
+    `audience_type` / `audience_id` is present.
+    """
+
+    audience_type: Optional[AudienceType] = Field(
+        default=None,
+        description="Audience dimension to filter on: 'standard' | 'contextual' | 'agentic'",
+    )
+    audience_id: Optional[str] = Field(
+        default=None,
+        description="Taxonomy ID (standard/contextual) or URI (agentic) to match",
+    )
+    taxonomy_version: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional taxonomy version constraint. When unset, defaults to the "
+            "seller's current per `taxonomies.lock.json`."
+        ),
+    )
+
+    model_config = {"populate_by_name": True}
+
+    def is_empty(self) -> bool:
+        """True when no filter dimension is set (skip filtering entirely)."""
+        return (
+            self.audience_type is None
+            and self.audience_id is None
+            and self.taxonomy_version is None
+        )
+
+    def matches(self, package: Package) -> bool:
+        """Return True iff `package.audience_capabilities` satisfies this filter.
+
+        Empty filter matches every package -- callers gate on `is_empty()` to
+        avoid the no-op pass.
+        """
+
+        if self.is_empty():
+            return True
+
+        caps = package.audience_capabilities
+
+        # Type-only filter: package must declare ANY capability in that type.
+        if self.audience_type is None:
+            # `audience_id` without `audience_type` is ambiguous (which corpus
+            # do we look in?). Reject by matching nothing -- the API layer
+            # should validate before getting here, but defense-in-depth.
+            return False
+
+        if self.audience_type == "standard":
+            return self._matches_standard(caps)
+        if self.audience_type == "contextual":
+            return self._matches_contextual(caps)
+        if self.audience_type == "agentic":
+            return self._matches_agentic(caps)
+        return False
+
+    def _matches_standard(self, caps) -> bool:
+        if (
+            self.taxonomy_version is not None
+            and caps.standard_taxonomy_version != self.taxonomy_version
+        ):
+            return False
+        if self.audience_id is None:
+            return bool(caps.standard_segment_ids)
+        return self.audience_id in caps.standard_segment_ids
+
+    def _matches_contextual(self, caps) -> bool:
+        if (
+            self.taxonomy_version is not None
+            and caps.contextual_taxonomy_version != self.taxonomy_version
+        ):
+            return False
+        if self.audience_id is None:
+            return bool(caps.contextual_segment_ids)
+        return self.audience_id in caps.contextual_segment_ids
+
+    def _matches_agentic(self, caps) -> bool:
+        # Per ar-2wxa scope: agentic per-segment matching requires §11's
+        # /agentic-audience/match endpoint. Until then, agentic filtering
+        # collapses to the "supported" predicate -- the package declares
+        # agentic capabilities at all. taxonomy_version, when set, gates on
+        # AgenticCapabilities.spec_version.
+        if caps.agentic_capabilities is None:
+            return False
+        if (
+            self.taxonomy_version is not None
+            and caps.agentic_capabilities.spec_version != self.taxonomy_version
+        ):
+            return False
+        # `audience_id` is accepted for symmetry but does not narrow further
+        # at this stage -- presence of agentic_capabilities is the gate.
+        return True
 
 
 class MediaKitService:
@@ -60,9 +191,12 @@ class MediaKitService:
         self,
         layer: Optional[PackageLayer] = None,
         featured_only: bool = False,
+        audience_filter: Optional[AudienceFilter] = None,
     ) -> list[PublicPackageView]:
         """List active packages as public views (price ranges, no placements)."""
-        packages = await self._load_active_packages(layer=layer)
+        packages = await self._load_active_packages(
+            layer=layer, audience_filter=audience_filter
+        )
         if featured_only:
             packages = [p for p in packages if p.is_featured]
         return [self._to_public_view(p) for p in packages]
@@ -71,9 +205,12 @@ class MediaKitService:
         self,
         buyer_context: BuyerContext,
         layer: Optional[PackageLayer] = None,
+        audience_filter: Optional[AudienceFilter] = None,
     ) -> list[AuthenticatedPackageView]:
         """List active packages as authenticated views (exact pricing)."""
-        packages = await self._load_active_packages(layer=layer)
+        packages = await self._load_active_packages(
+            layer=layer, audience_filter=audience_filter
+        )
         return [self._to_authenticated_view(p, buyer_context) for p in packages]
 
     async def get_package_public(self, package_id: str) -> Optional[PublicPackageView]:
@@ -229,13 +366,21 @@ class MediaKitService:
         self,
         query: str,
         buyer_context: Optional[BuyerContext] = None,
+        audience_filter: Optional[AudienceFilter] = None,
     ) -> list[PublicPackageView | AuthenticatedPackageView]:
-        """Search packages by keyword query.
+        """Search packages by keyword query, with audience-aware scoring.
 
         Tokenizes query and matches against name, description, tags,
-        and content category IDs. Featured items get a score boost.
+        content category IDs, AND audience capability segment IDs (proposal
+        §5.7 + bead ar-2wxa). Featured items get a score boost.
+
+        When `audience_filter` is provided, scoring is restricted to packages
+        that match the filter -- non-matching packages drop out of results
+        regardless of keyword score. This lets buyers narrow a keyword search
+        to "packages that target IAB Audience 3-7" without rebuilding the
+        query.
         """
-        packages = await self._load_active_packages()
+        packages = await self._load_active_packages(audience_filter=audience_filter)
         if not packages:
             return []
 
@@ -266,8 +411,9 @@ class MediaKitService:
     async def _load_active_packages(
         self,
         layer: Optional[PackageLayer] = None,
+        audience_filter: Optional[AudienceFilter] = None,
     ) -> list[Package]:
-        """Load all active packages from storage."""
+        """Load all active packages from storage, with optional filters."""
         raw_list = await self._storage.list_packages()
         packages = []
         for data in raw_list:
@@ -276,6 +422,9 @@ class MediaKitService:
                 continue
             if layer and pkg.layer != layer:
                 continue
+            if audience_filter is not None and not audience_filter.is_empty():
+                if not audience_filter.matches(pkg):
+                    continue
             packages.append(pkg)
         return packages
 
@@ -362,8 +511,23 @@ class MediaKitService:
         )
 
     def _score_package(self, package: Package, tokens: set[str]) -> float:
-        """Score a package against search tokens."""
+        """Score a package against search tokens.
+
+        Corpus includes name, description, tags, content categories, ad
+        formats, AND audience capability segment IDs (standard + contextual)
+        per proposal §5.7 + bead ar-2wxa. A query mentioning a known IAB
+        audience or content segment ID therefore ranks packages that declare
+        that segment higher than packages that don't.
+
+        Agentic capabilities are NOT in the keyword corpus -- agentic refs
+        are URIs, not free-text terms, and per-segment matching for agentic
+        is §11's territory (the /agentic-audience/match endpoint). A query
+        token like "agentic" matches via `tags`/`description` if the seller
+        chose to surface that label there.
+        """
         score = 0.0
+
+        caps = package.audience_capabilities
 
         # Searchable text fields
         searchable = " ".join(
@@ -373,6 +537,11 @@ class MediaKitService:
                 " ".join(t.lower() for t in package.tags),
                 " ".join(c.lower() for c in package.cat),
                 " ".join(package.ad_formats),
+                # Audience corpus: include standard + contextual segment IDs.
+                # Lower-cased so case-insensitive token matching works for IAB
+                # IDs that contain mixed case (e.g. "IAB1-2").
+                " ".join(s.lower() for s in caps.standard_segment_ids),
+                " ".join(s.lower() for s in caps.contextual_segment_ids),
             ]
         )
 
