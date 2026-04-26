@@ -229,16 +229,53 @@ def test_round_trip_builder_then_parser_recovers_refs() -> None:
     """
     # Lazy import the buyer-side builder (test executes in seller venv;
     # adjust import path so the buyer source is on PYTHONPATH).
+    import os
     import sys
     from pathlib import Path
 
-    # tests/unit/test_openrtb_parser.py -> ascend 6 to agent_range parent.
-    AGENT_RANGE = Path(__file__).resolve().parents[5]
-    BUYER_SRC = (
-        AGENT_RANGE
-        / "ad_buyer_system" / ".worktrees" / "audience-extension" / "src"
-    )
-    sys.path.insert(0, str(BUYER_SRC))
+    # Path resolution (per ar-e2rj): tests can override via the
+    # `AD_BUYER_SRC_PATH` env var. Otherwise, walk up from this file to
+    # find the seller repo root (`ad_seller_system`); the buyer repo
+    # lives at `<parent>/ad_buyer_system`. If we're inside a seller
+    # worktree (`<repo>/.worktrees/<name>/...`), prefer the matching
+    # buyer worktree; otherwise fall back to the buyer repo's
+    # canonical `src/`.
+    buyer_src = os.environ.get("AD_BUYER_SRC_PATH")
+    if not buyer_src:
+        here = Path(__file__).resolve()
+        seller_repo_root = next(
+            (p for p in here.parents if p.name == "ad_seller_system"),
+            None,
+        )
+        if seller_repo_root is None:
+            raise RuntimeError(
+                "Could not locate ad_seller_system in path ancestry "
+                f"of {here}; set AD_BUYER_SRC_PATH to override."
+            )
+        agent_range_root = seller_repo_root.parent
+        buyer_main = agent_range_root / "ad_buyer_system" / "src"
+        worktree_name = None
+        for parent, grandparent in zip(here.parents, here.parents[1:]):
+            if (
+                grandparent.name == ".worktrees"
+                and grandparent.parent.name == "ad_seller_system"
+            ):
+                worktree_name = parent.name
+                break
+        if worktree_name is not None:
+            sibling_worktree = (
+                agent_range_root
+                / "ad_buyer_system"
+                / ".worktrees"
+                / worktree_name
+                / "src"
+            )
+            buyer_src = str(
+                sibling_worktree if sibling_worktree.is_dir() else buyer_main
+            )
+        else:
+            buyer_src = str(buyer_main)
+    sys.path.insert(0, buyer_src)
     try:
         from ad_buyer.clients.openrtb_builder import (  # type: ignore[import-not-found]
             build_openrtb_audience_targeting,
@@ -249,7 +286,7 @@ def test_round_trip_builder_then_parser_recovers_refs() -> None:
             ComplianceContext as BuyerComplianceContext,
         )
     finally:
-        sys.path.remove(str(BUYER_SRC))
+        sys.path.remove(buyer_src)
 
     plan = AudiencePlan(
         primary=BuyerAudienceRef(
