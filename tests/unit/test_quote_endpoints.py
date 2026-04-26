@@ -39,13 +39,27 @@ from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # n
 
 
 def _mock_product_setup_flow(products_dict):
-    """Return a mock ProductSetupFlow whose state has the given products."""
+    """Return a mock ProductSetupFlow whose state has the given products.
+
+    Kept for backward compatibility with TestGetQuote and other call sites.
+    """
     mock_flow = MagicMock()
     mock_flow.state = MagicMock()
     mock_flow.state.products = products_dict
     mock_flow.kickoff = AsyncMock()
     mock_flow.kickoff_async = AsyncMock()
     return mock_flow
+
+
+def _mock_catalog(products_dict):
+    """Build the dict shape returned by `_get_static_product_catalog`.
+
+    Quote endpoint switched from `ProductSetupFlow.kickoff()` to the cached
+    static catalog (ar-uwad / ar-0vtg). Tests patch the catalog accessor
+    rather than the flow class.
+    """
+    inventory_types = sorted({p.inventory_type for p in products_dict.values()})
+    return {"products": products_dict, "inventory_types": inventory_types}
 
 
 def _make_product(**overrides):
@@ -105,8 +119,8 @@ class TestCreateQuote:
     async def test_happy_path_pd_quote(self, client, mock_storage):
         with (
             patch(
-                "ad_seller.flows.ProductSetupFlow",
-                return_value=_mock_product_setup_flow(_products()),
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
             ),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
@@ -137,8 +151,8 @@ class TestCreateQuote:
     async def test_pg_quote_sets_guaranteed_true(self, client, mock_storage):
         with (
             patch(
-                "ad_seller.flows.ProductSetupFlow",
-                return_value=_mock_product_setup_flow(_products()),
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
             ),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
@@ -157,8 +171,8 @@ class TestCreateQuote:
     async def test_target_cpm_accepted_when_above_floor(self, client, mock_storage):
         with (
             patch(
-                "ad_seller.flows.ProductSetupFlow",
-                return_value=_mock_product_setup_flow(_products()),
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
             ),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
@@ -178,8 +192,8 @@ class TestCreateQuote:
     async def test_target_cpm_rejected_below_floor(self, client, mock_storage):
         with (
             patch(
-                "ad_seller.flows.ProductSetupFlow",
-                return_value=_mock_product_setup_flow(_products()),
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
             ),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
@@ -201,8 +215,8 @@ class TestCreateQuote:
     async def test_buyer_identity_affects_tier(self, client, mock_storage):
         with (
             patch(
-                "ad_seller.flows.ProductSetupFlow",
-                return_value=_mock_product_setup_flow(_products()),
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
             ),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
@@ -229,7 +243,8 @@ class TestCreateQuote:
 
     async def test_product_not_found(self, client, mock_storage):
         with patch(
-            "ad_seller.flows.ProductSetupFlow", return_value=_mock_product_setup_flow(_products())
+            "ad_seller.interfaces.api.main._get_static_product_catalog",
+            return_value=_mock_catalog(_products()),
         ):
             resp = await client.post(
                 "/api/v1/quotes",
@@ -243,7 +258,8 @@ class TestCreateQuote:
 
     async def test_invalid_deal_type(self, client, mock_storage):
         with patch(
-            "ad_seller.flows.ProductSetupFlow", return_value=_mock_product_setup_flow(_products())
+            "ad_seller.interfaces.api.main._get_static_product_catalog",
+            return_value=_mock_catalog(_products()),
         ):
             resp = await client.post(
                 "/api/v1/quotes",
@@ -257,7 +273,8 @@ class TestCreateQuote:
 
     async def test_pg_without_impressions(self, client, mock_storage):
         with patch(
-            "ad_seller.flows.ProductSetupFlow", return_value=_mock_product_setup_flow(_products())
+            "ad_seller.interfaces.api.main._get_static_product_catalog",
+            return_value=_mock_catalog(_products()),
         ):
             resp = await client.post(
                 "/api/v1/quotes",
@@ -271,7 +288,8 @@ class TestCreateQuote:
 
     async def test_below_minimum_impressions(self, client, mock_storage):
         with patch(
-            "ad_seller.flows.ProductSetupFlow", return_value=_mock_product_setup_flow(_products())
+            "ad_seller.interfaces.api.main._get_static_product_catalog",
+            return_value=_mock_catalog(_products()),
         ):
             resp = await client.post(
                 "/api/v1/quotes",

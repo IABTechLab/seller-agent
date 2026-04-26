@@ -1,0 +1,50 @@
+{
+  "schema_version": "1",
+  "audience": {
+    "version": "1.1",
+    "source": "https://raw.githubusercontent.com/InteractiveAdvertisingBureau/Taxonomies/main/Audience%20Taxonomies/Audience%20Taxonomy%201.1.tsv",
+    "path": "audience-1.1/Audience Taxonomy 1.1.tsv",
+    "sha256": "0216547402f3dc028f5ec1bb78c648eed68a81ea3b3b94862e6f6caa9db3ad3b",
+    "fetched_at": "2026-04-25T19:27:34Z",
+    "license": "CC-BY-3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/",
+    "format": "tsv"
+  },
+  "content": {
+    "version": "3.1",
+    "source": "https://raw.githubusercontent.com/InteractiveAdvertisingBureau/Taxonomies/main/Content%20Taxonomies/Content%20Taxonomy%203.1.tsv",
+    "path": "content-3.1/Content Taxonomy 3.1.tsv",
+    "sha256": "7212cdc496ba347a03e703b1932bdcdd4fd29089b058f4edeb4d3da1f1222ea7",
+    "fetched_at": "2026-04-25T19:27:34Z",
+    "license": "CC-BY-3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/",
+    "format": "tsv"
+  },
+  "agentic": {
+    "version": "draft-2026-01",
+    "spec_url": "https://github.com/IABTechLab/agentic-audiences",
+    "source": "https://github.com/IABTechLab/agentic-audiences/tree/main",
+    "path": "agentic-audiences-draft-2026-01/spec",
+    "sha256": "fca42f8f274a806bb4b98ecda4ad99c68ad191e2c7b934cfb3b2693e4f3fd35b",
+    "sha256_method": "sha256(sorted lines of '<relpath>\\t<sha256>\\n')",
+    "fetched_at": "2026-04-25T19:27:34Z",
+    "license": "CC-BY-4.0 (spec) + Apache-2.0 (impl)",
+    "license_url_spec": "https://creativecommons.org/licenses/by/4.0/",
+    "license_url_impl": "https://www.apache.org/licenses/LICENSE-2.0",
+    "format": "directory",
+    "files": {
+      "spec/LICENSE": "6beddc683797cc09a87fa410ca8898cd5f2fd3c86d4cb950528bbe46ae8078bc",
+      "spec/LICENSE-APACHE": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+      "spec/UPSTREAM_README.md": "15e1de07be1f2ff4820b8f90fae6837643be6a34930265a5d0a8c0f0f0d50393",
+      "spec/docs/systems-and-models.md": "918e5b51496c775bbc2dace66d7e0ffcb76796a2917ec1cac8a096db64050af2",
+      "spec/roadmap.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "spec/v1.0/embedding-exchange.md": "476c82bd0d7aa2c603d2816e4949cfce4543c7f1638bcd1f37cd2064f159d1ff",
+      "spec/v1.0/embedding-taxonomy.md": "19bc97157d34bddb7b52a792bf87e635eac8847874e586b3aa9a952c0b7e6dd7",
+      "spec/v1.0/examples/buyer_agent_request.json": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "spec/v1.0/examples/embedding_update.json": "7cd0d362e80a3486a9399cf3bee5c3c8e041e78d97339432d106cfc21ef6d32a",
+      "spec/v1.0/examples/seller_agent_response.json": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "spec/v1.0/schema/agent_interface.schema.json": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "spec/v1.0/schema/embedding_format.schema.json": "1a5dc7f0e2821f7b312f2bd52a7c1c035fb9ded808b546d81824dd8ec440581b"
+    }
+  }
+}

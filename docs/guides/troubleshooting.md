@@ -210,7 +210,7 @@ The seller agent's MCP endpoint uses Server-Sent Events. Connections must stay o
 
 **Symptom**: ChatGPT says "Could not connect to seller-agent" when a tool is called.
 
-1. Verify the MCP URL is publicly reachable: `curl https://your-publisher.example.com/mcp` (Streamable HTTP) or `/mcp-sse/sse` (legacy SSE).
+1. Verify the MCP URL is publicly reachable: `curl https://your-publisher.example.com/mcp/mcp` (Streamable HTTP) or `https://your-publisher.example.com/mcp-sse/sse` (legacy SSE).
 2. ChatGPT requires a valid TLS certificate. Self-signed certs are rejected.
 3. Confirm your API key is entered correctly in the connector settings (no leading/trailing spaces).
 4. Check that `API_KEY_AUTH_ENABLED=true` and the key hasn't expired.

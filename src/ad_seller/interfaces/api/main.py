@@ -21,6 +21,25 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# Dedicated logger for booking-time forensic events. Per proposal §5.1 Step 2
+# / §6 row 14b, the seller logs the `audience_plan_id` hash at the moment a
+# deal is minted carrying an audience plan. The buyer logs the same hash on
+# its side via `ad_buyer.audience.booking`. Matching log entries are the
+# forensic anchor for any future dispute about what was actually frozen.
+booking_logger = logging.getLogger("ad_seller.audience.booking")
+
+# Wire-format media types accepted on `audience_plan`-bearing requests per
+# proposal §5.6 + wire-format spec §8 (docs/api/audience_plan_wire_format.md).
+# FastAPI's default body parsing reads JSON regardless of `Content-Type`, so
+# both names parse cleanly without custom dependencies; the constants are
+# kept here for documentation, header-echo on responses, and explicit test
+# coverage of the dual-name acceptance contract.
+_UCP_CONTENT_TYPE = "application/vnd.ucp.embedding+json; v=1"
+_AGENTIC_AUDIENCES_CONTENT_TYPE = "application/vnd.iab.agentic-audiences+json; v=1"
+_AUDIENCE_PLAN_CONTENT_TYPES = frozenset(
+    {_UCP_CONTENT_TYPE, _AGENTIC_AUDIENCES_CONTENT_TYPE}
+)
+
 app = FastAPI(
     title="Ad Seller System API",
     description=(
@@ -183,13 +202,28 @@ class DiscoveryRequest(BaseModel):
 
 
 class PackageCreateRequest(BaseModel):
-    """Request to create a curated package."""
+    """Request to create a curated package.
+
+    Accepts the new typed `audience_capabilities` shape (proposal §5.7).
+    Legacy callers may still send `audience_segment_ids: list[str]` as
+    flat input -- the field is retained as deprecated and will be folded
+    into `audience_capabilities.standard_segment_ids` (with implicit
+    AT 1.1) by `create_package`.
+    """
 
     name: str
     description: Optional[str] = None
     product_ids: list[str] = []
     cat: list[str] = []
     cattax: int = 2
+    # New typed shape. Optional so legacy callers that only send
+    # audience_segment_ids do not break. When None and audience_segment_ids
+    # is present, create_package builds the capabilities dict from the
+    # legacy field.
+    audience_capabilities: Optional[dict] = None
+    # Deprecated; retained for backward compat. Folded into
+    # audience_capabilities.standard_segment_ids when audience_capabilities
+    # is None.
     audience_segment_ids: list[str] = []
     device_types: list[int] = []
     ad_formats: list[str] = []
@@ -208,6 +242,19 @@ class DynamicPackageRequest(BaseModel):
     product_ids: list[str]
 
 
+class AudienceFilterModel(BaseModel):
+    """Optional audience filter sub-object on `POST /media-kit/search`.
+
+    Mirrors the query-param triple on `GET /packages`: type + id + version.
+    When present, search results are restricted to packages whose
+    `audience_capabilities` match. See proposal §5.7 + bead ar-2wxa.
+    """
+
+    audience_type: Optional[str] = None
+    audience_id: Optional[str] = None
+    taxonomy_version: Optional[str] = None
+
+
 class MediaKitSearchRequest(BaseModel):
     """Request to search packages."""
 
@@ -215,6 +262,7 @@ class MediaKitSearchRequest(BaseModel):
     buyer_tier: str = "public"
     agency_id: Optional[str] = None
     advertiser_id: Optional[str] = None
+    audience_filter: Optional[AudienceFilterModel] = None
 
 
 class CounterOfferRequest(BaseModel):
@@ -248,11 +296,31 @@ class QuoteRequestModel(BaseModel):
 
 
 class DealBookingRequestModel(BaseModel):
-    """API request model for POST /api/v1/deals."""
+    """API request model for POST /api/v1/deals.
+
+    `audience_plan` is optional and follows the wire shape documented at
+    `docs/api/audience_plan_wire_format.md`. When present the seller
+    pre-flights it against its own `audience_capabilities` and rejects
+    with a structured `audience_plan_unsupported` error if any part
+    cannot be honored (proposal §5.7 layer 3).
+    """
 
     quote_id: str
     buyer_identity: Optional[QuoteBuyerIdentityModel] = None
     notes: Optional[str] = None
+    audience_plan: Optional[dict] = None
+
+
+class AgenticAudienceMatchRequest(BaseModel):
+    """API request model for POST /agentic-audience/match (proposal §5.7).
+
+    Accepts a single `AudienceRef` (must be `type=agentic`) and an optional
+    package_id scope. Returns a deterministic mock-quality match score and
+    quality bucket. Real model is Epic 2 / E2-2.
+    """
+
+    audience_ref: dict
+    package_id: Optional[str] = None
 
 
 # =============================================================================
@@ -354,6 +422,203 @@ def _get_api_settings():
     return get_settings()
 
 
+# Cached static product catalog. The seller's default catalog is hardcoded
+# in ProductSetupFlow.create_default_products() but running the full flow
+# per request is expensive (initialize_setup → ensure_seller_organization
+# spins up an OpenDirect MCP session that hangs in session.initialize()).
+# Read endpoints (`GET /products`, `GET /products/{id}`, `GET /.well-known/agent.json`)
+# use this cached static catalog instead. POST endpoints that mutate state
+# can keep their flow logic.
+_STATIC_PRODUCT_CATALOG: Optional[dict[str, Any]] = None
+
+
+def _get_static_product_catalog() -> dict[str, Any]:
+    """Return the seller's default product catalog without running the flow.
+
+    Mirrors ProductSetupFlow.create_default_products() but without the
+    initialize_setup → ensure_seller_organization → OpenDirect MCP chain
+    that hangs read endpoints. IDs are generated once and cached so that
+    repeated reads return stable product_ids.
+    """
+    global _STATIC_PRODUCT_CATALOG
+    if _STATIC_PRODUCT_CATALOG is not None:
+        return _STATIC_PRODUCT_CATALOG
+
+    from ...models.core import DealType, PricingModel
+    from ...models.flow_state import ProductDefinition
+
+    # Same default product list as ProductSetupFlow.create_default_products().
+    # Keeping the data here avoids importing the flow (which pulls CrewAI
+    # plus the OpenDirect client chain).
+    default_products = [
+        {
+            "name": "Premium Display - Homepage",
+            "description": "High-impact display on homepage",
+            "inventory_type": "display",
+            "base_cpm": 15.0,
+            "floor_cpm": 10.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PREFERRED_DEAL,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Standard Display - ROS",
+            "description": "Run of site display inventory",
+            "inventory_type": "display",
+            "base_cpm": 8.0,
+            "floor_cpm": 5.0,
+            "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Pre-Roll Video",
+            "description": "In-stream pre-roll video ads",
+            "inventory_type": "video",
+            "base_cpm": 25.0,
+            "floor_cpm": 18.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PREFERRED_DEAL,
+            ],
+            "supported_pricing_models": [PricingModel.CPM, PricingModel.CPCV],
+        },
+        {
+            "name": "CTV Premium Streaming",
+            "description": "Connected TV inventory on premium streaming apps",
+            "inventory_type": "ctv",
+            "base_cpm": 35.0,
+            "floor_cpm": 28.0,
+            "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Mobile App Rewarded Video",
+            "description": "User-initiated rewarded video in mobile apps",
+            "inventory_type": "mobile_app",
+            "base_cpm": 20.0,
+            "floor_cpm": 15.0,
+            "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "supported_pricing_models": [PricingModel.CPM, PricingModel.CPCV],
+        },
+        {
+            "name": "Native In-Feed",
+            "description": "Native ads in content feeds",
+            "inventory_type": "native",
+            "base_cpm": 12.0,
+            "floor_cpm": 8.0,
+            "supported_deal_types": [DealType.PREFERRED_DEAL],
+            "supported_pricing_models": [PricingModel.CPM, PricingModel.CPC],
+        },
+        # Linear TV — Direct seller (NBCU)
+        {
+            "name": "NBC Primetime :30",
+            "description": "NBC broadcast primetime 30-second national spot",
+            "inventory_type": "linear_tv",
+            "base_cpm": 55.0,
+            "floor_cpm": 40.0,
+            "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "NBCU Cable Network :30 (Bravo/USA)",
+            "description": "NBCU cable network 30-second spot across Bravo, USA, CNBC",
+            "inventory_type": "linear_tv",
+            "base_cpm": 22.0,
+            "floor_cpm": 15.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PREFERRED_DEAL,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Telemundo Primetime :30",
+            "description": "Telemundo Spanish-language primetime 30-second spot",
+            "inventory_type": "linear_tv",
+            "base_cpm": 18.0,
+            "floor_cpm": 12.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PREFERRED_DEAL,
+                DealType.PRIVATE_AUCTION,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        # Linear TV — MVPD operator (Comcast/Spectrum)
+        {
+            "name": "Comcast Local Avails — Top 10 DMAs",
+            "description": "Comcast Xfinity local cable insertion avails in top 10 markets",
+            "inventory_type": "linear_tv",
+            "base_cpm": 15.0,
+            "floor_cpm": 8.0,
+            "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Comcast Addressable Linear — National",
+            "description": "Comcast addressable linear TV with household-level targeting",
+            "inventory_type": "linear_tv",
+            "base_cpm": 55.0,
+            "floor_cpm": 40.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PRIVATE_AUCTION,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        # Linear TV — Reseller/SSP (PubMatic/Magnite)
+        {
+            "name": "Programmatic Linear Reach — A25-54 Primetime",
+            "description": "Aggregated primetime linear reach across multiple networks via SSP",
+            "inventory_type": "linear_tv",
+            "base_cpm": 30.0,
+            "floor_cpm": 20.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PRIVATE_AUCTION,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+    ]
+
+    products: dict[str, ProductDefinition] = {}
+    for cfg in default_products:
+        product_def = ProductDefinition(
+            product_id=f"prod-{uuid.uuid4().hex[:8]}",
+            name=cfg["name"],
+            description=cfg.get("description"),
+            inventory_type=cfg["inventory_type"],
+            supported_deal_types=cfg["supported_deal_types"],
+            supported_pricing_models=cfg["supported_pricing_models"],
+            base_cpm=cfg["base_cpm"],
+            floor_cpm=cfg["floor_cpm"],
+        )
+        products[product_def.product_id] = product_def
+
+    inventory_types = sorted({p.inventory_type for p in products.values()})
+
+    _STATIC_PRODUCT_CATALOG = {
+        "products": products,
+        "inventory_types": inventory_types,
+    }
+    return _STATIC_PRODUCT_CATALOG
+
+
+def _serialize_product(product: Any) -> dict[str, Any]:
+    """Serialize a ProductDefinition to the public JSON shape."""
+    return {
+        "product_id": product.product_id,
+        "name": product.name,
+        "description": product.description,
+        "inventory_type": product.inventory_type,
+        "base_cpm": product.base_cpm,
+        "floor_cpm": product.floor_cpm,
+        "deal_types": [dt.value for dt in product.supported_deal_types],
+    }
+
+
 async def _resolve_and_enforce_agent(
     agent_url: Optional[str],
 ) -> tuple[Optional[Any], Optional[Any]]:
@@ -400,50 +665,30 @@ async def health():
 
 @app.get("/products", tags=["Products"])
 async def list_products():
-    """List all products in the catalog."""
-    from ...flows import ProductSetupFlow
+    """List all products in the catalog.
 
-    flow = ProductSetupFlow()
-    await flow.kickoff_async()
-
-    products = []
-    for product in flow.state.products.values():
-        products.append(
-            {
-                "product_id": product.product_id,
-                "name": product.name,
-                "description": product.description,
-                "inventory_type": product.inventory_type,
-                "base_cpm": product.base_cpm,
-                "floor_cpm": product.floor_cpm,
-                "deal_types": [dt.value for dt in product.supported_deal_types],
-            }
-        )
-
-    return {"products": products}
+    Reads from the cached static catalog (see `_get_static_product_catalog`)
+    instead of running ProductSetupFlow per request — kicking off the flow
+    spins up an OpenDirect MCP session that hangs in `session.initialize()`.
+    """
+    catalog = _get_static_product_catalog()
+    return {
+        "products": [_serialize_product(p) for p in catalog["products"].values()],
+    }
 
 
 @app.get("/products/{product_id}", tags=["Products"])
 async def get_product(product_id: str):
-    """Get a specific product."""
-    from ...flows import ProductSetupFlow
+    """Get a specific product.
 
-    flow = ProductSetupFlow()
-    await flow.kickoff_async()
-
-    product = flow.state.products.get(product_id)
+    Reads from the cached static catalog instead of running ProductSetupFlow
+    per request (see `list_products` for rationale).
+    """
+    catalog = _get_static_product_catalog()
+    product = catalog["products"].get(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-
-    return {
-        "product_id": product.product_id,
-        "name": product.name,
-        "description": product.description,
-        "inventory_type": product.inventory_type,
-        "base_cpm": product.base_cpm,
-        "floor_cpm": product.floor_cpm,
-        "deal_types": [dt.value for dt in product.supported_deal_types],
-    }
+    return _serialize_product(product)
 
 
 @app.post("/pricing", response_model=PricingResponse, tags=["Pricing"])
@@ -1184,6 +1429,60 @@ async def _get_media_kit_service():
     return MediaKitService(storage, pricing)
 
 
+_VALID_AUDIENCE_TYPES = {"standard", "contextual", "agentic"}
+
+
+def _build_audience_filter(
+    audience_type: Optional[str],
+    audience_id: Optional[str],
+    audience_taxonomy_version: Optional[str],
+):
+    """Convert raw query params to an `AudienceFilter`, or None if all unset.
+
+    Validates `audience_type` and the type/id pairing rules:
+
+    - Returns None when all three params are unset (skip filtering).
+    - 400 when `audience_type` is set but unrecognized.
+    - 400 when `audience_id` is set without `audience_type` (no corpus to
+      search in).
+
+    Per bead ar-2wxa scope: agentic per-segment filtering is §11's
+    territory; agentic+id collapses to "package supports agentic" at this
+    stage and the filter accepts the param without error so existing buyer
+    code doesn't have to special-case the type.
+    """
+
+    from ...engines.media_kit_service import AudienceFilter
+
+    if (
+        audience_type is None
+        and audience_id is None
+        and audience_taxonomy_version is None
+    ):
+        return None
+
+    if audience_type is not None and audience_type not in _VALID_AUDIENCE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid audience_type: {audience_type!r}. Must be one of "
+                f"{sorted(_VALID_AUDIENCE_TYPES)}."
+            ),
+        )
+
+    if audience_id is not None and audience_type is None:
+        raise HTTPException(
+            status_code=400,
+            detail="audience_id requires audience_type to disambiguate corpus.",
+        )
+
+    return AudienceFilter(
+        audience_type=audience_type,
+        audience_id=audience_id,
+        taxonomy_version=audience_taxonomy_version,
+    )
+
+
 # =============================================================================
 # Media Kit Endpoints (Public — no auth required)
 # =============================================================================
@@ -1208,8 +1507,15 @@ async def media_kit_overview():
 async def list_media_kit_packages(
     layer: Optional[str] = None,
     featured_only: bool = False,
+    audience_type: Optional[str] = None,
+    audience_id: Optional[str] = None,
+    audience_taxonomy_version: Optional[str] = None,
 ):
-    """List packages with public view (price ranges, no exact pricing)."""
+    """List packages with public view (price ranges, no exact pricing).
+
+    Accepts the same audience-filter triple as `GET /packages` so public
+    discovery callers can narrow by audience type without authenticating.
+    """
     from ...models.media_kit import PackageLayer
 
     pkg_layer = None
@@ -1219,8 +1525,16 @@ async def list_media_kit_packages(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid layer: {layer}")
 
+    audience_filter = _build_audience_filter(
+        audience_type, audience_id, audience_taxonomy_version
+    )
+
     service = await _get_media_kit_service()
-    packages = await service.list_packages_public(layer=pkg_layer, featured_only=featured_only)
+    packages = await service.list_packages_public(
+        layer=pkg_layer,
+        featured_only=featured_only,
+        audience_filter=audience_filter,
+    )
     return {"packages": [p.model_dump() for p in packages]}
 
 
@@ -1239,7 +1553,17 @@ async def search_media_kit(
     request: MediaKitSearchRequest,
     api_key_record=Depends(_get_optional_api_key_record),
 ):
-    """Search packages by keyword. Authenticated buyers get richer results."""
+    """Search packages by keyword. Authenticated buyers get richer results.
+
+    Per proposal §5.7 + bead ar-2wxa, the scoring corpus now includes
+    `audience_capabilities.standard_segment_ids` +
+    `audience_capabilities.contextual_segment_ids` alongside keywords/tags
+    -- a query mentioning a known IAB segment ID ranks packages that
+    declare it higher than packages that don't.
+
+    The optional `audience_filter` body field restricts results to packages
+    that match its type/id/version triple, parallel to `GET /packages`.
+    """
     context = None
     if api_key_record is not None or request.buyer_tier != "public":
         context = _build_buyer_context(
@@ -1249,8 +1573,18 @@ async def search_media_kit(
             api_key_record=api_key_record,
         )
 
+    audience_filter = None
+    if request.audience_filter is not None:
+        audience_filter = _build_audience_filter(
+            request.audience_filter.audience_type,
+            request.audience_filter.audience_id,
+            request.audience_filter.taxonomy_version,
+        )
+
     service = await _get_media_kit_service()
-    results = await service.search_packages(request.query, buyer_context=context)
+    results = await service.search_packages(
+        request.query, buyer_context=context, audience_filter=audience_filter
+    )
     return {"results": [r.model_dump() for r in results]}
 
 
@@ -1265,9 +1599,25 @@ async def list_packages(
     agency_id: Optional[str] = None,
     advertiser_id: Optional[str] = None,
     layer: Optional[str] = None,
+    audience_type: Optional[str] = None,
+    audience_id: Optional[str] = None,
+    audience_taxonomy_version: Optional[str] = None,
     api_key_record=Depends(_get_optional_api_key_record),
 ):
-    """List packages with tier-gated view."""
+    """List packages with tier-gated view.
+
+    Audience filter (proposal §5.7 + bead ar-2wxa):
+
+    - `audience_type`: one of `standard` | `contextual` | `agentic`.
+    - `audience_id`: taxonomy ID for standard/contextual; URI for agentic.
+      Requires `audience_type` to disambiguate which capability list to
+      search.
+    - `audience_taxonomy_version`: optional version constraint; when unset
+      the seller's lock-file version is authoritative.
+
+    Empty results return `[]`, not 404 -- matches the existing behavior for
+    layer/featured filters.
+    """
     from ...models.media_kit import PackageLayer
 
     pkg_layer = None
@@ -1277,10 +1627,16 @@ async def list_packages(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid layer: {layer}")
 
+    audience_filter = _build_audience_filter(
+        audience_type, audience_id, audience_taxonomy_version
+    )
+
     service = await _get_media_kit_service()
 
     if api_key_record is None and buyer_tier == "public":
-        packages = await service.list_packages_public(layer=pkg_layer)
+        packages = await service.list_packages_public(
+            layer=pkg_layer, audience_filter=audience_filter
+        )
     else:
         context = _build_buyer_context(
             buyer_tier=buyer_tier,
@@ -1288,7 +1644,9 @@ async def list_packages(
             advertiser_id=advertiser_id,
             api_key_record=api_key_record,
         )
-        packages = await service.list_packages_authenticated(context, layer=pkg_layer)
+        packages = await service.list_packages_authenticated(
+            context, layer=pkg_layer, audience_filter=audience_filter
+        )
 
     return {"packages": [p.model_dump() for p in packages]}
 
@@ -1349,25 +1707,35 @@ async def create_package(request: PackageCreateRequest):
                 )
             )
 
-    package = Package(
-        package_id=f"pkg-{_uuid.uuid4().hex[:8]}",
-        name=request.name,
-        description=request.description,
-        layer=PackageLayer.CURATED,
-        status=PackageStatus.ACTIVE,
-        placements=placements,
-        cat=request.cat,
-        cattax=request.cattax,
-        audience_segment_ids=request.audience_segment_ids,
-        device_types=request.device_types,
-        ad_formats=request.ad_formats,
-        geo_targets=request.geo_targets,
-        base_price=request.base_price,
-        floor_price=request.floor_price,
-        tags=request.tags,
-        is_featured=request.is_featured,
-        seasonal_label=request.seasonal_label,
-    )
+    # Build kwargs for Package -- prefer the new typed audience_capabilities
+    # when supplied; otherwise pass the legacy audience_segment_ids and let
+    # the Package's model_validator(mode='before') shim migrate it.
+    package_kwargs: dict[str, Any] = {
+        "package_id": f"pkg-{_uuid.uuid4().hex[:8]}",
+        "name": request.name,
+        "description": request.description,
+        "layer": PackageLayer.CURATED,
+        "status": PackageStatus.ACTIVE,
+        "placements": placements,
+        "cat": request.cat,
+        "cattax": request.cattax,
+        "device_types": request.device_types,
+        "ad_formats": request.ad_formats,
+        "geo_targets": request.geo_targets,
+        "base_price": request.base_price,
+        "floor_price": request.floor_price,
+        "tags": request.tags,
+        "is_featured": request.is_featured,
+        "seasonal_label": request.seasonal_label,
+    }
+    if request.audience_capabilities is not None:
+        package_kwargs["audience_capabilities"] = request.audience_capabilities
+    elif request.audience_segment_ids:
+        # Legacy path: forward the flat list, shim will fold it into
+        # audience_capabilities at validation time.
+        package_kwargs["audience_segment_ids"] = request.audience_segment_ids
+
+    package = Package(**package_kwargs)
 
     service = await _get_media_kit_service()
     created = await service.create_package(package)
@@ -1575,7 +1943,6 @@ async def agent_card():
     seller's capabilities, supported protocols, and inventory types.
     Buyer agents and registries fetch this to discover the seller.
     """
-    from ...flows import ProductSetupFlow
     from ...models.agent_registry import (
         AgentAuthentication,
         AgentCapabilities,
@@ -1583,16 +1950,15 @@ async def agent_card():
         AgentProvider,
         AgentSkill,
     )
+    from ...models.audience_capabilities import build_capability_audience_block
 
     settings = _get_api_settings()
 
-    # Discover inventory types from product catalog
-    inventory_types = set()
+    # Read inventory types from the cached static catalog rather than running
+    # ProductSetupFlow per request (which hangs in OpenDirect MCP
+    # session.initialize() — see `_get_static_product_catalog` for context).
     try:
-        flow = ProductSetupFlow()
-        await flow.kickoff_async()
-        for product in flow.state.products.values():
-            inventory_types.add(product.inventory_type)
+        inventory_types = set(_get_static_product_catalog()["inventory_types"])
     except Exception:
         inventory_types = {"display", "video", "ctv", "native", "mobile_app"}
 
@@ -1651,6 +2017,13 @@ async def agent_card():
         ),
         inventory_types=sorted(inventory_types),
         supported_deal_types=["pg", "pmp", "preferred_deal", "private_auction"],
+        # Audience capability advertisement (proposal §5.7 layer 1). Demo /
+        # MVP defaults: agentic match endpoint not yet shipped (lands in §11),
+        # constraints filter not yet shipped (lands in §10) but we advertise
+        # support so buyers test the negotiation path. Lock-file hashes are
+        # loaded dynamically from data/taxonomies/taxonomies.lock.json so the
+        # block stays in sync if the lock file is regenerated.
+        audience_capabilities=build_capability_audience_block(),
     )
 
     return card.model_dump()
@@ -1799,7 +2172,6 @@ async def create_quote(
     from datetime import timedelta
 
     from ...engines.pricing_rules_engine import PricingRulesEngine
-    from ...flows import ProductSetupFlow
     from ...models.core import DealType
     from ...models.pricing_tiers import TieredPricingConfig
     from ...models.quotes import (
@@ -1838,11 +2210,11 @@ async def create_quote(
             },
         )
 
-    # Get product catalog
-    setup_flow = ProductSetupFlow()
-    await setup_flow.kickoff_async()
-
-    product = setup_flow.state.products.get(request.product_id)
+    # Read product from cached static catalog rather than running
+    # ProductSetupFlow per request (hangs in OpenDirect MCP
+    # session.initialize() — see ar-uwad / `_get_static_product_catalog`).
+    catalog = _get_static_product_catalog()
+    product = catalog["products"].get(request.product_id)
     if not product:
         raise HTTPException(
             status_code=404,
@@ -1998,6 +2370,29 @@ async def book_deal(
 
     The seller validates the quote, generates a Deal ID, and returns
     confirmed terms. This is the commit point — the quote becomes bound.
+
+    **Wire format (proposal §5.6 + §6 row 14b):** the seller accepts both
+    audience-plan content types --
+    ``application/vnd.ucp.embedding+json; v=1`` (legacy UCP carrier) and
+    ``application/vnd.iab.agentic-audiences+json; v=1`` (new IAB Agentic
+    Audiences alias). FastAPI's body parsing is content-type-permissive, so
+    both names round-trip the same Pydantic model with no custom dependency
+    needed; the dual acceptance is exercised by
+    ``tests/unit/test_deal_booking_snapshot.py``.
+
+    **Snapshot (proposal §5.1 Step 2 + wire-format §6.5):** when the request
+    carries an ``audience_plan``, the seller persists it verbatim as
+    ``audience_plan_snapshot`` against the deal record and returns the
+    snapshot plus a per-role ``audience_match_summary`` so the buyer can
+    verify the booking. The snapshot is authoritative for the lifetime of
+    the deal -- if seller capabilities change mid-flight, the snapshot is
+    honored (see ``services/fulfillment.honor_audience_plan_snapshot``).
+
+    **Forensic logging (proposal §5.1 Step 2):** the
+    ``audience_plan_id`` hash is logged at INFO via
+    ``ad_seller.audience.booking``. The buyer logs the same hash on its
+    side; matching entries are the cross-system anchor for dispute
+    resolution.
     """
     import uuid
     from datetime import timedelta
@@ -2042,6 +2437,25 @@ async def book_deal(
             },
         )
 
+    # Pre-flight: if the buyer sent an audience_plan with this booking, validate
+    # it against the seller's capability block. Per proposal §5.7 layer 3, any
+    # unsupported part triggers a structured `audience_plan_unsupported` 400 so
+    # the buyer's degrade_plan_for_seller() can retry. (Bead ar-sn8f.)
+    if request.audience_plan:
+        from ...models.audience_capabilities import build_capability_audience_block
+        from ...services.audience_plan_validator import validate_audience_plan
+
+        seller_caps = build_capability_audience_block()
+        unsupported = validate_audience_plan(request.audience_plan, seller_caps)
+        if unsupported:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "audience_plan_unsupported",
+                    "unsupported": unsupported,
+                },
+            )
+
     # Generate deal
     now = datetime.utcnow()
     deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
@@ -2076,15 +2490,210 @@ async def book_deal(
 
     deal_data = deal.model_dump(mode="json")
 
+    # Freeze the audience plan onto the deal record + compute per-role match
+    # summary (proposal §5.1 Step 2 + wire-format §6.5). Both fields are added
+    # only when the buyer supplied an audience_plan; legacy bookings remain
+    # byte-for-byte identical.
+    if request.audience_plan:
+        plan_snapshot = dict(request.audience_plan)
+        deal_data["audience_plan_snapshot"] = plan_snapshot
+        deal_data["audience_match_summary"] = _build_audience_match_summary(
+            plan_snapshot
+        )
+
+        # Forensic anchor hash log (proposal §5.1 Step 2 / bead 14b). Buyer
+        # logs the same hash on its side via `ad_buyer.audience.booking`.
+        plan_id = plan_snapshot.get("audience_plan_id") or ""
+        booking_logger.info(
+            "deal_booking deal_id=%s audience_plan_id=%s quote_id=%s",
+            deal_id,
+            plan_id,
+            request.quote_id,
+        )
+
     # Update quote status to "booked" and link deal_id
     quote["status"] = QuoteStatus.BOOKED.value
     quote["deal_id"] = deal_id
     await storage.set_quote(request.quote_id, quote, ttl=86400)
 
-    # Store the deal in deal storage (coexists with proposal-based deals)
+    # Store the deal in deal storage (coexists with proposal-based deals).
+    # The snapshot fields land on the persisted record so
+    # `honor_audience_plan_snapshot()` can read them at fulfillment time.
     await storage.set_deal(deal_id, deal_data)
 
     return deal_data
+
+
+# =============================================================================
+# Agentic Audience Match (proposal §5.7 + §6 row 11)
+# =============================================================================
+
+
+def _agentic_match_quality(score: float) -> str:
+    """Bucket a [0, 1] match score into the spec's quality labels."""
+
+    if score >= 0.85:
+        return "STRONG"
+    if score >= 0.65:
+        return "MODERATE"
+    if score >= 0.4:
+        return "WEAK"
+    return "POOR"
+
+
+def _deterministic_score(identifier: str) -> float:
+    """sha256-derived deterministic [0, 1] mock score.
+
+    Mock-quality is fine here -- per proposal §7, the SHA256-seeded mock is
+    explicitly the load-bearing fake under every "agentic match score" we
+    display in Epic 1; the real model is Epic 2 / E2-2.
+    """
+
+    import hashlib
+
+    digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
+    # First 8 hex chars -> 32-bit unsigned int -> normalized to [0, 1].
+    return int(digest[:8], 16) / 0xFFFFFFFF
+
+
+# Wire-format §6.5 match-bucket labels. Note these differ from the
+# `_agentic_match_quality` labels used by `/agentic-audience/match`
+# (which uses POOR for the lowest bucket); the booking response uses the
+# `BookingResponse.MatchEntry` enum from the wire-format spec, which has
+# `NONE` instead of `POOR`. Keeping the two scales separate avoids breaking
+# the §11 endpoint contract while satisfying §6.5 on the booking surface.
+def _booking_match_label(score: float) -> str:
+    """Wire-format §6.5 match-bucket label for a [0, 1] score."""
+
+    if score >= 0.85:
+        return "STRONG"
+    if score >= 0.65:
+        return "MODERATE"
+    if score >= 0.4:
+        return "WEAK"
+    return "NONE"
+
+
+def _score_for_ref(ref: dict[str, Any]) -> float:
+    """Deterministic mock match score for a single ref.
+
+    Standard / contextual refs score against their `identifier`; agentic
+    refs score against their embedding URI. Score range [0, 1]. Real
+    similarity scoring is Epic 2 / E2-2; for Epic 1 the deterministic mock
+    matches the rest of the seller's scoring surface.
+    """
+
+    identifier = ref.get("identifier") or ""
+    return _deterministic_score(identifier)
+
+
+def _match_entry_for_ref(ref: dict[str, Any]) -> dict[str, Any]:
+    """Build one wire-format §6.5 `MatchEntry` for a single ref."""
+
+    score = _score_for_ref(ref)
+    return {"match": _booking_match_label(score), "score": round(score, 4)}
+
+
+def _build_audience_match_summary(plan: dict[str, Any]) -> dict[str, Any]:
+    """Assemble the wire-format §6.5 `audience_match_summary` for a plan.
+
+    Returns the four-role shape (`primary`, `constraints`, `extensions`,
+    `exclusions`) -- per the schema, empty arrays MAY be omitted but
+    receivers MUST treat absence as empty, so we always emit them so the
+    buyer's typed parser has stable structure.
+    """
+
+    summary: dict[str, Any] = {
+        "primary": _match_entry_for_ref(plan.get("primary") or {}),
+        "constraints": [
+            _match_entry_for_ref(r) for r in (plan.get("constraints") or [])
+        ],
+        "extensions": [
+            _match_entry_for_ref(r) for r in (plan.get("extensions") or [])
+        ],
+        "exclusions": [
+            _match_entry_for_ref(r) for r in (plan.get("exclusions") or [])
+        ],
+    }
+    return summary
+
+
+@app.post("/agentic-audience/match", tags=["Audience"])
+async def agentic_audience_match(request: AgenticAudienceMatchRequest):
+    """Match a buyer-supplied agentic `AudienceRef` against this seller.
+
+    Per proposal §5.7 + §6 row 11. Returns a match score and quality bucket.
+    The score is mock-quality (deterministic from sha256 of `identifier`);
+    the real embedding-similarity model is Epic 2 (E2-2).
+
+    Behavior:
+    - Non-agentic refs return HTTP 400.
+    - Sellers with no top-level agentic capability (legacy / agentic
+      decommissioned) return `agentic_supported_by_seller=False`,
+      `match_quality="POOR"`, score 0.
+    - Otherwise the score is deterministic per `identifier` and bucketed
+      into `STRONG | MODERATE | WEAK | POOR`.
+    """
+
+    from ...models.audience_capabilities import build_capability_audience_block
+
+    ref = request.audience_ref or {}
+    if ref.get("type") != "agentic":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_audience_ref",
+                "message": "POST /agentic-audience/match requires audience_ref.type='agentic'",
+            },
+        )
+
+    identifier = ref.get("identifier") or ""
+    if not identifier:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_audience_ref",
+                "message": "audience_ref.identifier is required",
+            },
+        )
+
+    seller_caps = build_capability_audience_block()
+    agentic_supported = bool(seller_caps.agentic.supported)
+
+    if not agentic_supported:
+        return {
+            "audience_ref": ref,
+            "match_confidence": 0.0,
+            "match_quality": "POOR",
+            "matched_capabilities": [],
+            "agentic_supported_by_seller": False,
+            "rationale": (
+                "Seller does not advertise top-level agentic capability "
+                "(audience_capabilities.agentic.supported=false); returning POOR."
+            ),
+        }
+
+    score = _deterministic_score(identifier)
+    quality = _agentic_match_quality(score)
+
+    # `matched_capabilities` is a placeholder for the real model's
+    # per-signal-type breakdown (E2-2). For now we mirror the seller's
+    # advertised top-level agentic flag as a single capability label.
+    matched: list[str] = []
+    if quality != "POOR":
+        matched.append("agentic")
+
+    return {
+        "audience_ref": ref,
+        "match_confidence": round(score, 4),
+        "match_quality": quality,
+        "matched_capabilities": matched,
+        "agentic_supported_by_seller": True,
+        "rationale": (
+            f"Deterministic mock score {round(score, 4)} -> {quality}. "
+            "Real similarity model is tracked in Epic 2 (E2-2)."
+        ),
+    }
 
 
 @app.get("/api/v1/deals/{deal_id}", tags=["Deal Booking"])

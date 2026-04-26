@@ -6,7 +6,7 @@ Connect your seller agent to ChatGPT, OpenAI Codex, Cursor, Windsurf, or any MCP
 
 Same as [Claude Desktop Setup](claude-desktop-setup.md) — your developer must have deployed the seller agent and generated credentials.
 
-Your seller agent MCP endpoint: `https://your-publisher.example.com/mcp`
+Your seller agent MCP endpoint: `https://your-publisher.example.com/mcp/mcp`
 
 ---
 
@@ -26,7 +26,7 @@ ChatGPT natively supports MCP servers via Developer Mode.
 
 1. Go to **Settings > Connectors** (or **Settings > Apps**)
 2. Click **Create**
-3. Enter your MCP server URL: `https://your-publisher.example.com/mcp`
+3. Enter your MCP server URL: `https://your-publisher.example.com/mcp/mcp`
 4. Name it: `Seller Agent`
 5. Add a description: `Manage publisher inventory, deals, pricing, and buyer relationships`
 6. Click **Create**
@@ -65,7 +65,7 @@ Codex supports MCP servers via its config file.
 ### Option A: CLI
 
 ```bash
-codex mcp add seller-agent --url https://your-publisher.example.com/mcp
+codex mcp add seller-agent --url https://your-publisher.example.com/mcp/mcp
 ```
 
 ### Option B: Config File
@@ -74,7 +74,7 @@ Edit `~/.codex/config.toml` (global) or `.codex/config.toml` (project):
 
 ```toml
 [mcp_servers.seller-agent]
-url = "https://your-publisher.example.com/mcp"
+url = "https://your-publisher.example.com/mcp/mcp"
 bearer_token_env_var = "SELLER_AGENT_API_KEY"
 ```
 
@@ -102,7 +102,7 @@ Create `.cursor/mcp.json` in your project root:
 {
   "mcpServers": {
     "seller-agent": {
-      "url": "https://your-publisher.example.com/mcp",
+      "url": "https://your-publisher.example.com/mcp/mcp",
       "headers": {
         "Authorization": "Bearer sk-operator-XXXXX"
       }
@@ -121,7 +121,7 @@ Create `~/.cursor/mcp.json` with the same format.
 {
   "mcpServers": {
     "seller-agent": {
-      "url": "https://your-publisher.example.com/mcp",
+      "url": "https://your-publisher.example.com/mcp/mcp",
       "headers": {
         "Authorization": "Bearer ${env:SELLER_AGENT_API_KEY}"
       }
@@ -150,7 +150,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
 {
   "mcpServers": {
     "seller-agent": {
-      "serverUrl": "https://your-publisher.example.com/mcp",
+      "serverUrl": "https://your-publisher.example.com/mcp/mcp",
       "headers": {
         "Authorization": "Bearer sk-operator-XXXXX"
       }

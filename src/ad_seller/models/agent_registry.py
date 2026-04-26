@@ -24,6 +24,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from .audience_capabilities import CapabilityAudienceBlock
 from .buyer_identity import AccessTier
 
 # =============================================================================
@@ -82,6 +83,19 @@ class AgentCard(BaseModel):
     supported_deal_types: list[str] = Field(default_factory=list)
     contact: Optional[str] = None
     tos_url: Optional[str] = None
+    # Per proposal §5.7 layer 1: audience capability advertisement. Optional
+    # for backward compatibility -- a missing block means "treat as legacy"
+    # (standard segments only, no constraints/extensions/exclusions, no
+    # agentic). Buyers pre-flight an AudiencePlan against these flags before
+    # sending a DealBookingRequest.
+    audience_capabilities: Optional[CapabilityAudienceBlock] = Field(
+        default=None,
+        description=(
+            "Audience capability discovery block (proposal §5.7 layer 1). "
+            "Schema version, supports_* flags, max_refs_per_role, and "
+            "taxonomy_lock_hashes for cross-repo schema-drift detection."
+        ),
+    )
 
 
 # =============================================================================

@@ -10,7 +10,7 @@ Part of the IAB Tech Lab Agent Ecosystem --- see also the [Buyer Agent](https://
 
 | Protocol | Endpoint | Best For |
 |----------|----------|----------|
-| **[MCP](api/mcp.md)** | `/mcp` (Streamable HTTP), `/mcp-sse/sse` (legacy) | Primary interface — 41 tools for Claude, ChatGPT, Codex, Cursor, and buyer agents |
+| **[MCP](api/mcp.md)** | `/mcp/mcp` (Streamable HTTP), `/mcp-sse/sse` (legacy) | Primary interface — 41 tools for Claude, ChatGPT, Codex, Cursor, and buyer agents |
 | **[A2A](api/a2a.md)** | `/a2a/seller/jsonrpc` | Conversational agent interactions — natural language, multi-turn |
 | **[REST API](api/overview.md)** | `/api/v1/*` | Programmatic access — 82 endpoints across 15 groups |
 

@@ -23,7 +23,7 @@ Works on both **Claude Desktop** and **Claude on the web** (claude.ai):
 1. Open Claude Desktop or go to [claude.ai](https://claude.ai)
 2. Go to **Settings > Integrations**
 3. Click **"+ Add Custom Integration"**
-4. Enter your seller agent's MCP URL: `https://your-publisher.example.com/mcp`
+4. Enter your seller agent's MCP URL: `https://your-publisher.example.com/mcp/mcp`
 5. If prompted for authentication, enter your operator API key
 6. Click **Save**
 

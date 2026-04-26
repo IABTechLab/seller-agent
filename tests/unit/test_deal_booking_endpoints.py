@@ -281,8 +281,19 @@ class TestQuoteToDealFlow:
         mock_flow.kickoff = AsyncMock()
         mock_flow.kickoff_async = AsyncMock()
 
+        # ar-0vtg: POST /api/v1/quotes now reads from `_get_static_product_catalog`
+        # rather than running ProductSetupFlow per request. The deal-booking
+        # endpoint still uses ProductSetupFlow, so we patch both.
+        catalog = {
+            "products": products,
+            "inventory_types": sorted({p.inventory_type for p in products.values()}),
+        }
         with (
             patch("ad_seller.flows.ProductSetupFlow", return_value=mock_flow),
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=catalog,
+            ),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
             # Step 1: Create quote
