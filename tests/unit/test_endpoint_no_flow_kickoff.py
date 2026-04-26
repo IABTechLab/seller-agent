@@ -137,3 +137,60 @@ async def test_endpoints_do_not_invoke_flow_kickoff(client):
         ):
             resp = await c.get(path)
             assert resp.status_code == 200, f"{path} returned {resp.status_code}"
+
+
+async def test_create_quote_returns_200_without_flow_kickoff(client):
+    """`POST /api/v1/quotes` returns 200 and does NOT invoke ProductSetupFlow.
+
+    Regression for ar-0vtg: this endpoint used to call
+    `await ProductSetupFlow().kickoff()` per request to load the product
+    catalog, which hangs in OpenDirect MCP session.initialize(). The
+    autouse `_fail_if_flow_kickoff_called` fixture trips an AssertionError
+    if any code path under this test calls Flow.kickoff().
+    """
+    async with client as c:
+        # Find a real product_id from the cached catalog.
+        list_resp = await c.get("/products")
+        assert list_resp.status_code == 200
+        product_id = list_resp.json()["products"][0]["product_id"]
+
+        # PG deal requires impressions; pick one comfortably above min (default 10000).
+        body = {
+            "product_id": product_id,
+            "deal_type": "PG",
+            "impressions": 1_000_000,
+        }
+        resp = await c.post("/api/v1/quotes", json=body)
+    assert resp.status_code == 200, f"got {resp.status_code}: {resp.text}"
+    payload = resp.json()
+    assert payload["status"] == "available"
+    assert payload["product"]["product_id"] == product_id
+    assert payload["deal_type"] == "PG"
+    assert payload["pricing"]["final_cpm"] > 0
+    assert "quote_id" in payload and payload["quote_id"].startswith("qt-")
+
+
+async def test_create_quote_returns_404_for_unknown_product(client):
+    """Unknown product → 404, also without flow.kickoff()."""
+    async with client as c:
+        body = {
+            "product_id": "prod-doesnotexist",
+            "deal_type": "PD",
+            "impressions": 100_000,
+        }
+        resp = await c.post("/api/v1/quotes", json=body)
+    assert resp.status_code == 404
+
+
+async def test_create_quote_validates_deal_type(client):
+    """Bad deal_type → 400, also without flow.kickoff()."""
+    async with client as c:
+        list_resp = await c.get("/products")
+        product_id = list_resp.json()["products"][0]["product_id"]
+        body = {
+            "product_id": product_id,
+            "deal_type": "ZZ",
+            "impressions": 100_000,
+        }
+        resp = await c.post("/api/v1/quotes", json=body)
+    assert resp.status_code == 400

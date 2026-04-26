@@ -2160,7 +2160,6 @@ async def create_quote(
     from datetime import timedelta
 
     from ...engines.pricing_rules_engine import PricingRulesEngine
-    from ...flows import ProductSetupFlow
     from ...models.core import DealType
     from ...models.pricing_tiers import TieredPricingConfig
     from ...models.quotes import (
@@ -2199,11 +2198,11 @@ async def create_quote(
             },
         )
 
-    # Get product catalog
-    setup_flow = ProductSetupFlow()
-    await setup_flow.kickoff()
-
-    product = setup_flow.state.products.get(request.product_id)
+    # Read product from cached static catalog rather than running
+    # ProductSetupFlow per request (hangs in OpenDirect MCP
+    # session.initialize() — see ar-uwad / `_get_static_product_catalog`).
+    catalog = _get_static_product_catalog()
+    product = catalog["products"].get(request.product_id)
     if not product:
         raise HTTPException(
             status_code=404,
