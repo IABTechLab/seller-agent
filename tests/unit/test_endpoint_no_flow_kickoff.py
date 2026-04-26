@@ -1,16 +1,27 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Regression tests for ar-uwad: read endpoints must not run ProductSetupFlow.
+"""Regression tests for ar-yet5: endpoints must not call sync ProductSetupFlow.kickoff().
 
-`GET /products`, `GET /products/{id}`, and `GET /.well-known/agent.json`
-used to call `await ProductSetupFlow().kickoff()` per request, which hangs
-in OpenDirect MCP `session.initialize()`. These tests verify those
-endpoints return 200 quickly without ever touching the flow.
+In CrewAI 1.10.1, `Flow.kickoff()` is synchronous and returns `None`.
+`await flow.kickoff()` raises `TypeError: object NoneType can't be used in
+'await' expression`. The fix (mirroring origin's 3d8b69c for /products) is
+`await flow.kickoff_async()`.
+
+These tests guard the invariant that no production endpoint reaches the
+sync `.kickoff()` method via the autouse fixture below — if any endpoint
+regresses to the broken pattern, the AssertionError trips immediately.
+The hermetic POST /packages/sync test additionally exercises one of the
+six previously-broken endpoints end-to-end with a mocked flow.
+
+Read endpoints (`GET /products`, `GET /products/{id}`, `GET /.well-known/agent.json`)
+were separately fixed by ar-uwad to read from a static catalog instead of
+running the flow at all; the same kickoff-call guard applies to them.
 """
 
 import sys
 from types import ModuleType
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -194,3 +205,46 @@ async def test_create_quote_validates_deal_type(client):
         }
         resp = await c.post("/api/v1/quotes", json=body)
     assert resp.status_code == 400
+
+
+# =============================================================================
+# ar-yet5: Flow-kickoff write endpoints must use kickoff_async(), not kickoff()
+#
+# In CrewAI 1.10.1 Flow.kickoff() is synchronous and returns None.
+# Awaiting None raises TypeError: object NoneType can't be used in 'await'.
+# These tests verify /packages/sync (the simplest of the six affected endpoints)
+# does NOT return a 500 with that TypeError, proving kickoff_async() is called.
+# The autouse `_fail_if_flow_kickoff_called` fixture from this module guarantees
+# the old (broken) kickoff() path is never taken.
+# =============================================================================
+
+
+async def test_packages_sync_does_not_return_typeerror_500():
+    """`POST /packages/sync` must not crash with TypeError from awaiting kickoff().
+
+    Regression for ar-yet5: this endpoint called `await flow.kickoff()` which
+    returns None in CrewAI 1.10.1 and crashes.  Fix: `await flow.kickoff_async()`.
+
+    We mock ProductSetupFlow so the test is hermetic (no real flow execution).
+    The `_fail_if_flow_kickoff_called` autouse fixture ensures the old `.kickoff()`
+    method is never reached — if it were, it would raise AssertionError, not pass.
+    """
+    mock_flow = MagicMock()
+    mock_flow.kickoff_async = AsyncMock()
+    mock_flow.state.synced_segments = []
+    mock_flow.state.warnings = []
+
+    with patch("ad_seller.flows.ProductSetupFlow", return_value=mock_flow):
+        with patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock):
+            transport = ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+                resp = await c.post("/packages/sync")
+
+    # Any status other than 500 (with TypeError) means the fix is working.
+    # 200 = fully successful; other 2xx/4xx/5xx domain errors are also acceptable
+    # as long as they are NOT from the TypeError crash.
+    assert resp.status_code != 500 or "NoneType" not in resp.text, (
+        f"POST /packages/sync returned 500 with TypeError body: {resp.text}"
+    )
+    # Confirm kickoff_async was actually awaited (not the old kickoff()).
+    mock_flow.kickoff_async.assert_awaited_once()
