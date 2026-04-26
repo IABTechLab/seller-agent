@@ -410,6 +410,203 @@ def _get_api_settings():
     return get_settings()
 
 
+# Cached static product catalog. The seller's default catalog is hardcoded
+# in ProductSetupFlow.create_default_products() but running the full flow
+# per request is expensive (initialize_setup → ensure_seller_organization
+# spins up an OpenDirect MCP session that hangs in session.initialize()).
+# Read endpoints (`GET /products`, `GET /products/{id}`, `GET /.well-known/agent.json`)
+# use this cached static catalog instead. POST endpoints that mutate state
+# can keep their flow logic.
+_STATIC_PRODUCT_CATALOG: Optional[dict[str, Any]] = None
+
+
+def _get_static_product_catalog() -> dict[str, Any]:
+    """Return the seller's default product catalog without running the flow.
+
+    Mirrors ProductSetupFlow.create_default_products() but without the
+    initialize_setup → ensure_seller_organization → OpenDirect MCP chain
+    that hangs read endpoints. IDs are generated once and cached so that
+    repeated reads return stable product_ids.
+    """
+    global _STATIC_PRODUCT_CATALOG
+    if _STATIC_PRODUCT_CATALOG is not None:
+        return _STATIC_PRODUCT_CATALOG
+
+    from ...models.core import DealType, PricingModel
+    from ...models.flow_state import ProductDefinition
+
+    # Same default product list as ProductSetupFlow.create_default_products().
+    # Keeping the data here avoids importing the flow (which pulls CrewAI
+    # plus the OpenDirect client chain).
+    default_products = [
+        {
+            "name": "Premium Display - Homepage",
+            "description": "High-impact display on homepage",
+            "inventory_type": "display",
+            "base_cpm": 15.0,
+            "floor_cpm": 10.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PREFERRED_DEAL,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Standard Display - ROS",
+            "description": "Run of site display inventory",
+            "inventory_type": "display",
+            "base_cpm": 8.0,
+            "floor_cpm": 5.0,
+            "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Pre-Roll Video",
+            "description": "In-stream pre-roll video ads",
+            "inventory_type": "video",
+            "base_cpm": 25.0,
+            "floor_cpm": 18.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PREFERRED_DEAL,
+            ],
+            "supported_pricing_models": [PricingModel.CPM, PricingModel.CPCV],
+        },
+        {
+            "name": "CTV Premium Streaming",
+            "description": "Connected TV inventory on premium streaming apps",
+            "inventory_type": "ctv",
+            "base_cpm": 35.0,
+            "floor_cpm": 28.0,
+            "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Mobile App Rewarded Video",
+            "description": "User-initiated rewarded video in mobile apps",
+            "inventory_type": "mobile_app",
+            "base_cpm": 20.0,
+            "floor_cpm": 15.0,
+            "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "supported_pricing_models": [PricingModel.CPM, PricingModel.CPCV],
+        },
+        {
+            "name": "Native In-Feed",
+            "description": "Native ads in content feeds",
+            "inventory_type": "native",
+            "base_cpm": 12.0,
+            "floor_cpm": 8.0,
+            "supported_deal_types": [DealType.PREFERRED_DEAL],
+            "supported_pricing_models": [PricingModel.CPM, PricingModel.CPC],
+        },
+        # Linear TV — Direct seller (NBCU)
+        {
+            "name": "NBC Primetime :30",
+            "description": "NBC broadcast primetime 30-second national spot",
+            "inventory_type": "linear_tv",
+            "base_cpm": 55.0,
+            "floor_cpm": 40.0,
+            "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "NBCU Cable Network :30 (Bravo/USA)",
+            "description": "NBCU cable network 30-second spot across Bravo, USA, CNBC",
+            "inventory_type": "linear_tv",
+            "base_cpm": 22.0,
+            "floor_cpm": 15.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PREFERRED_DEAL,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Telemundo Primetime :30",
+            "description": "Telemundo Spanish-language primetime 30-second spot",
+            "inventory_type": "linear_tv",
+            "base_cpm": 18.0,
+            "floor_cpm": 12.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PREFERRED_DEAL,
+                DealType.PRIVATE_AUCTION,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        # Linear TV — MVPD operator (Comcast/Spectrum)
+        {
+            "name": "Comcast Local Avails — Top 10 DMAs",
+            "description": "Comcast Xfinity local cable insertion avails in top 10 markets",
+            "inventory_type": "linear_tv",
+            "base_cpm": 15.0,
+            "floor_cpm": 8.0,
+            "supported_deal_types": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        {
+            "name": "Comcast Addressable Linear — National",
+            "description": "Comcast addressable linear TV with household-level targeting",
+            "inventory_type": "linear_tv",
+            "base_cpm": 55.0,
+            "floor_cpm": 40.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PRIVATE_AUCTION,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+        # Linear TV — Reseller/SSP (PubMatic/Magnite)
+        {
+            "name": "Programmatic Linear Reach — A25-54 Primetime",
+            "description": "Aggregated primetime linear reach across multiple networks via SSP",
+            "inventory_type": "linear_tv",
+            "base_cpm": 30.0,
+            "floor_cpm": 20.0,
+            "supported_deal_types": [
+                DealType.PROGRAMMATIC_GUARANTEED,
+                DealType.PRIVATE_AUCTION,
+            ],
+            "supported_pricing_models": [PricingModel.CPM],
+        },
+    ]
+
+    products: dict[str, ProductDefinition] = {}
+    for cfg in default_products:
+        product_def = ProductDefinition(
+            product_id=f"prod-{uuid.uuid4().hex[:8]}",
+            name=cfg["name"],
+            description=cfg.get("description"),
+            inventory_type=cfg["inventory_type"],
+            supported_deal_types=cfg["supported_deal_types"],
+            supported_pricing_models=cfg["supported_pricing_models"],
+            base_cpm=cfg["base_cpm"],
+            floor_cpm=cfg["floor_cpm"],
+        )
+        products[product_def.product_id] = product_def
+
+    inventory_types = sorted({p.inventory_type for p in products.values()})
+
+    _STATIC_PRODUCT_CATALOG = {
+        "products": products,
+        "inventory_types": inventory_types,
+    }
+    return _STATIC_PRODUCT_CATALOG
+
+
+def _serialize_product(product: Any) -> dict[str, Any]:
+    """Serialize a ProductDefinition to the public JSON shape."""
+    return {
+        "product_id": product.product_id,
+        "name": product.name,
+        "description": product.description,
+        "inventory_type": product.inventory_type,
+        "base_cpm": product.base_cpm,
+        "floor_cpm": product.floor_cpm,
+        "deal_types": [dt.value for dt in product.supported_deal_types],
+    }
+
+
 async def _resolve_and_enforce_agent(
     agent_url: Optional[str],
 ) -> tuple[Optional[Any], Optional[Any]]:
@@ -456,50 +653,30 @@ async def health():
 
 @app.get("/products", tags=["Products"])
 async def list_products():
-    """List all products in the catalog."""
-    from ...flows import ProductSetupFlow
+    """List all products in the catalog.
 
-    flow = ProductSetupFlow()
-    await flow.kickoff()
-
-    products = []
-    for product in flow.state.products.values():
-        products.append(
-            {
-                "product_id": product.product_id,
-                "name": product.name,
-                "description": product.description,
-                "inventory_type": product.inventory_type,
-                "base_cpm": product.base_cpm,
-                "floor_cpm": product.floor_cpm,
-                "deal_types": [dt.value for dt in product.supported_deal_types],
-            }
-        )
-
-    return {"products": products}
+    Reads from the cached static catalog (see `_get_static_product_catalog`)
+    instead of running ProductSetupFlow per request — kicking off the flow
+    spins up an OpenDirect MCP session that hangs in `session.initialize()`.
+    """
+    catalog = _get_static_product_catalog()
+    return {
+        "products": [_serialize_product(p) for p in catalog["products"].values()],
+    }
 
 
 @app.get("/products/{product_id}", tags=["Products"])
 async def get_product(product_id: str):
-    """Get a specific product."""
-    from ...flows import ProductSetupFlow
+    """Get a specific product.
 
-    flow = ProductSetupFlow()
-    await flow.kickoff()
-
-    product = flow.state.products.get(product_id)
+    Reads from the cached static catalog instead of running ProductSetupFlow
+    per request (see `list_products` for rationale).
+    """
+    catalog = _get_static_product_catalog()
+    product = catalog["products"].get(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-
-    return {
-        "product_id": product.product_id,
-        "name": product.name,
-        "description": product.description,
-        "inventory_type": product.inventory_type,
-        "base_cpm": product.base_cpm,
-        "floor_cpm": product.floor_cpm,
-        "deal_types": [dt.value for dt in product.supported_deal_types],
-    }
+    return _serialize_product(product)
 
 
 @app.post("/pricing", response_model=PricingResponse, tags=["Pricing"])
@@ -1754,7 +1931,6 @@ async def agent_card():
     seller's capabilities, supported protocols, and inventory types.
     Buyer agents and registries fetch this to discover the seller.
     """
-    from ...flows import ProductSetupFlow
     from ...models.agent_registry import (
         AgentAuthentication,
         AgentCapabilities,
@@ -1766,13 +1942,11 @@ async def agent_card():
 
     settings = _get_api_settings()
 
-    # Discover inventory types from product catalog
-    inventory_types = set()
+    # Read inventory types from the cached static catalog rather than running
+    # ProductSetupFlow per request (which hangs in OpenDirect MCP
+    # session.initialize() — see `_get_static_product_catalog` for context).
     try:
-        flow = ProductSetupFlow()
-        await flow.kickoff()
-        for product in flow.state.products.values():
-            inventory_types.add(product.inventory_type)
+        inventory_types = set(_get_static_product_catalog()["inventory_types"])
     except Exception:
         inventory_types = {"display", "video", "ctv", "native", "mobile_app"}
 
