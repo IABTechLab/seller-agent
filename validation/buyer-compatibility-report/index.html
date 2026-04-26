@@ -1,0 +1,2493 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="API & Architecture Reference for the IAB OpenDirect 2.1 Seller Agent">
+      
+      
+      
+        <link rel="canonical" href="https://iabtechlab.github.io/seller-agent/validation/buyer-compatibility-report/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Buyer Agent Compatibility Report - IAB Tech Lab — Seller Agent</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#buyer-agent-compatibility-report" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+            
+  <a href="https://iabtechlab.github.io/buyer-agent/" style="color: white;">
+    This is the <strong>Seller Agent</strong> documentation.
+    Looking for the <strong>Buyer Agent</strong>? Click here &rarr;
+  </a>
+
+          </div>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="IAB Tech Lab — Seller Agent" class="md-header__button md-logo" aria-label="IAB Tech Lab — Seller Agent" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            IAB Tech Lab — Seller Agent
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Buyer Agent Compatibility Report
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/IABTechLab/seller-agent" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/quickstart/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/overview/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../state-machines/order-lifecycle/" class="md-tabs__link">
+          
+  
+  
+  State Machines
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../event-bus/overview/" class="md-tabs__link">
+          
+  
+  
+  Event Bus
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../integration/buyer-agent/" class="md-tabs__link">
+          
+  
+  
+  Integration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/claude-desktop-setup/" class="md-tabs__link">
+          
+  
+  
+  AI Assistant Setup
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/publisher-setup/" class="md-tabs__link">
+          
+  
+  
+  Publisher Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://iabtechlab.github.io/buyer-agent/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Buyer Agent Docs →
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="IAB Tech Lab — Seller Agent" class="md-nav__button md-logo" aria-label="IAB Tech Lab — Seller Agent" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    IAB Tech Lab — Seller Agent
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/IABTechLab/seller-agent" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/a2a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A2A Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/agent-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Discovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/quotes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quotes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/orders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/change-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machines
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    State Machines
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../state-machines/order-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Order Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../state-machines/change-request-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Request Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Bus
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Event Bus
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../event-bus/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Integration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/buyer-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer Agent Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/negotiation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Negotiation Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Assistant Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    AI Assistant Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/claude-desktop-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude (Desktop & Web)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/chatgpt-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ChatGPT, Codex & AI IDEs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/developer-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publisher Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Publisher Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/publisher-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/inventory-sync/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inventory Sync
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/media-kit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Media Kit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/pricing-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pricing & Access Tiers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/approval-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Approval & HITL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/agent-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer & Agent Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://iabtechlab.github.io/buyer-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer Agent Docs →
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#aligned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aligned
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Aligned">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-quote-then-book-api-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Quote-then-book API contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-quoterequest-field-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. QuoteRequest field names
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-deal-type-short-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Deal type short codes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-buyeridentity-quotebuyeridentity-field-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. BuyerIdentity / QuoteBuyerIdentity field alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-pricing-sub-model-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Pricing sub-model fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-terms-sub-model-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Terms sub-model fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-dealbookingrequest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. DealBookingRequest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-authentication-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Authentication mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-api-key-prefix-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. API key prefix format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-accesstier-enum-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. AccessTier enum values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-negotiation-event-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Negotiation event types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-linear-tv-extensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Linear TV extensions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mismatches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mismatches
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Mismatches">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m1-x-api-key-header-casing-inconsistency-low-risk-works-in-practice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1. X-Api-Key header casing inconsistency (LOW risk, works in practice)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-dealtype-enum-value-mismatch-between-opendirect-models-and-deals-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2. DealType enum value mismatch between OpenDirect models and Deals API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-dealbookingresponse-vs-dealresponse-status-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3. DealBookingResponse vs. DealResponse status values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-deal-id-format-mismatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4. Deal ID format mismatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-openrtb_params-structure-mismatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5. openrtb_params structure mismatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#missing-integration-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Missing Integration Points
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Missing Integration Points">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#i1-buyer-has-no-client-for-apiv1dealsfrom-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I1. Buyer has no client for /api/v1/deals/from-template
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#i2-buyer-has-no-proposal-lifecycle-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I2. Buyer has no proposal lifecycle events
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#i3-buyer-mcp-client-expects-opendirect-tools-the-seller-may-not-expose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I3. Buyer MCP client expects OpenDirect tools the seller may not expose
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#i4-no-buyer-side-support-for-deal-pushdistribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I4. No buyer-side support for deal push/distribution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#i5-no-buyer-side-support-for-deal-migrationdeprecation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I5. No buyer-side support for deal migration/deprecation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#i6-sellers-buyeridentity-has-extra-fields-not-sent-by-buyer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I6. Seller's BuyerIdentity has extra fields not sent by buyer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#i7-sellers-buyercontext-has-agent-registry-trust-ceiling-buyer-is-unaware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I7. Seller's BuyerContext has agent registry trust ceiling; buyer is unaware
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#naming-deal-jockey-references-in-buyer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming: "Deal Jockey" References in Buyer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommendations-prioritized" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommendations (Prioritized)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recommendations (Prioritized)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#p0-must-fix-before-integration-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P0 — Must fix before integration testing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p1-should-fix-before-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P1 — Should fix before production
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p2-should-fix-for-consistency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P2 — Should fix for consistency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p3-nice-to-have" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P3 — Nice to have
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="buyer-agent-compatibility-report">Buyer Agent Compatibility Report<a class="headerlink" href="#buyer-agent-compatibility-report" title="Permanent link">&para;</a></h1>
+<p><strong>Date:</strong> 2026-03-26
+<strong>Seller:</strong> <code>ad_seller_system</code>
+<strong>Buyer:</strong> <code>ad_buyer_system</code>
+<strong>Task:</strong> 0C — Cross-system compatibility audit</p>
+<hr />
+<h2 id="aligned">Aligned<a class="headerlink" href="#aligned" title="Permanent link">&para;</a></h2>
+<h3 id="1-quote-then-book-api-contract">1. Quote-then-book API contract<a class="headerlink" href="#1-quote-then-book-api-contract" title="Permanent link">&para;</a></h3>
+<p>Both systems agree on the two-phase flow and endpoint paths:
+- <code>POST /api/v1/quotes</code> — request a quote
+- <code>GET  /api/v1/quotes/{id}</code> — retrieve a quote
+- <code>POST /api/v1/deals</code> — book a deal from a quote
+- <code>GET  /api/v1/deals/{id}</code> — retrieve a deal</p>
+<p>The buyer's <code>DealsClient</code> (<code>ad_buyer_system/src/ad_buyer/clients/deals_client.py</code>) calls exactly these paths against the seller.</p>
+<h3 id="2-quoterequest-field-names">2. QuoteRequest field names<a class="headerlink" href="#2-quoterequest-field-names" title="Permanent link">&para;</a></h3>
+<p>Both sides define identical field names for the quote request body: <code>product_id</code>, <code>deal_type</code>, <code>impressions</code>, <code>flight_start</code>, <code>flight_end</code>, <code>target_cpm</code>, <code>buyer_identity</code>.</p>
+<h3 id="3-deal-type-short-codes">3. Deal type short codes<a class="headerlink" href="#3-deal-type-short-codes" title="Permanent link">&para;</a></h3>
+<p>Both systems use the <code>"PG"</code>, <code>"PD"</code>, <code>"PA"</code> shorthand in the Deals API layer:
+- Seller: <code>QuoteRequest.deal_type</code> accepts <code>"PG"</code>, <code>"PD"</code>, <code>"PA"</code> (quotes.py:55)
+- Buyer: <code>QuoteRequest.deal_type</code> defaults to <code>"PD"</code> (deals.py:119), <code>DealType</code> enum uses <code>"PG"</code>, <code>"PD"</code>, <code>"PA"</code> (buyer_identity.py:22-26)</p>
+<h3 id="4-buyeridentity-quotebuyeridentity-field-alignment">4. BuyerIdentity / QuoteBuyerIdentity field alignment<a class="headerlink" href="#4-buyeridentity-quotebuyeridentity-field-alignment" title="Permanent link">&para;</a></h3>
+<p>Both sides share <code>seat_id</code>, <code>agency_id</code>, <code>advertiser_id</code>, <code>dsp_platform</code> in the quote request's <code>buyer_identity</code> nested object.</p>
+<h3 id="5-pricing-sub-model-fields">5. Pricing sub-model fields<a class="headerlink" href="#5-pricing-sub-model-fields" title="Permanent link">&para;</a></h3>
+<p><code>PricingInfo</code> (buyer) and <code>QuotePricing</code> (seller) share: <code>base_cpm</code>, <code>tier_discount_pct</code>, <code>volume_discount_pct</code>, <code>final_cpm</code>, <code>currency</code>, <code>pricing_model</code>, <code>rationale</code>.</p>
+<h3 id="6-terms-sub-model-fields">6. Terms sub-model fields<a class="headerlink" href="#6-terms-sub-model-fields" title="Permanent link">&para;</a></h3>
+<p><code>TermsInfo</code> (buyer) and <code>QuoteTerms</code> (seller) share: <code>impressions</code>, <code>flight_start</code>, <code>flight_end</code>, <code>guaranteed</code>.</p>
+<h3 id="7-dealbookingrequest">7. DealBookingRequest<a class="headerlink" href="#7-dealbookingrequest" title="Permanent link">&para;</a></h3>
+<p>Both sides: <code>quote_id</code>, <code>buyer_identity</code> (optional), <code>notes</code> (optional).</p>
+<h3 id="8-authentication-mechanism">8. Authentication mechanism<a class="headerlink" href="#8-authentication-mechanism" title="Permanent link">&para;</a></h3>
+<p>Both use <code>X-Api-Key</code> header and <code>Authorization: Bearer &lt;token&gt;</code> as alternatives. The seller's <code>dependencies.py</code> checks <code>X-Api-Key</code> first, then <code>Authorization: Bearer</code>, matching the buyer's <code>DealsClient</code> which sends one or the other.</p>
+<h3 id="9-api-key-prefix-format">9. API key prefix format<a class="headerlink" href="#9-api-key-prefix-format" title="Permanent link">&para;</a></h3>
+<p>The buyer's auth test files (<code>tests/unit/test_auth.py</code>) use <code>ask_live_</code> prefixed keys, matching the seller's <code>API_KEY_PREFIX = "ask_live_"</code> in <code>models/api_key.py:24</code>.</p>
+<h3 id="10-accesstier-enum-values">10. AccessTier enum values<a class="headerlink" href="#10-accesstier-enum-values" title="Permanent link">&para;</a></h3>
+<p>Both systems define identical <code>AccessTier</code> values: <code>"public"</code>, <code>"seat"</code>, <code>"agency"</code>, <code>"advertiser"</code>.</p>
+<h3 id="11-negotiation-event-types">11. Negotiation event types<a class="headerlink" href="#11-negotiation-event-types" title="Permanent link">&para;</a></h3>
+<p>Both define <code>NEGOTIATION_STARTED</code>, <code>NEGOTIATION_ROUND</code>, <code>NEGOTIATION_CONCLUDED</code> event types with the same string values (<code>negotiation.started</code>, <code>negotiation.round</code>, <code>negotiation.concluded</code>).</p>
+<h3 id="12-linear-tv-extensions">12. Linear TV extensions<a class="headerlink" href="#12-linear-tv-extensions" title="Permanent link">&para;</a></h3>
+<p>Buyer's <code>QuoteRequest</code> includes <code>media_type</code> and <code>linear_tv</code> fields; buyer's <code>DealsClient</code> has <code>request_makegood()</code> and <code>request_cancellation()</code> methods for <code>POST /api/v1/deals/{id}/makegoods</code> and <code>POST /api/v1/deals/{id}/cancel</code>.</p>
+<hr />
+<h2 id="mismatches">Mismatches<a class="headerlink" href="#mismatches" title="Permanent link">&para;</a></h2>
+<h3 id="m1-x-api-key-header-casing-inconsistency-low-risk-works-in-practice">M1. X-Api-Key header casing inconsistency (LOW risk, works in practice)<a class="headerlink" href="#m1-x-api-key-header-casing-inconsistency-low-risk-works-in-practice" title="Permanent link">&para;</a></h3>
+<p>The buyer uses two different casings across clients:
+- <code>DealsClient</code> (deals_client.py:103): <code>"X-Api-Key"</code> (lowercase k)
+- <code>OpenDirectClient</code> (opendirect_client.py:55): <code>"X-API-Key"</code> (uppercase K)
+- <code>NegotiationClient</code> (negotiation/client.py:63): <code>"X-API-Key"</code>
+- <code>MediaKitClient</code> (media_kit/client.py:59): <code>"X-API-Key"</code></p>
+<p>The seller's <code>dependencies.py:36</code> declares <code>Header(None, alias="X-Api-Key")</code> with lowercase k.</p>
+<p><strong>Impact:</strong> HTTP headers are case-insensitive per RFC 7230, so this works at the transport layer. However, FastAPI's <code>Header()</code> with an explicit alias may behave inconsistently depending on the ASGI server. In practice, uvicorn normalizes headers to lowercase, so this is low risk but messy.</p>
+<p><strong>Files:</strong>
+- <code>ad_buyer_system/src/ad_buyer/clients/deals_client.py:103</code>
+- <code>ad_buyer_system/src/ad_buyer/clients/opendirect_client.py:55</code>
+- <code>ad_seller_system/src/ad_seller/auth/dependencies.py:36</code></p>
+<h3 id="m2-dealtype-enum-value-mismatch-between-opendirect-models-and-deals-api">M2. DealType enum value mismatch between OpenDirect models and Deals API<a class="headerlink" href="#m2-dealtype-enum-value-mismatch-between-opendirect-models-and-deals-api" title="Permanent link">&para;</a></h3>
+<p>The seller's <code>core.py</code> <code>DealType</code> enum uses long-form values (<code>"programmaticguaranteed"</code>, <code>"preferreddeal"</code>, <code>"privateauction"</code>) while the Deals API layer uses short codes (<code>"PG"</code>, <code>"PD"</code>, <code>"PA"</code>). These are in separate API surfaces (OpenDirect vs. Deals API) so they do not conflict today, but any future unification would hit this.</p>
+<p><strong>Files:</strong>
+- <code>ad_seller_system/src/ad_seller/models/core.py:43-48</code> (long form)
+- <code>ad_seller_system/src/ad_seller/models/quotes.py:55</code> (short codes)
+- <code>ad_buyer_system/src/ad_buyer/models/buyer_identity.py:22-26</code> (short codes)</p>
+<h3 id="m3-dealbookingresponse-vs-dealresponse-status-values">M3. DealBookingResponse vs. DealResponse status values<a class="headerlink" href="#m3-dealbookingresponse-vs-dealresponse-status-values" title="Permanent link">&para;</a></h3>
+<p>The seller's <code>DealBookingStatus</code> (quotes.py:29-34) has: <code>proposed</code>, <code>active</code>, <code>expired</code>, <code>cancelled</code>.
+The buyer's <code>DealResponse.status</code> comment (deals.py:183) lists: <code>proposed</code>, <code>active</code>, <code>rejected</code>, <code>expired</code>, <code>completed</code>.</p>
+<p>The buyer expects <code>rejected</code> and <code>completed</code> which the seller does not define. The seller has <code>cancelled</code> which the buyer omits from the comment (though the buyer does define <code>DEAL_CANCELLED</code> as an event type).</p>
+<p><strong>Files:</strong>
+- <code>ad_seller_system/src/ad_seller/models/quotes.py:29-34</code>
+- <code>ad_buyer_system/src/ad_buyer/models/deals.py:183</code></p>
+<h3 id="m4-deal-id-format-mismatch">M4. Deal ID format mismatch<a class="headerlink" href="#m4-deal-id-format-mismatch" title="Permanent link">&para;</a></h3>
+<p>The seller generates deal IDs with format <code>DEMO-{uuid_hex[:12].upper()}</code> (main.py:2035, 2895) and <code>CUR-{uuid_hex[:12].upper()}</code> (main.py:4192) for curator deals.
+The buyer's <code>UnifiedClient.request_deal()</code> (unified_client.py:619) generates <code>DEAL-{md5_hex[:8].upper()}</code> locally.</p>
+<p>These are independent ID spaces. The buyer's locally-generated deal IDs would never match seller-issued ones. The <code>DealsClient</code> (the proper integration path) correctly consumes seller-issued IDs from response payloads without generating its own.</p>
+<p><strong>Impact:</strong> The <code>UnifiedClient.request_deal()</code> path bypasses the seller entirely and fabricates deal IDs client-side. This is likely demo/fallback code, but if used in production it would create phantom deals.</p>
+<p><strong>Files:</strong>
+- <code>ad_seller_system/src/ad_seller/interfaces/api/main.py:2035</code>
+- <code>ad_buyer_system/src/ad_buyer/clients/unified_client.py:613-619</code></p>
+<h3 id="m5-openrtb_params-structure-mismatch">M5. openrtb_params structure mismatch<a class="headerlink" href="#m5-openrtb_params-structure-mismatch" title="Permanent link">&para;</a></h3>
+<p>The seller returns <code>openrtb_params</code> as a plain <code>dict[str, Any]</code> (quotes.py:143).
+The buyer defines a structured <code>OpenRTBParams</code> model with typed fields: <code>id</code>, <code>bidfloor</code>, <code>bidfloorcur</code>, <code>at</code>, <code>wseat</code>, <code>wadomain</code> (deals.py:96-103).</p>
+<p>The buyer's <code>DealResponse.openrtb_params</code> is <code>Optional[OpenRTBParams]</code> so Pydantic will attempt validation. If the seller returns keys not matching these field names, or different types, deserialization will fail silently (extra fields ignored) or noisily (missing required fields).</p>
+<p><strong>Files:</strong>
+- <code>ad_seller_system/src/ad_seller/models/quotes.py:143</code>
+- <code>ad_buyer_system/src/ad_buyer/models/deals.py:96-103</code></p>
+<hr />
+<h2 id="missing-integration-points">Missing Integration Points<a class="headerlink" href="#missing-integration-points" title="Permanent link">&para;</a></h2>
+<h3 id="i1-buyer-has-no-client-for-apiv1dealsfrom-template">I1. Buyer has no client for <code>/api/v1/deals/from-template</code><a class="headerlink" href="#i1-buyer-has-no-client-for-apiv1dealsfrom-template" title="Permanent link">&para;</a></h3>
+<p>The seller exposes <code>POST /api/v1/deals/from-template</code> as an MCP tool (<code>create_deal_from_template</code>) and REST endpoint. The buyer's <code>DealsClient</code> only covers the quote-then-book flow. There is no buyer-side client for the one-step template-based deal creation path.</p>
+<p><strong>Files:</strong>
+- <code>ad_seller_system/src/ad_seller/interfaces/api/main.py:2766</code>
+- <code>ad_seller_system/src/ad_seller/tools/deal_library/create_from_template.py</code></p>
+<h3 id="i2-buyer-has-no-proposal-lifecycle-events">I2. Buyer has no proposal lifecycle events<a class="headerlink" href="#i2-buyer-has-no-proposal-lifecycle-events" title="Permanent link">&para;</a></h3>
+<p>The seller emits <code>proposal.received</code>, <code>proposal.evaluated</code>, <code>proposal.accepted</code>, <code>proposal.rejected</code>, <code>proposal.countered</code>. The buyer has no corresponding event types or handlers for these. The buyer's event bus has <code>quote.requested</code>, <code>quote.received</code>, <code>deal.booked</code>, <code>deal.cancelled</code> but nothing in the proposal namespace.</p>
+<p>This means the buyer cannot participate in the seller's OpenDirect proposal-revision negotiation flow.</p>
+<p><strong>Files:</strong>
+- <code>ad_seller_system/src/ad_seller/events/models.py:18-22</code>
+- <code>ad_buyer_system/src/ad_buyer/events/models.py</code> (no proposal events)</p>
+<h3 id="i3-buyer-mcp-client-expects-opendirect-tools-the-seller-may-not-expose">I3. Buyer MCP client expects OpenDirect tools the seller may not expose<a class="headerlink" href="#i3-buyer-mcp-client-expects-opendirect-tools-the-seller-may-not-expose" title="Permanent link">&para;</a></h3>
+<p>The buyer's <code>SimpleMCPClient</code> fallback (mcp_client.py:88-94) assumes standard OpenDirect tools: <code>list_products</code>, <code>get_product</code>, <code>list_accounts</code>, <code>create_account</code>, <code>list_orders</code>, <code>create_order</code>, <code>list_lines</code>, <code>create_line</code>, <code>get_pricing</code>, <code>book_programmatic_guaranteed</code>, <code>create_pmp_deal</code>.</p>
+<p>The seller's MCP server likely exposes a different tool set (Deal Library tools like <code>create_deal_from_template</code>, <code>push_deal_to_buyers</code>, <code>distribute_deal_via_ssp</code>, etc.). The buyer hardcodes <code>book_programmatic_guaranteed</code> and <code>create_pmp_deal</code> which are not in the seller's documented tool list.</p>
+<p><strong>Files:</strong>
+- <code>ad_buyer_system/src/ad_buyer/clients/mcp_client.py:88-94</code>
+- <code>ad_seller_system/README.md:130</code> (lists actual MCP tools)</p>
+<h3 id="i4-no-buyer-side-support-for-deal-pushdistribution">I4. No buyer-side support for deal push/distribution<a class="headerlink" href="#i4-no-buyer-side-support-for-deal-pushdistribution" title="Permanent link">&para;</a></h3>
+<p>The seller has <code>push_deal_to_buyers</code> and <code>distribute_deal_via_ssp</code> MCP tools. The buyer has no inbound webhook or polling mechanism to receive pushed deals.</p>
+<h3 id="i5-no-buyer-side-support-for-deal-migrationdeprecation">I5. No buyer-side support for deal migration/deprecation<a class="headerlink" href="#i5-no-buyer-side-support-for-deal-migrationdeprecation" title="Permanent link">&para;</a></h3>
+<p>The seller exposes <code>POST /api/v1/deals/{id}/migrate</code> and <code>POST /api/v1/deals/{id}/deprecate</code>. The buyer has no client methods for these lifecycle transitions.</p>
+<h3 id="i6-sellers-buyeridentity-has-extra-fields-not-sent-by-buyer">I6. Seller's BuyerIdentity has extra fields not sent by buyer<a class="headerlink" href="#i6-sellers-buyeridentity-has-extra-fields-not-sent-by-buyer" title="Permanent link">&para;</a></h3>
+<p>The seller's <code>BuyerIdentity</code> (buyer_identity.py) includes <code>campaign_id</code> and <code>campaign_name</code> fields. The buyer's <code>BuyerIdentity</code> does not have these, and the buyer's <code>DealRequest</code>/<code>QuoteRequest</code> do not send them. Not a bug, but a missed opportunity for campaign-level deal scoping.</p>
+<p><strong>Files:</strong>
+- <code>ad_seller_system/src/ad_seller/models/buyer_identity.py:61-62</code>
+- <code>ad_buyer_system/src/ad_buyer/models/buyer_identity.py</code></p>
+<h3 id="i7-sellers-buyercontext-has-agent-registry-trust-ceiling-buyer-is-unaware">I7. Seller's BuyerContext has agent registry trust ceiling; buyer is unaware<a class="headerlink" href="#i7-sellers-buyercontext-has-agent-registry-trust-ceiling-buyer-is-unaware" title="Permanent link">&para;</a></h3>
+<p>The seller's <code>BuyerContext</code> includes <code>agent_url</code>, <code>agent_trust_status</code>, and <code>max_access_tier</code> from the agent registry. The buyer does not send <code>agent_url</code> in its API key or buyer identity payloads (except in <code>QuoteRequest.agent_url</code> added for the Deals API). If the buyer does not register as an agent, the trust ceiling logic is bypassed.</p>
+<p><strong>Files:</strong>
+- <code>ad_seller_system/src/ad_seller/models/buyer_identity.py:136-138</code>
+- <code>ad_buyer_system/src/ad_buyer/models/deals.py:125</code> (<code>agent_url</code> field)</p>
+<hr />
+<h2 id="naming-deal-jockey-references-in-buyer">Naming: "Deal Jockey" References in Buyer<a class="headerlink" href="#naming-deal-jockey-references-in-buyer" title="Permanent link">&para;</a></h2>
+<p>The seller renamed "Deal Jockey" to "Deal Library" in Task 0A. The buyer still has extensive "Deal Jockey" references:</p>
+<table>
+<thead>
+<tr>
+<th>Location</th>
+<th>Count</th>
+<th>Nature</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/ad_buyer/agents/level2/deal_jockey_agent.py</code></td>
+<td>file</td>
+<td>Agent module named after old branding</td>
+</tr>
+<tr>
+<td><code>src/ad_buyer/demo/dealjockey_dashboard.py</code></td>
+<td>file</td>
+<td>Dashboard module</td>
+</tr>
+<tr>
+<td><code>src/ad_buyer/tools/deal_jockey/</code></td>
+<td>directory</td>
+<td>Entire tool directory</td>
+</tr>
+<tr>
+<td><code>src/ad_buyer/agents/level2/__init__.py:12</code></td>
+<td>import</td>
+<td><code>create_deal_jockey_agent</code></td>
+</tr>
+<tr>
+<td><code>src/ad_buyer/events/models.py:59-63</code></td>
+<td>enums</td>
+<td><code>DEAL_IMPORTED</code>, <code>DEAL_TEMPLATE_CREATED</code>, <code>PORTFOLIO_INSPECTED</code> under "DealJockey - Phase 1" comment</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Impact:</strong> These are buyer-internal names and do not affect wire-level compatibility. However, they will cause confusion in documentation, logs, and cross-team communication. The buyer's "Deal Jockey" agent is the buyer-side counterpart to the seller's "Deal Library" — having different names for the same concept across systems is a maintainability risk.</p>
+<hr />
+<h2 id="recommendations-prioritized">Recommendations (Prioritized)<a class="headerlink" href="#recommendations-prioritized" title="Permanent link">&para;</a></h2>
+<h3 id="p0-must-fix-before-integration-testing">P0 — Must fix before integration testing<a class="headerlink" href="#p0-must-fix-before-integration-testing" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>Align deal status values (M3).</strong> Add <code>rejected</code> and <code>completed</code> to the seller's <code>DealBookingStatus</code> enum, or document that the buyer should treat <code>cancelled</code> as the terminal failure state. Both sides need the same status vocabulary.</p>
+</li>
+<li>
+<p><strong>Remove or gate <code>UnifiedClient.request_deal()</code> (M4).</strong> This method fabricates deal IDs client-side without contacting the seller. Either remove it, mark it as demo-only, or refactor it to call the seller's Deals API.</p>
+</li>
+</ol>
+<h3 id="p1-should-fix-before-production">P1 — Should fix before production<a class="headerlink" href="#p1-should-fix-before-production" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>Add buyer client for <code>/api/v1/deals/from-template</code> (I1).</strong> This is the seller's primary one-step deal creation path. The buyer should have a <code>DealsClient</code> method for it.</p>
+</li>
+<li>
+<p><strong>Formalize <code>openrtb_params</code> contract (M5).</strong> Either make the seller return a structured object matching the buyer's <code>OpenRTBParams</code> schema, or make the buyer's field a plain <code>dict</code>.</p>
+</li>
+<li>
+<p><strong>Update buyer MCP fallback tool list (I3).</strong> Replace hardcoded <code>book_programmatic_guaranteed</code> / <code>create_pmp_deal</code> with actual seller tools like <code>create_deal_from_template</code>.</p>
+</li>
+<li>
+<p><strong>Add buyer inbound deal push endpoint (I4).</strong> If the seller's <code>push_deal_to_buyers</code> is meant for real-time deal distribution, the buyer needs a webhook or polling endpoint.</p>
+</li>
+</ol>
+<h3 id="p2-should-fix-for-consistency">P2 — Should fix for consistency<a class="headerlink" href="#p2-should-fix-for-consistency" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>Standardize <code>X-Api-Key</code> header casing (M1).</strong> Pick one casing across all buyer clients. <code>X-Api-Key</code> matches the seller's FastAPI alias.</p>
+</li>
+<li>
+<p><strong>Rename buyer's "Deal Jockey" to "Deal Library" or a buyer-appropriate name.</strong> At minimum, update cross-system documentation to note the mapping.</p>
+</li>
+<li>
+<p><strong>Add proposal lifecycle events to buyer (I2).</strong> If the buyer will participate in OpenDirect proposal negotiations (beyond quote-then-book), it needs <code>proposal.*</code> event types.</p>
+</li>
+</ol>
+<h3 id="p3-nice-to-have">P3 — Nice to have<a class="headerlink" href="#p3-nice-to-have" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>Send <code>agent_url</code> in buyer requests (I7).</strong> Register the buyer agent in the seller's agent registry to unlock trust-ceiling-aware tier resolution.</p>
+</li>
+<li>
+<p><strong>Add <code>campaign_id</code>/<code>campaign_name</code> to buyer's identity payload (I6).</strong> Enables campaign-level deal scoping on the seller side.</p>
+</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

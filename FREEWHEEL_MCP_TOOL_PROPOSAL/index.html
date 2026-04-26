@@ -1,0 +1,4148 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="API & Architecture Reference for the IAB OpenDirect 2.1 Seller Agent">
+      
+      
+      
+        <link rel="canonical" href="https://iabtechlab.github.io/seller-agent/FREEWHEEL_MCP_TOOL_PROPOSAL/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>FREEWHEEL MCP TOOL PROPOSAL - IAB Tech Lab — Seller Agent</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#freewheel-dual-mcp-integration-seller-agent-architecture-tool-requirements" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+            
+  <a href="https://iabtechlab.github.io/buyer-agent/" style="color: white;">
+    This is the <strong>Seller Agent</strong> documentation.
+    Looking for the <strong>Buyer Agent</strong>? Click here &rarr;
+  </a>
+
+          </div>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="IAB Tech Lab — Seller Agent" class="md-header__button md-logo" aria-label="IAB Tech Lab — Seller Agent" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            IAB Tech Lab — Seller Agent
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              FREEWHEEL MCP TOOL PROPOSAL
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/IABTechLab/seller-agent" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../getting-started/quickstart/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../api/overview/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../state-machines/order-lifecycle/" class="md-tabs__link">
+          
+  
+  
+  State Machines
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../event-bus/overview/" class="md-tabs__link">
+          
+  
+  
+  Event Bus
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../integration/buyer-agent/" class="md-tabs__link">
+          
+  
+  
+  Integration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/claude-desktop-setup/" class="md-tabs__link">
+          
+  
+  
+  AI Assistant Setup
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/publisher-setup/" class="md-tabs__link">
+          
+  
+  
+  Publisher Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://iabtechlab.github.io/buyer-agent/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Buyer Agent Docs →
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="IAB Tech Lab — Seller Agent" class="md-nav__button md-logo" aria-label="IAB Tech Lab — Seller Agent" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    IAB Tech Lab — Seller Agent
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/IABTechLab/seller-agent" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/a2a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A2A Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/agent-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Discovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/quotes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quotes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/orders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/change-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machines
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    State Machines
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../state-machines/order-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Order Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../state-machines/change-request-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Request Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Bus
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Event Bus
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../event-bus/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Integration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration/buyer-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer Agent Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration/negotiation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Negotiation Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Assistant Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    AI Assistant Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/claude-desktop-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude (Desktop & Web)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/chatgpt-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ChatGPT, Codex & AI IDEs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/developer-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publisher Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Publisher Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/publisher-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/inventory-sync/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inventory Sync
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/media-kit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Media Kit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/pricing-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pricing & Access Tiers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/approval-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Approval & HITL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/agent-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer & Agent Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://iabtechlab.github.io/buyer-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer Agent Docs →
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#executive-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Executive Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iab-standards-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IAB Standards Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="IAB Standards Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dealtype-opendirect-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DealType (OpenDirect 2.1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pricingmodel-opendirect-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PricingModel (OpenDirect 2.1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#goaltype-opendirect-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GoalType (OpenDirect 2.1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#billableevent-opendirect-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BillableEvent (OpenDirect 2.1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adcom-devicetype-integers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AdCOM DeviceType Integers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ad-formats-openrtb-impression-sub-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ad Formats (OpenRTB impression sub-objects)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#content-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#audience-segments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audience Segments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#geo-targeting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geo Targeting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#currency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Currency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openrtb-25-deal-auction-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenRTB 2.5 Deal Auction Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seller-agent-freewheel-terminology-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seller Agent ↔ FreeWheel Terminology Mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-1-streaming-hub-mcp-tools-used-by-seller-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 1: Streaming Hub MCP — Tools Used by Seller Agent
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 1: Streaming Hub MCP — Tools Used by Seller Agent">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-inventory-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Inventory Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-audiences-forecasting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Audiences &amp; Forecasting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-insertion-order-io-management-direct-sold-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 Insertion Order (IO) Management — DIRECT-SOLD ONLY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-campaign-placement-line-item-direct-sold-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 Campaign &amp; Placement (Line Item) — DIRECT-SOLD ONLY
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-programmatic-deal-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 Programmatic Deal Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-2-buyer-cloud-mcp-tools-used-by-seller-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 2: Buyer Cloud MCP — Tools Used by Seller Agent
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 2: Buyer Cloud MCP — Tools Used by Seller Agent">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-campaign-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Campaign Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-creative-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Creative Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-reporting-analytics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Reporting &amp; Analytics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-3-cross-mcp-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 3: Cross-MCP Operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 3: Cross-MCP Operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-the-shared-key-deal_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 The Shared Key: deal_id
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-cross-mcp-binding-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Cross-MCP Binding Record
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-partial-failure-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Partial Failure Handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-4-end-to-end-use-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 4: End-to-End Use Cases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 4: End-to-End Use Cases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#uc1-buyer-discovers-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UC1: Buyer Discovers Inventory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uc2-buyer-checks-availability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UC2: Buyer Checks Availability
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uc3-book-pdpa-deal-deal-id-path-streaming-hub-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UC3: Book PD/PA Deal (Deal ID Path — Streaming Hub Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uc4-book-pg-deal-cross-mcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UC4: Book PG Deal (Cross-MCP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uc5-campaign-reporting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UC5: Campaign Reporting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-5-mcp-routing-table-complete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 5: MCP Routing Table (Complete)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 5: MCP Routing Table (Complete)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#freewheel-teams-implemented-mcp-tools-confirmed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FreeWheel team's Implemented MCP Tools (CONFIRMED)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-6-gaps-enhancement-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 6: Gaps &amp; Enhancement Requests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 6: Gaps &amp; Enhancement Requests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-streaming-hub-needed-but-possibly-missing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 Streaming Hub — Needed But Possibly Missing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-buyer-cloud-needed-but-possibly-missing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 Buyer Cloud — Needed But Possibly Missing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-cross-mcp-key-questions-for-freewheel-engineering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 Cross-MCP — Key Questions for FreeWheel Engineering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-enhancement-requests-nice-to-have" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 Enhancement Requests (Nice-to-Have)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-7-shared-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 7: Shared Conventions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 7: Shared Conventions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pricing-in-microcurrency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pricing in Microcurrency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deliverygoal-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DeliveryGoal Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openrtb-deal-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenRTB Deal Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#targeting-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Targeting Object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#status-enums-seller-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status Enums (Seller Agent)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-response-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Response Contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-8-integration-timeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 8: Integration Timeline
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 8: Integration Timeline">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-read-only-unblocks-inventory-discovery-avails" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 — Read-Only (Unblocks Inventory Discovery + Avails)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-pdpa-deal-booking-streaming-hub-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 — PD/PA Deal Booking (Streaming Hub Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-pg-booking-reporting-both-mcps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3 — PG Booking + Reporting (Both MCPs)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-a-complete-tool-usage-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix A: Complete Tool Usage Inventory
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Appendix A: Complete Tool Usage Inventory">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#streaming-hub-tools-used-15-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming Hub Tools Used (~15 tools)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#buyer-cloud-tools-used-12-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Buyer Cloud Tools Used (~12 tools)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-b-iab-standards-referenced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix B: IAB Standards Referenced
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<blockquote>
+<p><strong>Implementation Status (2026-03-27):</strong>
+- Phase 1 (Read-Only): ✅ Complete
+- Phase 2 (PD/PA Deal Booking): ✅ Complete
+- Phase 3 (PG Cross-MCP): ✅ Auth implemented — SH (OAuth 2.0 ROPCG) + BC (Beeswax session cookie)
+- See <code>.beads/PROGRESS.md</code> for current status</p>
+</blockquote>
+<h1 id="freewheel-dual-mcp-integration-seller-agent-architecture-tool-requirements">FreeWheel Dual-MCP Integration — Seller Agent Architecture &amp; Tool Requirements<a class="headerlink" href="#freewheel-dual-mcp-integration-seller-agent-architecture-tool-requirements" title="Permanent link">&para;</a></h1>
+<p><strong>From:</strong> IAB Tech Lab Seller Agent Team
+<strong>To:</strong> FreeWheel / Beeswax MCP Engineering
+<strong>Date:</strong> March 3, 2026
+<strong>Re:</strong> Dual-MCP integration architecture for CTV/Linear publisher pilot (Streaming Hub + Buyer Cloud)</p>
+<hr />
+<h2 id="executive-summary">Executive Summary<a class="headerlink" href="#executive-summary" title="Permanent link">&para;</a></h2>
+<p>The IAB Tech Lab Seller Agent manages the sell-side programmatic workflow for publishers. For the CTV/Linear publisher pilot, the seller agent will interact with FreeWheel through <strong>two existing MCP servers</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>MCP Server</th>
+<th>URL</th>
+<th>Role</th>
+<th>Tool Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Streaming Hub</strong> (MRM)</td>
+<td><code>shmcp.freewheel.com</code></td>
+<td>Publisher-side ad server — inventory, IOs, campaigns, placements, deals, audiences, forecasting</td>
+<td>~190</td>
+</tr>
+<tr>
+<td><strong>Buyer Cloud</strong> (Beeswax)</td>
+<td><code>bcmcp.freewheel.com</code></td>
+<td>Demand-side execution — campaign management, creatives, bidding, reporting</td>
+<td>~191</td>
+</tr>
+</tbody>
+</table>
+<p>The seller agent's internal adapter layer will route each operation to the correct MCP (or orchestrate across both when needed). This document describes:</p>
+<ol>
+<li><strong>Which existing MCP tools</strong> the seller agent will call on each server</li>
+<li><strong>How cross-MCP operations work</strong> (e.g., PG booking that spans SH + BC)</li>
+<li><strong>The IAB standard primitives</strong> used in all request/response data</li>
+<li><strong>Gaps and enhancement requests</strong> — capabilities we need that may not exist yet</li>
+</ol>
+<p><strong>Important:</strong> All data flowing between the seller agent and FreeWheel MCPs uses <strong>IAB Tech Lab standard primitives</strong> — OpenDirect 2.1 field naming, AdCOM enums, OpenRTB 2.5 deal semantics, and IAB taxonomy identifiers. The seller agent normalizes FreeWheel-native responses into these standards internally.</p>
+<hr />
+<h2 id="architecture-overview">Architecture Overview<a class="headerlink" href="#architecture-overview" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌──────────────────────────────────────────────────────────────┐
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│                     IAB Tech Lab Seller Agent                │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│                                                              │
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│  ProductSetupFlow / ExecutionActivationFlow / Negotiation    │
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│                          │                                   │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│              FreeWheelAdServerClient (ABC)                   │
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│              ┌───────────┼───────────┐                       │
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│              │           │           │                       │
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│         SH Client    Coordinator   BC Client                 │
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│              │           │           │                       │
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>└──────────────┼───────────┼───────────┼───────────────────────┘
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>               │           │           │
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    ┌──────────▼──┐   (orchestrates)  ┌▼──────────────┐
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    │ Streaming   │                   │  Buyer Cloud   │
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    │ Hub MCP     │   shared key:     │  MCP           │
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    │ (Publisher) │◄── deal_id ──────►│  (Demand)      │
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    │ shmcp.fw.com│                   │  bcmcp.fw.com  │
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    └─────────────┘                   └────────────────┘
+</code></pre></div>
+<p><strong>Routing principle:</strong> The seller agent determines which MCP to call based on the operation type:</p>
+<table>
+<thead>
+<tr>
+<th>Operation Category</th>
+<th>MCP Target</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Inventory discovery, ad slots, sites</td>
+<td><strong>Streaming Hub</strong></td>
+<td>Publisher's view of what's available</td>
+</tr>
+<tr>
+<td>Audiences, segments, forecasting</td>
+<td><strong>Streaming Hub</strong></td>
+<td>Publisher-side targeting data</td>
+</tr>
+<tr>
+<td>Programmatic deal setup</td>
+<td><strong>Streaming Hub</strong></td>
+<td>Direct deal creation (no IO/campaign/placement needed)</td>
+</tr>
+<tr>
+<td>Deal activation in DSP, campaign execution</td>
+<td><strong>Buyer Cloud</strong></td>
+<td>Demand-side execution</td>
+</tr>
+<tr>
+<td>Campaign reporting, delivery metrics</td>
+<td><strong>Buyer Cloud</strong></td>
+<td>Beeswax campaign performance</td>
+</tr>
+<tr>
+<td>Creative management, attachment</td>
+<td><strong>Buyer Cloud</strong></td>
+<td>Demand-side creative workflow</td>
+</tr>
+<tr>
+<td>PG booking (full)</td>
+<td><strong>Both</strong></td>
+<td>SH for deal setup, BC for campaign binding</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="iab-standards-reference">IAB Standards Reference<a class="headerlink" href="#iab-standards-reference" title="Permanent link">&para;</a></h2>
+<p>The seller agent uses the following IAB standards internally. FreeWheel responses are normalized to these values by the seller agent's adapter layer. Where possible, FreeWheel MCP responses should use these values directly to minimize translation.</p>
+<h3 id="dealtype-opendirect-21">DealType (OpenDirect 2.1)<a class="headerlink" href="#dealtype-opendirect-21" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Alias</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"programmaticguaranteed"</code></td>
+<td>PG</td>
+<td>Fixed price, guaranteed delivery</td>
+</tr>
+<tr>
+<td><code>"preferreddeal"</code></td>
+<td>PD</td>
+<td>Fixed price, non-guaranteed</td>
+</tr>
+<tr>
+<td><code>"privateauction"</code></td>
+<td>PA</td>
+<td>Floor price, auction-based</td>
+</tr>
+</tbody>
+</table>
+<h3 id="pricingmodel-opendirect-21">PricingModel (OpenDirect 2.1)<a class="headerlink" href="#pricingmodel-opendirect-21" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"cpm"</code></td>
+<td>Cost per mille (1,000 impressions)</td>
+</tr>
+<tr>
+<td><code>"cpv"</code></td>
+<td>Cost per view</td>
+</tr>
+<tr>
+<td><code>"cpc"</code></td>
+<td>Cost per click</td>
+</tr>
+<tr>
+<td><code>"cpcv"</code></td>
+<td>Cost per completed view</td>
+</tr>
+<tr>
+<td><code>"flat_fee"</code></td>
+<td>Flat fee</td>
+</tr>
+</tbody>
+</table>
+<h3 id="goaltype-opendirect-21">GoalType (OpenDirect 2.1)<a class="headerlink" href="#goaltype-opendirect-21" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"impressions"</code></td>
+<td>Impression-based delivery</td>
+</tr>
+<tr>
+<td><code>"clicks"</code></td>
+<td>Click-based delivery</td>
+</tr>
+<tr>
+<td><code>"viewableimpressions"</code></td>
+<td>Viewable impression-based</td>
+</tr>
+<tr>
+<td><code>"completions"</code></td>
+<td>Video completion-based</td>
+</tr>
+</tbody>
+</table>
+<h3 id="billableevent-opendirect-21">BillableEvent (OpenDirect 2.1)<a class="headerlink" href="#billableevent-opendirect-21" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"impression"</code></td>
+<td>Standard impression</td>
+</tr>
+<tr>
+<td><code>"viewableimpression"</code></td>
+<td>MRC-viewable impression</td>
+</tr>
+<tr>
+<td><code>"click"</code></td>
+<td>Click event</td>
+</tr>
+<tr>
+<td><code>"completion"</code></td>
+<td>Video completion event</td>
+</tr>
+</tbody>
+</table>
+<h3 id="adcom-devicetype-integers">AdCOM DeviceType Integers<a class="headerlink" href="#adcom-devicetype-integers" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Device</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Mobile/Tablet</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Personal Computer</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Connected TV</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Phone</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Tablet</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Connected Device</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Set Top Box</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ad-formats-openrtb-impression-sub-objects">Ad Formats (OpenRTB impression sub-objects)<a class="headerlink" href="#ad-formats-openrtb-impression-sub-objects" title="Permanent link">&para;</a></h3>
+<p><code>"banner"</code>, <code>"video"</code>, <code>"native"</code>, <code>"audio"</code></p>
+<h3 id="content-categories">Content Categories<a class="headerlink" href="#content-categories" title="Permanent link">&para;</a></h3>
+<p>IAB Content Taxonomy 2.0 IDs (e.g., <code>"IAB19"</code> = Sports, <code>"IAB1"</code> = Arts &amp; Entertainment). Indicated by <code>cattax: 2</code>.</p>
+<h3 id="audience-segments">Audience Segments<a class="headerlink" href="#audience-segments" title="Permanent link">&para;</a></h3>
+<p>IAB Audience Taxonomy 1.1 numeric IDs (e.g., <code>"3"</code>, <code>"4"</code>, <code>"5"</code>).</p>
+<h3 id="geo-targeting">Geo Targeting<a class="headerlink" href="#geo-targeting" title="Permanent link">&para;</a></h3>
+<p>ISO 3166-2 codes (e.g., <code>"US"</code>, <code>"US-NY"</code>, <code>"US-CA"</code>).</p>
+<h3 id="currency">Currency<a class="headerlink" href="#currency" title="Permanent link">&para;</a></h3>
+<p>ISO 4217 codes (e.g., <code>"USD"</code>).</p>
+<h3 id="openrtb-25-deal-auction-types">OpenRTB 2.5 Deal Auction Types<a class="headerlink" href="#openrtb-25-deal-auction-types" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th><code>at</code> Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>First-price auction (used for <code>privateauction</code>)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Fixed price (used for <code>programmaticguaranteed</code> and <code>preferreddeal</code>)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="seller-agent-freewheel-terminology-mapping">Seller Agent ↔ FreeWheel Terminology Mapping<a class="headerlink" href="#seller-agent-freewheel-terminology-mapping" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Seller Agent (OpenDirect)</th>
+<th>FreeWheel Streaming Hub</th>
+<th>FreeWheel Buyer Cloud</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Order / ExecutionOrder</td>
+<td>Insertion Order (IO)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Line Item (ProposalLine)</td>
+<td>Campaign + Placement</td>
+<td>Line Item</td>
+</tr>
+<tr>
+<td>Deal (DealOutput)</td>
+<td>Programmatic Deal</td>
+<td>Deal</td>
+</tr>
+<tr>
+<td>InventorySegment</td>
+<td>Site + Site Section</td>
+<td>—</td>
+</tr>
+<tr>
+<td>AudienceSegment</td>
+<td>Audience Item</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Product</td>
+<td>Product / Inventory Package</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Creative</td>
+<td>—</td>
+<td>Creative</td>
+</tr>
+<tr>
+<td>Campaign (execution)</td>
+<td>Campaign (container)</td>
+<td>Campaign</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-1-streaming-hub-mcp-tools-used-by-seller-agent">Part 1: Streaming Hub MCP — Tools Used by Seller Agent<a class="headerlink" href="#part-1-streaming-hub-mcp-tools-used-by-seller-agent" title="Permanent link">&para;</a></h2>
+<p>The Streaming Hub MCP (<code>shmcp.freewheel.com</code>) is the publisher-side ad server. The seller agent uses it for all inventory, trafficking, and deal setup operations.</p>
+<h3 id="11-authentication">1.1 Authentication<a class="headerlink" href="#11-authentication" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Purpose</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>streaming_hub_login</code></td>
+<td>Establish session</td>
+<td>Returns <code>session_id</code> injected into all subsequent calls</td>
+</tr>
+<tr>
+<td><code>streaming_hub_logout</code></td>
+<td>End session</td>
+<td>Called on disconnect</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Seller agent auth flow:</strong> On <code>connect()</code>, the adapter calls <code>streaming_hub_login</code> with configured username/password (OAuth 2.0 ROPCG via <code>https://api.freewheel.tv/auth/token</code>). The returned <code>session_id</code> is stored and injected into all subsequent SH tool calls. Tokens are valid for 7 days; the adapter auto-reconnects on session expiry.</p>
+<h3 id="12-inventory-discovery">1.2 Inventory Discovery<a class="headerlink" href="#12-inventory-discovery" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>SH Tool</th>
+<th>Seller Agent Method</th>
+<th>What We Use It For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sh_1_0_list-sites</code></td>
+<td><code>list_inventory()</code></td>
+<td>Get top-level inventory hierarchy (networks/sites)</td>
+</tr>
+<tr>
+<td><code>sh_1_0_site-sections</code></td>
+<td><code>list_inventory()</code></td>
+<td>Get child sections within a site</td>
+</tr>
+<tr>
+<td><code>sh_1_0_listinventorypackages</code></td>
+<td>Media kit sync</td>
+<td>Get pre-packaged inventory bundles</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Normalization:</strong> SH site/section responses → <code>AdServerInventoryItem</code> (id, name, parent_id, status, sizes, ad_server_type="freewheel")</p>
+<h3 id="13-audiences-forecasting">1.3 Audiences &amp; Forecasting<a class="headerlink" href="#13-audiences-forecasting" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>SH Tool</th>
+<th>Seller Agent Method</th>
+<th>What We Use It For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sh_1_0_list-audience-items</code></td>
+<td><code>list_audience_segments()</code></td>
+<td>List available 1P/3P/ACR audience segments</td>
+</tr>
+<tr>
+<td><code>sh_1_0_simplified-on-demand-forecastpostforecasts</code></td>
+<td>Availability check</td>
+<td>Real-time avails for inventory + targeting + dates</td>
+</tr>
+<tr>
+<td><code>sh_1_0_getdealnightlyforecast</code></td>
+<td>Deal health monitoring</td>
+<td>Nightly forecast for active deals</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Normalization:</strong> SH audience items → <code>AdServerAudienceSegment</code> (id, name, description, size, status, ad_server_type="freewheel")</p>
+<h3 id="14-insertion-order-io-management-direct-sold-only">1.4 Insertion Order (IO) Management — DIRECT-SOLD ONLY<a class="headerlink" href="#14-insertion-order-io-management-direct-sold-only" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>NOT USED for programmatic deals.</strong> IOs are a direct-sold concept on FreeWheel.
+Programmatic deals are created directly via <code>book_deal()</code> without IO/campaign/placement.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>SH Tool</th>
+<th>Seller Agent Method</th>
+<th>What We Use It For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sh_1_1_create-an-insertion-order</code></td>
+<td>—</td>
+<td>Direct-sold only (not used by seller agent)</td>
+</tr>
+<tr>
+<td><code>sh_1_1_get-a-insertion-order</code></td>
+<td>—</td>
+<td>Direct-sold only</td>
+</tr>
+<tr>
+<td><code>sh_1_1_book-an-insertion-order</code></td>
+<td>—</td>
+<td>Direct-sold only</td>
+</tr>
+<tr>
+<td><code>sh_1_1_update-an-insertion-order</code></td>
+<td>—</td>
+<td>Direct-sold only</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Normalization:</strong> SH IO responses → <code>AdServerOrder</code> (id, name, advertiser_id, status → OrderStatus enum, ad_server_type="freewheel")</p>
+<p><strong>Status mapping:</strong></p>
+<table>
+<thead>
+<tr>
+<th>FreeWheel IO Status</th>
+<th>Seller Agent OrderStatus</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CREATED</td>
+<td><code>"draft"</code></td>
+</tr>
+<tr>
+<td>PENDING</td>
+<td><code>"pending_approval"</code></td>
+</tr>
+<tr>
+<td>BOOKED</td>
+<td><code>"approved"</code></td>
+</tr>
+<tr>
+<td>PAUSED</td>
+<td><code>"paused"</code></td>
+</tr>
+<tr>
+<td>CANCELLED</td>
+<td><code>"canceled"</code></td>
+</tr>
+<tr>
+<td>COMPLETED</td>
+<td><code>"completed"</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="15-campaign-placement-line-item-direct-sold-only">1.5 Campaign &amp; Placement (Line Item) — DIRECT-SOLD ONLY<a class="headerlink" href="#15-campaign-placement-line-item-direct-sold-only" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>NOT USED for programmatic deals.</strong> Campaigns and placements are direct-sold
+concepts on Streaming Hub. FreeWheel team has offered to recycle <code>*_line_item()</code> for
+Buyer Cloud campaign/line item management in a future phase.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>SH Tool</th>
+<th>Seller Agent Method</th>
+<th>What We Use It For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sh_1_1_create-a-campaign</code></td>
+<td>—</td>
+<td>Direct-sold only (not used by seller agent)</td>
+</tr>
+<tr>
+<td><code>sh_1_1_create-a-placement</code></td>
+<td>—</td>
+<td>Direct-sold only</td>
+</tr>
+<tr>
+<td><code>sh_1_1_update-a-placement</code></td>
+<td>—</td>
+<td>Direct-sold only</td>
+</tr>
+<tr>
+<td><code>sh_1_1_get-a-campaign</code></td>
+<td>—</td>
+<td>Direct-sold only</td>
+</tr>
+</tbody>
+</table>
+<h3 id="16-programmatic-deal-management">1.6 Programmatic Deal Management<a class="headerlink" href="#16-programmatic-deal-management" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>SH Tool</th>
+<th>Seller Agent Method</th>
+<th>What We Use It For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sh_1_0_createdeal</code></td>
+<td><code>create_deal()</code> (step 1)</td>
+<td>Create deal with external deal_id, pricing, inventory</td>
+</tr>
+<tr>
+<td><code>sh_1_0_activatedeal</code></td>
+<td><code>create_deal()</code> (step 2)</td>
+<td>Activate deal for bidding</td>
+</tr>
+<tr>
+<td><code>sh_1_0_updatedeal</code></td>
+<td><code>update_deal()</code></td>
+<td>Modify deal pricing/dates/targeting</td>
+</tr>
+<tr>
+<td><code>sh_1_0_searchdeals</code></td>
+<td>—</td>
+<td>Find existing deals</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Deal creation flow (SH side):</strong>
+1. <code>sh_1_0_createdeal</code> — creates deal with external <code>deal_id</code> (used in OpenRTB bid requests), pricing, inventory references, buyer seat IDs
+2. <code>sh_1_0_activatedeal</code> — transitions deal from draft → active, making it available in the exchange</p>
+<p><strong>Normalization:</strong> SH deal responses → <code>AdServerDeal</code> (id, deal_id, name, deal_type → DealType, floor_price_micros, fixed_price_micros, currency, buyer_seat_ids, status → DealStatus, ad_server_type="freewheel")</p>
+<p><strong>Status mapping:</strong></p>
+<table>
+<thead>
+<tr>
+<th>FreeWheel Deal Status</th>
+<th>Seller Agent DealStatus</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DRAFT</td>
+<td><code>"active"</code> (pre-activation)</td>
+</tr>
+<tr>
+<td>ACTIVE</td>
+<td><code>"active"</code></td>
+</tr>
+<tr>
+<td>PAUSED</td>
+<td><code>"paused"</code></td>
+</tr>
+<tr>
+<td>ARCHIVED</td>
+<td><code>"archived"</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-2-buyer-cloud-mcp-tools-used-by-seller-agent">Part 2: Buyer Cloud MCP — Tools Used by Seller Agent<a class="headerlink" href="#part-2-buyer-cloud-mcp-tools-used-by-seller-agent" title="Permanent link">&para;</a></h2>
+<p>The Buyer Cloud MCP (<code>bcmcp.freewheel.com</code>) is the demand-side (Beeswax DSP). The seller agent uses it for campaign execution, creative management, and reporting.</p>
+<h3 id="21-authentication">2.1 Authentication<a class="headerlink" href="#21-authentication" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Purpose</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OAuth 2.0 token endpoint</td>
+<td>Get access token</td>
+<td><code>client_id</code> + <code>client_secret</code> → <code>access_token</code></td>
+</tr>
+<tr>
+<td><code>buyer_cloud_login</code></td>
+<td>Establish session</td>
+<td>Email/password/buzz_key → session cookie</td>
+</tr>
+<tr>
+<td><code>buyer_cloud_logout</code></td>
+<td>End session</td>
+<td>Called on disconnect</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Seller agent auth flow:</strong> On <code>connect()</code>, the adapter first obtains an OAuth 2.0 access token, then calls <code>buyer_cloud_login</code> with email/password/buzz_key. Both credentials are needed for full API access.</p>
+<h3 id="22-campaign-execution">2.2 Campaign Execution<a class="headerlink" href="#22-campaign-execution" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>BC Tool</th>
+<th>Purpose</th>
+<th>When Used</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bc_v2_get_campaigns</code></td>
+<td>List campaigns</td>
+<td>Verify BC-side campaign state</td>
+</tr>
+<tr>
+<td><code>bc_v2_create_campaign</code></td>
+<td>Create BC campaign</td>
+<td>PG booking (bind to SH deal)</td>
+</tr>
+<tr>
+<td><code>bc_v2_get_line_items</code></td>
+<td>List line items</td>
+<td>Campaign delivery details</td>
+</tr>
+<tr>
+<td><code>bc_v2_create_line_item</code></td>
+<td>Create BC line item</td>
+<td>PG booking (budget/targeting)</td>
+</tr>
+<tr>
+<td><code>bc_v2_activate_campaign</code></td>
+<td>Activate campaign</td>
+<td>PG booking final step</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23-creative-management">2.3 Creative Management<a class="headerlink" href="#23-creative-management" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>BC Tool</th>
+<th>Purpose</th>
+<th>When Used</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bc_v2_get_creatives</code></td>
+<td>List creatives</td>
+<td>Verify creative status</td>
+</tr>
+<tr>
+<td><code>bc_v2_create_creative</code></td>
+<td>Upload creative</td>
+<td>Creative sync workflow</td>
+</tr>
+<tr>
+<td><code>bc_v2_attach_creative_to_line_item</code></td>
+<td>Associate creative</td>
+<td>PG booking creative attachment</td>
+</tr>
+</tbody>
+</table>
+<h3 id="24-reporting-analytics">2.4 Reporting &amp; Analytics<a class="headerlink" href="#24-reporting-analytics" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>BC Tool</th>
+<th>Purpose</th>
+<th>When Used</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bc_v2_get_reporting_impressions</code></td>
+<td>Impression delivery report</td>
+<td>Campaign monitoring</td>
+</tr>
+<tr>
+<td><code>bc_v2_get_reporting_revenue</code></td>
+<td>Revenue report</td>
+<td>Deal performance</td>
+</tr>
+<tr>
+<td><code>check_campaign_health</code></td>
+<td>Campaign health check</td>
+<td>Proactive monitoring</td>
+</tr>
+<tr>
+<td><code>deal_analyst</code></td>
+<td>Deal performance analysis</td>
+<td>Deal optimization</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-3-cross-mcp-operations">Part 3: Cross-MCP Operations<a class="headerlink" href="#part-3-cross-mcp-operations" title="Permanent link">&para;</a></h2>
+<p>Some operations require coordinated calls to <strong>both</strong> MCP servers. The seller agent's internal coordinator handles sequencing and error recovery.</p>
+<h3 id="31-the-shared-key-deal_id">3.1 The Shared Key: <code>deal_id</code><a class="headerlink" href="#31-the-shared-key-deal_id" title="Permanent link">&para;</a></h3>
+<p>The <strong>external deal ID</strong> (the OpenRTB deal ID used in bid requests) is the shared key that binds entities across both systems:</p>
+<ul>
+<li><strong>Streaming Hub</strong> creates the deal with the external <code>deal_id</code></li>
+<li><strong>Buyer Cloud</strong> references the same <code>deal_id</code> when creating/linking a campaign</li>
+<li>The seller agent tracks all entity IDs across both systems in a binding record</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>┌─ Streaming Hub ─────────────────┐     ┌─ Buyer Cloud ──────────────────┐
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>│                                 │     │                                │
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>│  Inventory ──── Deal ───────────┼──►──┼──── Campaign ──── Line Items  │
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>│                           deal_id     │       │                        │
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>│  Audiences            (shared key)    │    Creatives                   │
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│                                 │     │                                │
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>│  Forecasting                    │     │    Reporting                   │
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>└─────────────────────────────────┘     └────────────────────────────────┘
+</code></pre></div>
+<blockquote>
+<p><strong>CONFIRMED by FreeWheel team (FreeWheel):</strong> Streaming Hub programmatic deals do NOT
+require IO, Campaign, or Placement objects. Those are direct-sold concepts only.
+The SH side is simpler: deals are created directly via <code>book_deal()</code>.</p>
+</blockquote>
+<h3 id="32-cross-mcp-binding-record">3.2 Cross-MCP Binding Record<a class="headerlink" href="#32-cross-mcp-binding-record" title="Permanent link">&para;</a></h3>
+<p>For every cross-MCP operation, the seller agent maintains a binding record:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">&quot;deal_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IAB-A1B2C3D4E5F6&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">&quot;sh_io_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;fw-io-789&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">&quot;sh_campaign_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;fw-camp-100&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">&quot;sh_placement_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;fw-plc-200&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">&quot;sh_deal_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;fw-deal-001&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">&quot;bc_campaign_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bc-camp-500&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="nt">&quot;bc_line_item_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;bc-li-600&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">&quot;bc_creative_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;bc-cr-700&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">  </span><span class="nt">&quot;binding_status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;complete&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">  </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-03-03T12:00:00Z&quot;</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="33-partial-failure-handling">3.3 Partial Failure Handling<a class="headerlink" href="#33-partial-failure-handling" title="Permanent link">&para;</a></h3>
+<p>If Streaming Hub succeeds but Buyer Cloud fails during a cross-MCP operation:</p>
+<ol>
+<li>The deal exists in SH and is active in the exchange</li>
+<li>The seller agent returns <code>binding_status: "partial"</code> with a warning</li>
+<li>The BC-side can be completed manually or retried</li>
+<li>The deal is still functional — a buyer can target it from any DSP via the deal ID</li>
+</ol>
+<p>This design ensures that <strong>no deal is lost</strong> due to a BC failure.</p>
+<hr />
+<h2 id="part-4-end-to-end-use-cases">Part 4: End-to-End Use Cases<a class="headerlink" href="#part-4-end-to-end-use-cases" title="Permanent link">&para;</a></h2>
+<h3 id="uc1-buyer-discovers-inventory">UC1: Buyer Discovers Inventory<a class="headerlink" href="#uc1-buyer-discovers-inventory" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Buyer Agent → Seller Agent.list_inventory()
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  └→ SH: sh_1_0_list-sites (get networks/sites)
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  └→ SH: sh_1_0_site-sections (get sections for each site)
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  └→ SH: sh_1_0_listinventorypackages (get pre-built packages)
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  ←── Returns: AdServerInventoryItem[] (normalized)
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>      + Package[] (media kit)
+</code></pre></div>
+<p><strong>MCP:</strong> Streaming Hub only</p>
+<h3 id="uc2-buyer-checks-availability">UC2: Buyer Checks Availability<a class="headerlink" href="#uc2-buyer-checks-availability" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Buyer Agent → Seller Agent.check_avails(inventory_ids, dates, targeting)
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  └→ SH: sh_1_0_simplified-on-demand-forecastpostforecasts
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  ←── Returns: available impressions, contended impressions, probability
+</code></pre></div>
+<p><strong>MCP:</strong> Streaming Hub only</p>
+<h3 id="uc3-book-pdpa-deal-deal-id-path-streaming-hub-only">UC3: Book PD/PA Deal (Deal ID Path — Streaming Hub Only)<a class="headerlink" href="#uc3-book-pdpa-deal-deal-id-path-streaming-hub-only" title="Permanent link">&para;</a></h3>
+<p>For Preferred Deals and Private Auctions, the deal ID is created in Streaming Hub and handed to the buyer's DSP. No Buyer Cloud involvement needed.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Negotiation accepted → DealGenerationFlow → ExecutionActivationFlow:
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  1. SH: sh_1_0_createdeal
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>     - External deal_id (OpenRTB)
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>     - Deal type: &quot;preferreddeal&quot; or &quot;privateauction&quot;
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>     - Pricing: floor_price_micros (PA) or fixed_price_micros (PD)
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>     - Inventory references
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>     - Buyer seat IDs (wseat)
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>  2. SH: sh_1_0_activatedeal
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>     - Transition deal to active status
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>  3. Return to buyer:
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>     - deal_id for entry into their DSP
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>     - OpenRTB deal parameters (bidfloor, bidfloorcur, at, wseat)
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>Seller Agent Response (BookingResult):
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>  {
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>    &quot;deal&quot;: {
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>      &quot;deal_id&quot;: &quot;IAB-A1B2C3D4E5F6&quot;,
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>      &quot;deal_type&quot;: &quot;preferreddeal&quot;,
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>      &quot;status&quot;: &quot;active&quot;,
+<a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>      &quot;fixed_price_micros&quot;: 28000000,
+<a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>      &quot;currency&quot;: &quot;USD&quot;,
+<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>      &quot;buyer_seat_ids&quot;: [&quot;ttd-seat-123&quot;]
+<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>    },
+<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>    &quot;openrtb_params&quot;: {
+<a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a>      &quot;id&quot;: &quot;IAB-A1B2C3D4E5F6&quot;,
+<a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a>      &quot;bidfloor&quot;: 28.0,
+<a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a>      &quot;bidfloorcur&quot;: &quot;USD&quot;,
+<a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a>      &quot;at&quot;: 3,
+<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>      &quot;wseat&quot;: [&quot;ttd-seat-123&quot;]
+<a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a>    },
+<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a>    &quot;success&quot;: true
+<a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a>  }
+</code></pre></div>
+<p><strong>MCP:</strong> Streaming Hub only</p>
+<h3 id="uc4-book-pg-deal-cross-mcp">UC4: Book PG Deal (Cross-MCP)<a class="headerlink" href="#uc4-book-pg-deal-cross-mcp" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>REVISED per FreeWheel team's feedback:</strong> No IO/campaign/placement needed on SH.
+FreeWheel team's <code>book_deal()</code> handles both SH and BC deal creation in one call.</p>
+</blockquote>
+<p>Programmatic Guaranteed deals require setup in <strong>both</strong> MCPs. FreeWheel team's
+<code>book_deal()</code> creates the deal on SH and BC. BC campaign/line item/creative
+management is a separate step (Phase 3).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>Negotiation accepted → ExecutionActivationFlow:
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  ── Step 1: Deal creation (SH + BC) ─────────────────────
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  1. FreeWheel team&#39;s book_deal()
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>     - Creates deal on Streaming Hub (with external deal_id, pricing, inventory)
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>     - Creates deal on Buyer Cloud (linked via deal_id)
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>     - Does NOT create BC campaign/line item/creative
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>  ← Return: BookingResult with deal_id
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>  ── Step 2: BC campaign setup (Phase 3 — future) ────────
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>  2. BC: campaign + line item creation (when FreeWheel team adds *_line_item() for BC)
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>  3. BC: creative attachment
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>  4. BC: campaign activation
+</code></pre></div>
+<p><strong>MCP:</strong> Both (via FreeWheel team's <code>book_deal()</code> which orchestrates SH + BC)</p>
+<h3 id="uc5-campaign-reporting">UC5: Campaign Reporting<a class="headerlink" href="#uc5-campaign-reporting" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>Seller Agent monitoring:
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  Publisher-side forecast:
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  └→ SH: sh_1_0_getdealnightlyforecast (deal delivery forecast)
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  Demand-side performance:
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  └→ BC: bc_v2_get_reporting_impressions (impression delivery)
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>  └→ BC: bc_v2_get_reporting_revenue (revenue metrics)
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>  └→ BC: check_campaign_health (built-in analytics tool)
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>  └→ BC: deal_analyst (built-in analytics tool)
+</code></pre></div>
+<p><strong>MCP:</strong> Both (SH for forecasting, BC for execution reporting)</p>
+<hr />
+<h2 id="part-5-mcp-routing-table-complete">Part 5: MCP Routing Table (Complete)<a class="headerlink" href="#part-5-mcp-routing-table-complete" title="Permanent link">&para;</a></h2>
+<p>This table shows every <code>AdServerClient</code> method and which MCP tool(s) the seller agent calls.</p>
+<table>
+<thead>
+<tr>
+<th>Seller Agent Method</th>
+<th>MCP</th>
+<th>Streaming Hub Tool(s)</th>
+<th>Buyer Cloud Tool(s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>connect()</code></td>
+<td>Both</td>
+<td><code>streaming_hub_login</code></td>
+<td>OAuth 2.0 + <code>buyer_cloud_login</code></td>
+</tr>
+<tr>
+<td><code>disconnect()</code></td>
+<td>Both</td>
+<td><code>streaming_hub_logout</code></td>
+<td><code>buyer_cloud_logout</code></td>
+</tr>
+<tr>
+<td><code>list_inventory()</code></td>
+<td>SH</td>
+<td><code>sh_1_0_list-sites</code> + <code>sh_1_0_site-sections</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>list_audience_segments()</code></td>
+<td>SH</td>
+<td><code>sh_1_0_list-audience-items</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>create_order()</code></td>
+<td>—</td>
+<td>Not used (direct-sold only)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>get_order()</code></td>
+<td>—</td>
+<td>Not used (direct-sold only)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>approve_order()</code></td>
+<td>—</td>
+<td>Not used (direct-sold only)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>create_line_item()</code></td>
+<td>—</td>
+<td>Not used on SH (direct-sold only)</td>
+<td>Phase 3: BC campaign/line item</td>
+</tr>
+<tr>
+<td><code>update_line_item()</code></td>
+<td>—</td>
+<td>Not used on SH (direct-sold only)</td>
+<td>Phase 3: BC line item updates</td>
+</tr>
+<tr>
+<td><code>create_deal()</code></td>
+<td>SH</td>
+<td><code>sh_1_0_createdeal</code> + <code>sh_1_0_activatedeal</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>update_deal()</code></td>
+<td>SH</td>
+<td><code>sh_1_0_updatedeal</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>book_deal()</code> — PD/PA</td>
+<td>Both</td>
+<td>FreeWheel team's <code>book_deal</code> (creates deal on SH + BC)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>book_deal()</code> — PG</td>
+<td>Both</td>
+<td>FreeWheel team's <code>book_deal</code> (creates deal on SH + BC)</td>
+<td>Phase 3: campaign + line item + creative</td>
+</tr>
+</tbody>
+</table>
+<h3 id="freewheel-teams-implemented-mcp-tools-confirmed">FreeWheel team's Implemented MCP Tools (CONFIRMED)<a class="headerlink" href="#freewheel-teams-implemented-mcp-tools-confirmed" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>MCP Tool</th>
+<th>Status</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list_inventory()</code></td>
+<td>✅ Implemented</td>
+<td>Returns "template deals" from SH representing packages. Not yet OpenDirect compliant but maps to IAB taxonomy.</td>
+</tr>
+<tr>
+<td><code>list_audience_segments()</code></td>
+<td>⚠️ Partial</td>
+<td>Audience segment listing from SH.</td>
+</tr>
+<tr>
+<td><code>book_deal()</code></td>
+<td>✅ Implemented</td>
+<td>Creates deal on BOTH SH and BC. Does NOT create campaign/line item/creative on BC.</td>
+</tr>
+<tr>
+<td><code>update_deal()</code></td>
+<td>✅ Implemented</td>
+<td>Updates deal on SH and BC.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-6-gaps-enhancement-requests">Part 6: Gaps &amp; Enhancement Requests<a class="headerlink" href="#part-6-gaps-enhancement-requests" title="Permanent link">&para;</a></h2>
+<p>After mapping the seller agent's requirements to the existing ~380 tools across both MCPs, we have identified the following gaps and requests.</p>
+<h3 id="61-streaming-hub-needed-but-possibly-missing">6.1 Streaming Hub — Needed But Possibly Missing<a class="headerlink" href="#61-streaming-hub-needed-but-possibly-missing" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Create deal with external deal_id</strong></td>
+<td><code>sh_1_0_createdeal</code> exists</td>
+<td><strong>Confirm:</strong> Can we pass an external <code>deal_id</code> string (for OpenRTB <code>imp.pmp.deals[].id</code>) at creation time?</td>
+</tr>
+<tr>
+<td><strong>Deal buyer seat IDs</strong></td>
+<td>Likely in <code>sh_1_0_createdeal</code> params</td>
+<td><strong>Confirm:</strong> Can we specify <code>buyer_seat_ids</code> (maps to OpenRTB <code>wseat</code>) at deal creation?</td>
+</tr>
+<tr>
+<td><strong>Deal activation</strong></td>
+<td><code>sh_1_0_activatedeal</code> exists</td>
+<td>OK</td>
+</tr>
+<tr>
+<td><strong>Forecasting with audience targeting</strong></td>
+<td><code>sh_1_0_simplified-on-demand-forecastpostforecasts</code> exists</td>
+<td><strong>Confirm:</strong> Can we pass audience segment IDs into the forecast request?</td>
+</tr>
+<tr>
+<td><strong>Inventory package listing</strong></td>
+<td><code>sh_1_0_listinventorypackages</code> exists</td>
+<td><strong>Confirm:</strong> Response includes ad format, device type, content category metadata?</td>
+</tr>
+</tbody>
+</table>
+<h3 id="62-buyer-cloud-needed-but-possibly-missing">6.2 Buyer Cloud — Needed But Possibly Missing<a class="headerlink" href="#62-buyer-cloud-needed-but-possibly-missing" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Link BC campaign to SH deal by deal_id</strong></td>
+<td>Needs confirmation</td>
+<td><strong>Critical:</strong> How does a BC campaign reference a deal created in SH? Is <code>deal_id</code> a field on BC campaign/line item creation?</td>
+</tr>
+<tr>
+<td><strong>Creative approval status</strong></td>
+<td><code>bc_v2_get_creatives</code> likely includes status</td>
+<td><strong>Confirm:</strong> Response includes review/approval status for PG creative pre-approval?</td>
+</tr>
+<tr>
+<td><strong>Deal-level reporting</strong></td>
+<td><code>deal_analyst</code> tool exists</td>
+<td><strong>Confirm:</strong> Can we query by external <code>deal_id</code>?</td>
+</tr>
+</tbody>
+</table>
+<h3 id="63-cross-mcp-key-questions-for-freewheel-engineering">6.3 Cross-MCP — Key Questions for FreeWheel Engineering<a class="headerlink" href="#63-cross-mcp-key-questions-for-freewheel-engineering" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>Deal ID binding:</strong> What is the exact field/parameter used to link a Buyer Cloud campaign to a Streaming Hub deal? Is it <code>deal_id</code>, <code>external_deal_id</code>, or another field?</p>
+</li>
+<li>
+<p><strong>Authentication scope:</strong> Can a single set of credentials access both SH and BC, or are these always separate credential sets?</p>
+</li>
+<li>
+<p><strong>Deal creation sequencing:</strong> For PG deals, must the SH deal exist before the BC campaign is created? Or can they be created in parallel with binding after?</p>
+</li>
+<li>
+<p><strong>Inventory reference format:</strong> When creating a deal in SH with <code>sh_1_0_createdeal</code>, what format are inventory references? Site IDs? Section IDs? Slot IDs?</p>
+</li>
+<li>
+<p><strong>Price format in SH deals:</strong> Does <code>sh_1_0_createdeal</code> accept prices in microcurrency (micro-USD), or does it use decimal dollars? The seller agent uses microcurrency internally.</p>
+</li>
+<li>
+<p><strong>Real-time vs. batch activation:</strong> After <code>sh_1_0_activatedeal</code>, how quickly is the deal available for bidding? Is there a propagation delay?</p>
+</li>
+<li>
+<p><strong>IO booking atomicity:</strong> Does <code>sh_1_1_book-an-insertion-order</code> validate all placements before committing, or can it partially succeed?</p>
+</li>
+</ol>
+<h3 id="64-enhancement-requests-nice-to-have">6.4 Enhancement Requests (Nice-to-Have)<a class="headerlink" href="#64-enhancement-requests-nice-to-have" title="Permanent link">&para;</a></h3>
+<p>These are not blockers but would improve the integration:</p>
+<table>
+<thead>
+<tr>
+<th>Enhancement</th>
+<th>MCP</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>IAB-standard deal type in responses</strong></td>
+<td>SH</td>
+<td>Return <code>"programmaticguaranteed"</code> instead of FW-internal values. Reduces mapping overhead.</td>
+</tr>
+<tr>
+<td><strong>OpenRTB deal params in deal responses</strong></td>
+<td>SH</td>
+<td>Include <code>bidfloor</code>, <code>bidfloorcur</code>, <code>at</code> in <code>createdeal</code>/<code>activatedeal</code> responses. Lets us pass deal params directly to DSPs.</td>
+</tr>
+<tr>
+<td><strong>Composite PG booking tool</strong></td>
+<td>SH + BC</td>
+<td>A single tool that creates IO + campaign + placement + deal + books + creates BC campaign in one call. Would reduce round-trips from 10 to 1.</td>
+</tr>
+<tr>
+<td><strong>Deal status webhooks</strong></td>
+<td>Both</td>
+<td>Push notifications when deal status changes (buyer acceptance, creative approval, delivery milestones). Currently we must poll.</td>
+</tr>
+<tr>
+<td><strong>Bulk inventory listing</strong></td>
+<td>SH</td>
+<td>A single call that returns the full site→section→slot hierarchy rather than requiring site-by-site traversal.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-7-shared-conventions">Part 7: Shared Conventions<a class="headerlink" href="#part-7-shared-conventions" title="Permanent link">&para;</a></h2>
+<h3 id="pricing-in-microcurrency">Pricing in Microcurrency<a class="headerlink" href="#pricing-in-microcurrency" title="Permanent link">&para;</a></h3>
+<p>The seller agent stores all prices in <strong>microcurrency</strong> (1 USD = 1,000,000 micro-USD). This avoids floating-point precision issues. If FreeWheel MCP tools use decimal dollars, the seller agent will convert internally.</p>
+<table>
+<thead>
+<tr>
+<th>Human Price</th>
+<th>Microcurrency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$15.00 CPM</td>
+<td><code>15000000</code></td>
+</tr>
+<tr>
+<td>$28.50 CPM</td>
+<td><code>28500000</code></td>
+</tr>
+<tr>
+<td>$0.05 CPC</td>
+<td><code>50000</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="deliverygoal-object">DeliveryGoal Object<a class="headerlink" href="#deliverygoal-object" title="Permanent link">&para;</a></h3>
+<p>Used across the seller agent's line item and deal workflows:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">&quot;goaltype&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;impressions&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">&quot;goalamount&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5000000</span><span class="p">,</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">&quot;billableevent&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;impression&quot;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">}</span>
+</code></pre></div>
+<p>Field names use OpenDirect 2.1 camelCase aliases (no underscores).</p>
+<h3 id="openrtb-deal-parameters">OpenRTB Deal Parameters<a class="headerlink" href="#openrtb-deal-parameters" title="Permanent link">&para;</a></h3>
+<p>For all programmatic deals, the seller agent generates OpenRTB 2.5-compatible parameters for DSP distribution:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;IAB-A1B2C3D4E5F6&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">&quot;bidfloor&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">28.0</span><span class="p">,</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">&quot;bidfloorcur&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;USD&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">&quot;at&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span><span class="nt">&quot;wseat&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;ttd-seat-123&quot;</span><span class="p">],</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">  </span><span class="nt">&quot;wadomain&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">  </span><span class="nt">&quot;ext&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">    </span><span class="nt">&quot;guaranteed&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">    </span><span class="nt">&quot;impressions&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5000000</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="p">}</span>
+</code></pre></div>
+<p>If FreeWheel SH deal responses include these fields natively, the seller agent can use them directly. Otherwise, the adapter constructs them from the deal entity fields.</p>
+<h3 id="targeting-object">Targeting Object<a class="headerlink" href="#targeting-object" title="Permanent link">&para;</a></h3>
+<p>The seller agent uses a consistent targeting schema across all operations:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">&quot;geo&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;US&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;US-NY&quot;</span><span class="p">],</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">&quot;device_types&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">7</span><span class="p">],</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">&quot;cat&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;IAB19&quot;</span><span class="p">],</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span><span class="nt">&quot;cattax&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span><span class="nt">&quot;audience_segment_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;fw-seg-001&quot;</span><span class="p">],</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">  </span><span class="nt">&quot;custom&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="nt">&quot;genre&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;sports&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;news&quot;</span><span class="p">],</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="nt">&quot;daypart&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;primetime&quot;</span><span class="p">]</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="p">}</span>
+</code></pre></div>
+<p>Standard fields use IAB identifiers; <code>custom</code> contains FreeWheel-specific key-values.</p>
+<h3 id="status-enums-seller-agent">Status Enums (Seller Agent)<a class="headerlink" href="#status-enums-seller-agent" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Entity</th>
+<th>Status Values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Order</td>
+<td><code>"draft"</code>, <code>"pending_approval"</code>, <code>"approved"</code>, <code>"rejected"</code>, <code>"paused"</code>, <code>"canceled"</code>, <code>"completed"</code></td>
+</tr>
+<tr>
+<td>Line Item</td>
+<td><code>"draft"</code>, <code>"ready"</code>, <code>"delivering"</code>, <code>"paused"</code>, <code>"completed"</code>, <code>"canceled"</code></td>
+</tr>
+<tr>
+<td>Deal</td>
+<td><code>"draft"</code>, <code>"active"</code>, <code>"paused"</code>, <code>"archived"</code></td>
+</tr>
+<tr>
+<td>Creative Review</td>
+<td><code>"pending"</code>, <code>"approved"</code>, <code>"rejected"</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="error-response-contract">Error Response Contract<a class="headerlink" href="#error-response-contract" title="Permanent link">&para;</a></h3>
+<p>All MCP tools follow the JSON-RPC 2.0 error format:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">&quot;jsonrpc&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2.0&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-32001</span><span class="p">,</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Insertion order not found&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">      </span><span class="nt">&quot;fw_error_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ORDER_NOT_FOUND&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">      </span><span class="nt">&quot;retryable&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="p">}</span>
+</code></pre></div>
+<hr />
+<h2 id="part-8-integration-timeline">Part 8: Integration Timeline<a class="headerlink" href="#part-8-integration-timeline" title="Permanent link">&para;</a></h2>
+<h3 id="phase-1-read-only-unblocks-inventory-discovery-avails">Phase 1 — Read-Only (Unblocks Inventory Discovery + Avails)<a class="headerlink" href="#phase-1-read-only-unblocks-inventory-discovery-avails" title="Permanent link">&para;</a></h3>
+<p>The seller agent connects to <strong>Streaming Hub only</strong> and performs read operations:
+- <code>list_inventory()</code> via <code>sh_1_0_list-sites</code> + <code>sh_1_0_site-sections</code>
+- <code>list_audience_segments()</code> via <code>sh_1_0_list-audience-items</code>
+- Avails checking via <code>sh_1_0_simplified-on-demand-forecastpostforecasts</code>
+- Product/package discovery via <code>sh_1_0_listinventorypackages</code></p>
+<p><strong>Deliverable:</strong> Seller agent can populate its media kit from FreeWheel inventory and respond to buyer avails queries.</p>
+<h3 id="phase-2-pdpa-deal-booking-streaming-hub-only">Phase 2 — PD/PA Deal Booking (Streaming Hub Only)<a class="headerlink" href="#phase-2-pdpa-deal-booking-streaming-hub-only" title="Permanent link">&para;</a></h3>
+<p>The seller agent creates and activates deals:
+- <code>create_deal()</code> via <code>sh_1_0_createdeal</code> + <code>sh_1_0_activatedeal</code>
+- <code>update_deal()</code> via <code>sh_1_0_updatedeal</code>
+- IO management via <code>sh_1_1_create-an-insertion-order</code>, <code>sh_1_1_book-an-insertion-order</code>
+- Line items via <code>sh_1_1_create-a-campaign</code> + <code>sh_1_1_create-a-placement</code></p>
+<p><strong>Deliverable:</strong> Full PD/PA deal lifecycle. Buyer gets deal_id to enter in any DSP.</p>
+<h3 id="phase-3-pg-booking-reporting-both-mcps">Phase 3 — PG Booking + Reporting (Both MCPs)<a class="headerlink" href="#phase-3-pg-booking-reporting-both-mcps" title="Permanent link">&para;</a></h3>
+<p>The seller agent connects to <strong>both</strong> MCPs for cross-MCP PG booking:
+- SH: Full IO + deal setup (steps 1-6 from UC4)
+- BC: Campaign creation and binding (steps 7-10 from UC4)
+- BC: Reporting via <code>bc_v2_get_reporting_*</code>, <code>check_campaign_health</code>, <code>deal_analyst</code>
+- BC: Creative management via <code>bc_v2_create_creative</code>, <code>bc_v2_attach_creative_to_line_item</code></p>
+<p><strong>Deliverable:</strong> Complete PG workflow with campaign execution and reporting.</p>
+<hr />
+<h2 id="appendix-a-complete-tool-usage-inventory">Appendix A: Complete Tool Usage Inventory<a class="headerlink" href="#appendix-a-complete-tool-usage-inventory" title="Permanent link">&para;</a></h2>
+<h3 id="streaming-hub-tools-used-15-tools">Streaming Hub Tools Used (~15 tools)<a class="headerlink" href="#streaming-hub-tools-used-15-tools" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>SH Tool Name</th>
+<th>Category</th>
+<th>Seller Agent Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>streaming_hub_login</code></td>
+<td>Auth</td>
+<td>Session establishment</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>streaming_hub_logout</code></td>
+<td>Auth</td>
+<td>Session cleanup</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>sh_1_0_list-sites</code></td>
+<td>Inventory</td>
+<td>List sites/networks</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>sh_1_0_site-sections</code></td>
+<td>Inventory</td>
+<td>List sections within site</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>sh_1_0_listinventorypackages</code></td>
+<td>Inventory</td>
+<td>List inventory packages</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>sh_1_0_list-audience-items</code></td>
+<td>Audience</td>
+<td>List audience segments</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>sh_1_0_simplified-on-demand-forecastpostforecasts</code></td>
+<td>Forecasting</td>
+<td>Avails/forecast</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>sh_1_0_getdealnightlyforecast</code></td>
+<td>Forecasting</td>
+<td>Deal delivery forecast</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>sh_1_1_create-an-insertion-order</code></td>
+<td>IO</td>
+<td>Create IO</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>sh_1_1_get-a-insertion-order</code></td>
+<td>IO</td>
+<td>Get IO details</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>sh_1_1_book-an-insertion-order</code></td>
+<td>IO</td>
+<td>Approve/book IO</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>sh_1_1_create-a-campaign</code></td>
+<td>Campaign</td>
+<td>Create campaign container</td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>sh_1_1_create-a-placement</code></td>
+<td>Placement</td>
+<td>Create placement under campaign</td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>sh_1_1_update-a-placement</code></td>
+<td>Placement</td>
+<td>Update placement</td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>sh_1_0_createdeal</code></td>
+<td>Deal</td>
+<td>Create programmatic deal</td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>sh_1_0_activatedeal</code></td>
+<td>Deal</td>
+<td>Activate deal</td>
+</tr>
+<tr>
+<td>17</td>
+<td><code>sh_1_0_updatedeal</code></td>
+<td>Deal</td>
+<td>Update deal</td>
+</tr>
+<tr>
+<td>18</td>
+<td><code>sh_1_0_searchdeals</code></td>
+<td>Deal</td>
+<td>Search/list deals</td>
+</tr>
+</tbody>
+</table>
+<h3 id="buyer-cloud-tools-used-12-tools">Buyer Cloud Tools Used (~12 tools)<a class="headerlink" href="#buyer-cloud-tools-used-12-tools" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>BC Tool Name</th>
+<th>Category</th>
+<th>Seller Agent Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>buyer_cloud_login</code></td>
+<td>Auth</td>
+<td>Session establishment</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>buyer_cloud_logout</code></td>
+<td>Auth</td>
+<td>Session cleanup</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>bc_v2_get_campaigns</code></td>
+<td>Campaign</td>
+<td>List campaigns</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>bc_v2_create_campaign</code></td>
+<td>Campaign</td>
+<td>Create campaign (PG binding)</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>bc_v2_activate_campaign</code></td>
+<td>Campaign</td>
+<td>Activate campaign</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>bc_v2_get_line_items</code></td>
+<td>Line Item</td>
+<td>List line items</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>bc_v2_create_line_item</code></td>
+<td>Line Item</td>
+<td>Create line item (PG binding)</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>bc_v2_get_creatives</code></td>
+<td>Creative</td>
+<td>List creatives</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>bc_v2_create_creative</code></td>
+<td>Creative</td>
+<td>Upload creative</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>bc_v2_attach_creative_to_line_item</code></td>
+<td>Creative</td>
+<td>Associate creative</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>bc_v2_get_reporting_impressions</code></td>
+<td>Reporting</td>
+<td>Impression report</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>bc_v2_get_reporting_revenue</code></td>
+<td>Reporting</td>
+<td>Revenue report</td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>check_campaign_health</code></td>
+<td>Reporting</td>
+<td>Campaign health</td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>deal_analyst</code></td>
+<td>Reporting</td>
+<td>Deal analysis</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="appendix-b-iab-standards-referenced">Appendix B: IAB Standards Referenced<a class="headerlink" href="#appendix-b-iab-standards-referenced" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Standard</th>
+<th>Version</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenDirect</td>
+<td>2.1</td>
+<td>Entity naming, field aliases, enums (DealType, PricingModel, GoalType, BillableEvent)</td>
+</tr>
+<tr>
+<td>AdCOM</td>
+<td>1.0</td>
+<td>DeviceType integers, AdProfile values</td>
+</tr>
+<tr>
+<td>OpenRTB</td>
+<td>2.5</td>
+<td>Deal wire format (<code>bidfloor</code>, <code>bidfloorcur</code>, <code>at</code>, <code>wseat</code>, <code>wadomain</code>, <code>ext</code>)</td>
+</tr>
+<tr>
+<td>IAB Content Taxonomy</td>
+<td>2.0</td>
+<td>Content categorization (<code>cat</code>, <code>cattax</code>)</td>
+</tr>
+<tr>
+<td>IAB Audience Taxonomy</td>
+<td>1.1</td>
+<td>Audience segment classification</td>
+</tr>
+<tr>
+<td>ISO 4217</td>
+<td>—</td>
+<td>Currency codes</td>
+</tr>
+<tr>
+<td>ISO 3166-2</td>
+<td>—</td>
+<td>Geo targeting codes</td>
+</tr>
+<tr>
+<td>ISO 8601</td>
+<td>—</td>
+<td>Date/time formatting</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

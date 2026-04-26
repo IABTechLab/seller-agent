@@ -1,0 +1,3765 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="API & Architecture Reference for the IAB OpenDirect 2.1 Seller Agent">
+      
+      
+      
+        <link rel="canonical" href="https://iabtechlab.github.io/seller-agent/superpowers/plans/2026-03-26-seller-agent-hardening-plan/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Seller Agent Hardening & Testing Plan - IAB Tech Lab — Seller Agent</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#seller-agent-hardening-testing-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+            
+  <a href="https://iabtechlab.github.io/buyer-agent/" style="color: white;">
+    This is the <strong>Seller Agent</strong> documentation.
+    Looking for the <strong>Buyer Agent</strong>? Click here &rarr;
+  </a>
+
+          </div>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="IAB Tech Lab — Seller Agent" class="md-header__button md-logo" aria-label="IAB Tech Lab — Seller Agent" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            IAB Tech Lab — Seller Agent
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Seller Agent Hardening &amp; Testing Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/IABTechLab/seller-agent" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/quickstart/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/overview/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../state-machines/order-lifecycle/" class="md-tabs__link">
+          
+  
+  
+  State Machines
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../event-bus/overview/" class="md-tabs__link">
+          
+  
+  
+  Event Bus
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../integration/buyer-agent/" class="md-tabs__link">
+          
+  
+  
+  Integration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../guides/claude-desktop-setup/" class="md-tabs__link">
+          
+  
+  
+  AI Assistant Setup
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../guides/publisher-setup/" class="md-tabs__link">
+          
+  
+  
+  Publisher Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://iabtechlab.github.io/buyer-agent/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Buyer Agent Docs →
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="IAB Tech Lab — Seller Agent" class="md-nav__button md-logo" aria-label="IAB Tech Lab — Seller Agent" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    IAB Tech Lab — Seller Agent
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/IABTechLab/seller-agent" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/a2a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A2A Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/agent-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Discovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/quotes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quotes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/orders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/change-requests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Requests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State Machines
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    State Machines
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../state-machines/order-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Order Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../state-machines/change-request-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Change Request Flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Event Bus
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Event Bus
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../event-bus/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Integration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../integration/buyer-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer Agent Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../integration/negotiation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Negotiation Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Assistant Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    AI Assistant Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/claude-desktop-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude (Desktop & Web)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/chatgpt-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ChatGPT, Codex & AI IDEs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/developer-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publisher Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Publisher Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/publisher-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/inventory-sync/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inventory Sync
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/media-kit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Media Kit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/pricing-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pricing & Access Tiers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/approval-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Approval & HITL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/agent-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer & Agent Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://iabtechlab.github.io/buyer-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Buyer Agent Docs →
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#phase-0-rename-deal-library-to-deal-library-lint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0: Rename "Deal Library" to "Deal Library" &amp; Lint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 0: Rename &#34;Deal Library&#34; to &#34;Deal Library&#34; &amp; Lint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-0a-rename-deal-library-deal-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 0A: Rename Deal Library → Deal Library
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-0b-lint-entire-codebase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 0B: Lint Entire Codebase
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-0c-buyer-agent-compatibility-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 0C: Buyer Agent Compatibility Check
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-a-git-hygiene-codebase-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase A: Git Hygiene &amp; Codebase Cleanup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase A: Git Hygiene &amp; Codebase Cleanup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-clean-git-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Clean Git State
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-fix-documentation-number-discrepancies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Fix Documentation Number Discrepancies
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-b-unit-tests-seller-f1x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase B: Unit Tests (seller-f1x)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase B: Unit Tests (seller-f1x)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-3-test-pricing-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Test Pricing Engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-test-negotiation-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Test Negotiation Engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-5-test-media-kit-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Test Media Kit Service
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-6-test-mcp-server-prompts-and-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Test MCP Server Prompts and Tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-7-test-ssp-connectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Test SSP Connectors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-8-test-event-bus-and-approval-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: Test Event Bus and Approval Gates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-9-test-order-state-machine-expand-existing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 9: Test Order State Machine (expand existing)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-c-integration-tests-with-dummy-data-seller-6he" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase C: Integration Tests with Dummy Data (seller-6he)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase C: Integration Tests with Dummy Data (seller-6he)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-10-end-to-end-deal-flow-with-dummy-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 10: End-to-End Deal Flow with Dummy Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-11-mcp-server-integration-test-with-dummy-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 11: MCP Server Integration Test with Dummy Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-12-setup-wizard-flow-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 12: Setup Wizard Flow Test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-d-mcp-prompts-slash-commands-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase D: MCP Prompts (Slash Commands) Implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase D: MCP Prompts (Slash Commands) Implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-13-add-9-mcp-prompts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 13: Add 9 MCP Prompts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-14-implement-get_inbound_queue-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 14: Implement get_inbound_queue Tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-15-implement-get_buyer_activity-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 15: Implement get_buyer_activity Tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-16-implement-list_configurable_flows-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 16: Implement list_configurable_flows Tool
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-e-deployment-infra-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase E: Deployment &amp; Infra Validation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase E: Deployment &amp; Infra Validation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-17-docker-build-run-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 17: Docker Build &amp; Run Test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-18-verify-envexample-completeness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 18: Verify .env.example Completeness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-f-documentation-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase F: Documentation Updates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase F: Documentation Updates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-19-add-troubleshooting-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 19: Add Troubleshooting Guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-20-update-claude-desktop-setup-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 20: Update Claude Desktop Setup Guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-21-update-chatgpt-setup-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 21: Update ChatGPT Setup Guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-22-add-freewheel-integration-status-banner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 22: Add FreeWheel Integration Status Banner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-23-add-changelogmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 23: Add CHANGELOG.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-g-user-experience-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase G: User Experience Validation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase G: User Experience Validation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-24-engineer-persona-walkthrough" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 24: Engineer Persona Walkthrough
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-25-product-manager-persona-walkthrough" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 25: Product Manager Persona Walkthrough
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-26-ad-ops-persona-walkthrough" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 26: Ad Ops Persona Walkthrough
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-h-final-cleanup-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase H: Final Cleanup &amp; Push
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase H: Final Cleanup &amp; Push">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-27-run-full-test-suite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 27: Run Full Test Suite
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-28-update-progressmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 28: Update PROGRESS.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="seller-agent-hardening-testing-plan">Seller Agent Hardening &amp; Testing Plan<a class="headerlink" href="#seller-agent-hardening-testing-plan" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Harden the seller agent through comprehensive testing, documentation fixes, and UX improvements across three personas (engineer, product manager, ad ops).</p>
+<p><strong>Architecture:</strong> The seller agent is a FastAPI + MCP + CLI system with 33 MCP tools, ~58 REST endpoints, 3-level CrewAI agent hierarchy, pluggable ad server/SSP backends, and multi-backend storage. This plan audits, tests, and documents the full system.</p>
+<p><strong>Tech Stack:</strong> Python 3.12, FastAPI, FastMCP (mcp 1.16.0), CrewAI, Pydantic v2, pytest + pytest-asyncio, SQLite/PostgreSQL/Redis, Docker, Terraform/CloudFormation</p>
+<p><strong>Spec:</strong> <code>docs/superpowers/specs/2026-03-26-mcp-prompts-slash-commands-design.md</code></p>
+<hr />
+<h2 id="phase-0-rename-deal-library-to-deal-library-lint">Phase 0: Rename "Deal Library" to "Deal Library" &amp; Lint<a class="headerlink" href="#phase-0-rename-deal-library-to-deal-library-lint" title="Permanent link">&para;</a></h2>
+<h3 id="task-0a-rename-deal-library-deal-library">Task 0A: Rename Deal Library → Deal Library<a class="headerlink" href="#task-0a-rename-deal-library-deal-library" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Context:</strong> In the buyer agent, "Deal Library" is the v2 storage/schema layer (the deal data store), while "Deal Library" remains the agent name (Level 2 agent, portfolio manager role). On the seller side, "Deal Library" was used for the Phase 4 API layer. We are renaming the seller's "Deal Library" to "Deal Library" to align with the buyer's terminology — both sides use "Deal Library" for the deal data/API layer.</p>
+<p><strong>Do NOT rename</strong> the buyer agent's "DealJockey" agent name — that stays as-is. This task only affects the seller agent codebase.</p>
+</blockquote>
+<p><strong>Files:</strong>
+- All files containing "deal library", "DealLibrary", "Deal Library", "deal-library"
+- <code>.beads/PROGRESS.md</code>
+- <code>.beads/generate_progress.py</code> (PHASE_MAP entry for Phase 4)</p>
+<ul>
+<li>[ ] <strong>Step 1: Find all occurrences</strong></li>
+</ul>
+<p>Run: <code>grep -ri "deal.jockey" --include="*.py" --include="*.md" --include="*.yaml" --include="*.json" -l</code>
+Document every file that contains the term.</p>
+<ul>
+<li>[ ] <strong>Step 2: Replace in Python source files</strong></li>
+</ul>
+<p>Replace all variants:
+- <code>Deal Library</code> → <code>DealLibrary</code>
+- <code>Deal Library</code> → <code>Deal Library</code>
+- <code>deal_library</code> → <code>deal_library</code>
+- <code>deal-library</code> → <code>deal-library</code></p>
+<p>In all <code>.py</code> files under <code>src/</code> and <code>tests/</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Rename deal_library directory if it exists</strong></li>
+</ul>
+<p>If <code>src/ad_seller/tools/deal_library/</code> exists, rename to <code>src/ad_seller/tools/deal_library/</code>.
+Update all imports that reference <code>tools.deal_library</code>.</p>
+<ul>
+<li>[ ] <strong>Step 4: Replace in documentation</strong></li>
+</ul>
+<p>Replace all variants in all <code>.md</code> files under <code>docs/</code>, <code>README.md</code>, <code>CHANGELOG.md</code>, and root-level <code>.md</code> files.</p>
+<ul>
+<li>[ ] <strong>Step 5: Update PHASE_MAP in generate_progress.py</strong></li>
+</ul>
+<p>Change: <code>"4": ("Phase 4", "Deal Library — Seller API")</code>
+To: <code>"4": ("Phase 4", "Deal Library — Seller API")</code></p>
+<ul>
+<li>[ ] <strong>Step 6: Update beads issue titles</strong></li>
+</ul>
+<p>For any beads issues referencing "Deal Library" in the title, update them:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bd<span class="w"> </span>update<span class="w"> </span>&lt;issue-id&gt;<span class="w"> </span>--title<span class="w"> </span><span class="s2">&quot;new title&quot;</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 7: Regenerate PROGRESS.md</strong></li>
+</ul>
+<p>Run: <code>python .beads/generate_progress.py</code></p>
+<ul>
+<li>[ ] <strong>Step 8: Verify no remaining references</strong></li>
+</ul>
+<p>Run: <code>grep -ri "deal.jockey" --include="*.py" --include="*.md" -l</code>
+Expected: No matches</p>
+<ul>
+<li>[ ] <strong>Step 9: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>add<span class="w"> </span>-A
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;refactor: rename Deal Library to Deal Library across codebase and docs&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-0b-lint-entire-codebase">Task 0B: Lint Entire Codebase<a class="headerlink" href="#task-0b-lint-entire-codebase" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- All <code>.py</code> files under <code>src/</code> and <code>tests/</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Run ruff check</strong></li>
+</ul>
+<p>Run: <code>ruff check src/ tests/</code>
+Document all errors.</p>
+<ul>
+<li>[ ] <strong>Step 2: Auto-fix what ruff can</strong></li>
+</ul>
+<p>Run: <code>ruff check src/ tests/ --fix</code></p>
+<ul>
+<li>[ ] <strong>Step 3: Run ruff format</strong></li>
+</ul>
+<p>Run: <code>ruff format src/ tests/</code></p>
+<ul>
+<li>[ ] <strong>Step 4: Manually fix remaining issues</strong></li>
+</ul>
+<p>Review any errors ruff couldn't auto-fix and resolve them.</p>
+<ul>
+<li>[ ] <strong>Step 5: Verify clean lint</strong></li>
+</ul>
+<p>Run: <code>ruff check src/ tests/</code>
+Expected: No errors</p>
+<ul>
+<li>[ ] <strong>Step 5b: Run type check (optional but recommended)</strong></li>
+</ul>
+<p>Run: <code>mypy src/ad_seller/ --ignore-missing-imports --no-error-summary 2&gt;&amp;1 | head -50</code>
+Note: This may have many pre-existing errors. Fix critical ones (wrong types, missing awaits). Don't block on cosmetic type issues.</p>
+<ul>
+<li>[ ] <strong>Step 6: Run tests to verify nothing broke</strong></li>
+</ul>
+<p>Run: <code>pytest -v --tb=short</code>
+Expected: All existing tests still pass</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>add<span class="w"> </span>-A
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;style: lint and format entire codebase with ruff&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-0c-buyer-agent-compatibility-check">Task 0C: Buyer Agent Compatibility Check<a class="headerlink" href="#task-0c-buyer-agent-compatibility-check" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Context:</strong> The buyer agent at <code>/Users/bjt/Documents/crewAITechLabAgent/ad_buyer_system</code> was built by Aidan in parallel. The seller and buyer agents must be compatible: shared models, API contracts, deal formats, MCP tool expectations, and authentication must align.</p>
+</blockquote>
+<p><strong>Files:</strong>
+- Reference: <code>/Users/bjt/Documents/crewAITechLabAgent/ad_buyer_system/src/</code>
+- Reference: <code>/Users/bjt/Documents/crewAITechLabAgent/ad_buyer_system/docs/</code>
+- Create: <code>docs/validation/buyer-compatibility-report.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Compare deal models</strong></li>
+</ul>
+<p>Read the buyer agent's deal models (<code>ad_buyer_system/src/ad_buyer/models/</code>) and the seller agent's deal models (<code>src/ad_seller/models/core.py</code>, <code>models/quotes.py</code>). Verify:
+- Deal ID format matches (both sides generate/consume the same format)
+- Deal type enums align (PG, PD, PA naming)
+- Deal status values are compatible
+- CPM/price field names and units match</p>
+<ul>
+<li>[ ] <strong>Step 2: Compare API contracts</strong></li>
+</ul>
+<p>Check the buyer agent's seller-facing API calls against our REST endpoints:
+- Does the buyer's <code>DealRequestFlow</code> call our <code>/api/v1/deals/from-template</code> endpoint correctly?
+- Does the buyer's deal push consumption match our IAB Deals API v1.0 push format?
+- Does the buyer's supply chain query match our <code>/api/v1/supply-chain</code> response format?
+- Do export formats (<code>/api/v1/deals/export</code>) match what the buyer expects for DSP connectors?</p>
+<ul>
+<li>[ ] <strong>Step 3: Compare MCP tool expectations</strong></li>
+</ul>
+<p>If the buyer agent connects to the seller via MCP:
+- Does it expect tools that exist? (e.g., <code>request_quote</code>, <code>list_packages</code>, <code>get_pricing</code>)
+- Do the tool parameter names and return formats match?
+- Does the buyer's auth (API key, bearer token) work with our auth middleware?</p>
+<ul>
+<li>[ ] <strong>Step 4: Compare authentication flow</strong></li>
+</ul>
+<p>Verify the buyer agent's API key / bearer token format matches what our <code>auth/dependencies.py</code> expects:
+- Key prefix format (<code>ask_live_</code> on seller side)
+- Header format (<code>Authorization: Bearer</code> vs <code>X-Api-Key</code>)
+- Access tier mapping (buyer sends seat_id → seller resolves to tier)</p>
+<ul>
+<li>[ ] <strong>Step 5: Compare deal lifecycle events</strong></li>
+</ul>
+<p>Check if the buyer agent emits or expects events that the seller's event bus should handle:
+- <code>proposal.received</code> / <code>proposal.accepted</code> / <code>proposal.rejected</code> event payloads
+- Negotiation round event formats
+- Deal booking confirmation format</p>
+<ul>
+<li>[ ] <strong>Step 6: Check for naming inconsistencies</strong></li>
+</ul>
+<p>After Task 0A renamed "Deal Library" → "Deal Library" on the seller side, verify no cross-references break:
+- Buyer docs referencing seller's "Deal Library" API
+- Buyer code importing or calling seller endpoints by old names
+- Shared documentation (root-level <code>.md</code> files in the parent directory)</p>
+<ul>
+<li>[ ] <strong>Step 7: Document findings</strong></li>
+</ul>
+<p>Write <code>docs/validation/buyer-compatibility-report.md</code> with:
+- Aligned items (confirmed compatible)
+- Mismatches (need fixes, with specific file paths and line numbers)
+- Missing integration points (things the buyer expects but seller doesn't have, or vice versa)</p>
+<ul>
+<li>[ ] <strong>Step 8: Fix any critical mismatches found</strong></li>
+</ul>
+<p>If deal models, API contracts, or auth flows are incompatible, fix them. Prioritize anything that would prevent a buyer agent from completing a deal request against the seller.</p>
+<ul>
+<li>[ ] <strong>Step 9: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git<span class="w"> </span>add<span class="w"> </span>docs/validation/buyer-compatibility-report.md
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>git<span class="w"> </span>add<span class="w"> </span>-A<span class="w">  </span><span class="c1"># if any fixes were made</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;audit: buyer agent compatibility check and fixes&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="phase-a-git-hygiene-codebase-cleanup">Phase A: Git Hygiene &amp; Codebase Cleanup<a class="headerlink" href="#phase-a-git-hygiene-codebase-cleanup" title="Permanent link">&para;</a></h2>
+<h3 id="task-1-clean-git-state">Task 1: Clean Git State<a class="headerlink" href="#task-1-clean-git-state" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>.beads/generate_progress.py</code> (unstaged change)
+- Check: all branches, remotes, unpushed commits</p>
+<ul>
+<li>[ ] <strong>Step 1: Check current git state</strong></li>
+</ul>
+<p>Run: <code>git status &amp;&amp; git log --oneline -5 &amp;&amp; git branch -a</code>
+Expected: main branch, 1 commit ahead of origin, 1 unstaged file (.beads/generate_progress.py)</p>
+<ul>
+<li>[ ] <strong>Step 2: Stage and commit the generate_progress.py change</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>git<span class="w"> </span>add<span class="w"> </span>.beads/generate_progress.py
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;chore: add Phase 5 to progress generator PHASE_MAP&quot;</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Push to origin</strong></li>
+</ul>
+<p>Run: <code>git push origin main</code>
+Expected: Up to date with origin/main</p>
+<ul>
+<li>[ ] <strong>Step 4: Verify clean state</strong></li>
+</ul>
+<p>Run: <code>git status</code>
+Expected: "nothing to commit, working tree clean"</p>
+<hr />
+<h3 id="task-2-fix-documentation-number-discrepancies">Task 2: Fix Documentation Number Discrepancies<a class="headerlink" href="#task-2-fix-documentation-number-discrepancies" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>README.md</code>
+- Modify: <code>docs/api/mcp.md</code>
+- Modify: <code>docs/api/overview.md</code>
+- Modify: <code>docs/guides/media-kit.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Count actual MCP tools</strong></li>
+</ul>
+<p>Run: <code>grep -c '@mcp.tool()' src/ad_seller/interfaces/mcp_server.py</code>
+Expected: 33 (the actual count)</p>
+<ul>
+<li>[ ] <strong>Step 2: Count actual REST endpoints</strong></li>
+</ul>
+<p>Run: <code>grep -c '@app\.\(get\|post\|put\|patch\|delete\)' src/ad_seller/interfaces/api/main.py</code>
+Note: Use this to get the real count, then update docs</p>
+<ul>
+<li>[ ] <strong>Step 3: Fix MCP tool count in docs/api/mcp.md</strong></li>
+</ul>
+<p>Replace "45+ tools" or "45+ MCP tools" with the actual count from Step 1.</p>
+<ul>
+<li>[ ] <strong>Step 4: Fix endpoint count in README.md</strong></li>
+</ul>
+<p>Replace "70+ endpoints" with the actual count from Step 2.</p>
+<ul>
+<li>[ ] <strong>Step 5: Fix port typo in docs/guides/media-kit.md</strong></li>
+</ul>
+<p>Replace any <code>localhost:8001</code> references with <code>localhost:8000</code>.</p>
+<ul>
+<li>[ ] <strong>Step 6: Fix endpoint count in docs/api/overview.md</strong></li>
+</ul>
+<p>Align with actual count.</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>git<span class="w"> </span>add<span class="w"> </span>README.md<span class="w"> </span>docs/api/mcp.md<span class="w"> </span>docs/api/overview.md<span class="w"> </span>docs/guides/media-kit.md
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: fix tool/endpoint counts and port typo&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="phase-b-unit-tests-seller-f1x">Phase B: Unit Tests (seller-f1x)<a class="headerlink" href="#phase-b-unit-tests-seller-f1x" title="Permanent link">&para;</a></h2>
+<h3 id="task-3-test-pricing-engine">Task 3: Test Pricing Engine<a class="headerlink" href="#task-3-test-pricing-engine" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Test: <code>tests/unit/test_pricing_engine.py</code>
+- Reference: <code>src/ad_seller/engines/pricing_rules_engine.py</code>
+- Check first: <code>tests/unit/test_engines.py</code> (may have existing pricing tests — avoid duplication)</p>
+<ul>
+<li>[ ] <strong>Step 1: Read the pricing engine and existing tests</strong></li>
+</ul>
+<p>Read <code>src/ad_seller/engines/pricing_rules_engine.py</code> to understand the actual API. The main method is <code>calculate_price(product_id, base_price, buyer_context, deal_type, volume, inventory_type)</code> which returns a <code>PricingDecision</code> object. Tier is passed via <code>BuyerContext</code>, not a string. Floor is at <code>engine.config.global_floor_cpm</code>.</p>
+<p>Also read <code>tests/unit/test_engines.py</code> to see what's already covered.</p>
+<ul>
+<li>[ ] <strong>Step 2: Write failing tests for tier pricing</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="sd">&quot;&quot;&quot;Tests for PricingRulesEngine tier calculations.&quot;&quot;&quot;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">ad_seller.engines.pricing_rules_engine</span><span class="w"> </span><span class="kn">import</span> <span class="n">PricingRulesEngine</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">ad_seller.models.buyer_identity</span><span class="w"> </span><span class="kn">import</span> <span class="n">BuyerContext</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">engine</span><span class="p">():</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="k">return</span> <span class="n">PricingRulesEngine</span><span class="p">()</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">TestTierPricing</span><span class="p">:</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Each access tier gets different pricing.&quot;&quot;&quot;</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_agency_tier_gets_discount_over_seat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">engine</span><span class="p">):</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Agency tier should get better pricing than seat tier.&quot;&quot;&quot;</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>        <span class="n">seat_ctx</span> <span class="o">=</span> <span class="n">BuyerContext</span><span class="p">(</span><span class="n">tier</span><span class="o">=</span><span class="s2">&quot;seat&quot;</span><span class="p">,</span> <span class="n">seat_id</span><span class="o">=</span><span class="s2">&quot;dsp-1&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>        <span class="n">agency_ctx</span> <span class="o">=</span> <span class="n">BuyerContext</span><span class="p">(</span><span class="n">tier</span><span class="o">=</span><span class="s2">&quot;agency&quot;</span><span class="p">,</span> <span class="n">agency_id</span><span class="o">=</span><span class="s2">&quot;agency-1&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>        <span class="n">seat_result</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">calculate_price</span><span class="p">(</span><span class="s2">&quot;product-1&quot;</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="n">seat_ctx</span><span class="p">,</span> <span class="s2">&quot;PD&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;display&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a>        <span class="n">agency_result</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">calculate_price</span><span class="p">(</span><span class="s2">&quot;product-1&quot;</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="n">agency_ctx</span><span class="p">,</span> <span class="s2">&quot;PD&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;display&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>        <span class="k">assert</span> <span class="n">agency_result</span><span class="o">.</span><span class="n">final_cpm</span> <span class="o">&lt;=</span> <span class="n">seat_result</span><span class="o">.</span><span class="n">final_cpm</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_advertiser_tier_gets_best_discount</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">engine</span><span class="p">):</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Advertiser tier should get deepest discount.&quot;&quot;&quot;</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>        <span class="n">agency_ctx</span> <span class="o">=</span> <span class="n">BuyerContext</span><span class="p">(</span><span class="n">tier</span><span class="o">=</span><span class="s2">&quot;agency&quot;</span><span class="p">,</span> <span class="n">agency_id</span><span class="o">=</span><span class="s2">&quot;agency-1&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>        <span class="n">adv_ctx</span> <span class="o">=</span> <span class="n">BuyerContext</span><span class="p">(</span><span class="n">tier</span><span class="o">=</span><span class="s2">&quot;advertiser&quot;</span><span class="p">,</span> <span class="n">advertiser_id</span><span class="o">=</span><span class="s2">&quot;adv-1&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>        <span class="n">agency_result</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">calculate_price</span><span class="p">(</span><span class="s2">&quot;product-1&quot;</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="n">agency_ctx</span><span class="p">,</span> <span class="s2">&quot;PD&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;display&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>        <span class="n">adv_result</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">calculate_price</span><span class="p">(</span><span class="s2">&quot;product-1&quot;</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="n">adv_ctx</span><span class="p">,</span> <span class="s2">&quot;PD&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;display&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a>        <span class="k">assert</span> <span class="n">adv_result</span><span class="o">.</span><span class="n">final_cpm</span> <span class="o">&lt;=</span> <span class="n">agency_result</span><span class="o">.</span><span class="n">final_cpm</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a>
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">test_floor_price_enforced</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">engine</span><span class="p">):</span>
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;CPM should never go below configured floor.&quot;&quot;&quot;</span>
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a>        <span class="n">adv_ctx</span> <span class="o">=</span> <span class="n">BuyerContext</span><span class="p">(</span><span class="n">tier</span><span class="o">=</span><span class="s2">&quot;advertiser&quot;</span><span class="p">,</span> <span class="n">advertiser_id</span><span class="o">=</span><span class="s2">&quot;adv-1&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a>        <span class="n">result</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">calculate_price</span><span class="p">(</span><span class="s2">&quot;product-1&quot;</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="n">adv_ctx</span><span class="p">,</span> <span class="s2">&quot;PD&quot;</span><span class="p">,</span> <span class="mi">999999</span><span class="p">,</span> <span class="s2">&quot;display&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a>        <span class="k">assert</span> <span class="n">result</span><span class="o">.</span><span class="n">final_cpm</span> <span class="o">&gt;=</span> <span class="n">engine</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">global_floor_cpm</span>
+</code></pre></div>
+<p>Note: Adjust field names (<code>final_cpm</code>, <code>BuyerContext</code> constructor) to match actual API after reading the source.</p>
+<ul>
+<li>[ ] <strong>Step 3: Run tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>pytest tests/unit/test_pricing_engine.py -v</code>
+Expected: FAIL (adjust test method signatures to match actual engine API)</p>
+<ul>
+<li>[ ] <strong>Step 4: Fix tests to match actual engine API</strong></li>
+</ul>
+<p>Read the actual method signatures and adjust the test to call them correctly. The tests should now pass against the real engine.</p>
+<ul>
+<li>[ ] <strong>Step 5: Run tests to verify they pass</strong></li>
+</ul>
+<p>Run: <code>pytest tests/unit/test_pricing_engine.py -v</code>
+Expected: All PASS</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/unit/test_pricing_engine.py
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: add pricing engine tier and floor tests&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-4-test-negotiation-engine">Task 4: Test Negotiation Engine<a class="headerlink" href="#task-4-test-negotiation-engine" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Test: <code>tests/unit/test_negotiation_engine.py</code>
+- Reference: <code>src/ad_seller/engines/negotiation_engine.py</code>
+- Check first: <code>tests/unit/test_engines.py</code> (may have existing negotiation tests)</p>
+<ul>
+<li>[ ] <strong>Step 1: Read the negotiation engine</strong></li>
+</ul>
+<p>Read <code>src/ad_seller/engines/negotiation_engine.py</code> to understand: <code>NegotiationEngine</code> class, multi-round negotiation, concession tracking, strategy-per-tier, walk-away conditions, counter-offer generation.</p>
+<ul>
+<li>[ ] <strong>Step 2: Write failing tests</strong></li>
+</ul>
+<p>Test cases:
+- Counter-offer respects concession limits (max per round, total cap)
+- Walk-away triggers when gap exceeds threshold
+- Strategy varies by buyer tier (aggressive for unknown, collaborative for strategic)
+- Multi-round concession tracking (each round concedes less)
+- Package-aware counter (suggest alternative package, not just lower price)</p>
+<ul>
+<li>[ ] <strong>Step 3: Run tests to verify they fail</strong></li>
+</ul>
+<p>Run: <code>pytest tests/unit/test_negotiation_engine.py -v</code></p>
+<ul>
+<li>[ ] <strong>Step 4: Adjust tests to match actual API, verify pass</strong></li>
+</ul>
+<p>Run: <code>pytest tests/unit/test_negotiation_engine.py -v</code>
+Expected: All PASS</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/unit/test_negotiation_engine.py
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: add negotiation engine multi-round and strategy tests&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-5-test-media-kit-service">Task 5: Test Media Kit Service<a class="headerlink" href="#task-5-test-media-kit-service" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Test: <code>tests/unit/test_media_kit_service.py</code>
+- Reference: <code>src/ad_seller/engines/media_kit_service.py</code>
+- Check first: <code>tests/unit/test_engines.py</code> (may have existing media kit tests)</p>
+<ul>
+<li>[ ] <strong>Step 1: Read the media kit service</strong></li>
+</ul>
+<p>Read <code>src/ad_seller/engines/media_kit_service.py</code> — the class is <code>MediaKitService</code>, not an engine.</p>
+<ul>
+<li>[ ] <strong>Step 2: Write tests for tier-gated access</strong></li>
+</ul>
+<p>Test cases:
+- Public access returns packages without exact pricing
+- Authenticated access returns exact pricing
+- Featured packages appear in public listing
+- Package search by keyword works
+- Empty media kit returns graceful response</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 3: Run, fix, verify pass</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 4: Commit</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/unit/test_media_kit_service.py
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: add media kit tier-gated access tests&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-6-test-mcp-server-prompts-and-tools">Task 6: Test MCP Server Prompts and Tools<a class="headerlink" href="#task-6-test-mcp-server-prompts-and-tools" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Test: <code>tests/unit/test_mcp_server.py</code>
+- Reference: <code>src/ad_seller/interfaces/mcp_server.py</code></p>
+<ul>
+<li>
+<p>[ ] <strong>Step 1: Read the MCP server to understand all tool signatures</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 2: Write tests for setup status detection</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="sd">&quot;&quot;&quot;Tests for MCP server tools.&quot;&quot;&quot;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">patch</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_get_setup_status_incomplete</span><span class="p">():</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Unconfigured system should report setup incomplete.&quot;&quot;&quot;</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">ad_seller.interfaces.mcp_server</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_setup_status</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    <span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>    <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;ad_seller.interfaces.mcp_server._get_settings&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">mock_settings</span><span class="p">:</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>        <span class="n">mock_settings</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="n">seller_organization_name</span> <span class="o">=</span> <span class="s2">&quot;Default Publisher&quot;</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>        <span class="n">mock_settings</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="n">gam_network_code</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>        <span class="n">mock_settings</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="n">freewheel_sh_mcp_url</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>        <span class="n">mock_settings</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="n">ssp_connectors</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>        <span class="n">mock_settings</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="n">default_price_floor_cpm</span> <span class="o">=</span> <span class="mf">5.0</span>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>        <span class="n">mock_settings</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="n">default_currency</span> <span class="o">=</span> <span class="s2">&quot;USD&quot;</span>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>        <span class="n">mock_settings</span><span class="o">.</span><span class="n">return_value</span><span class="o">.</span><span class="n">approval_gate_enabled</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>        <span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">&quot;ad_seller.interfaces.mcp_server._get_storage&quot;</span><span class="p">,</span> <span class="n">new_callable</span><span class="o">=</span><span class="n">AsyncMock</span><span class="p">):</span>
+<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>            <span class="n">result</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="k">await</span> <span class="n">get_setup_status</span><span class="p">())</span>
+<a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a>            <span class="k">assert</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;setup_complete&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">False</span>
+<a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a>            <span class="k">assert</span> <span class="s2">&quot;incomplete&quot;</span> <span class="ow">in</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;message&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+</code></pre></div>
+<ul>
+<li>
+<p>[ ] <strong>Step 3: Write tests for health_check, get_config</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 4: Run tests, fix, verify pass</strong></p>
+</li>
+</ul>
+<p>Run: <code>pytest tests/unit/test_mcp_server.py -v</code></p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/unit/test_mcp_server.py
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: add MCP server setup status and config tests&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-7-test-ssp-connectors">Task 7: Test SSP Connectors<a class="headerlink" href="#task-7-test-ssp-connectors" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Test: <code>tests/unit/test_ssp_connectors.py</code>
+- Reference: <code>src/ad_seller/clients/ssp_base.py</code>, <code>ssp_index_exchange.py</code>, <code>ssp_mcp_client.py</code></p>
+<ul>
+<li>
+<p>[ ] <strong>Step 1: Read SSP base class and both implementations</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 2: Write tests with mocked HTTP/MCP responses</strong></p>
+</li>
+</ul>
+<p>Test cases:
+- SSPRegistry routes CTV deals to correct SSP
+- SSPRegistry routes display deals to correct SSP
+- PubMatic MCP client formats deal_management call correctly
+- Index Exchange REST client sends correct HTTP payload
+- SSP error (timeout, 500) returns graceful error, doesn't crash flow
+- Deal distribution to multiple SSPs collects per-SSP results</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 3: Run, fix, verify pass</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 4: Commit</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/unit/test_ssp_connectors.py
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: add SSP connector routing and error handling tests&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-8-test-event-bus-and-approval-gates">Task 8: Test Event Bus and Approval Gates<a class="headerlink" href="#task-8-test-event-bus-and-approval-gates" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Test: <code>tests/unit/test_event_bus.py</code>
+- Reference: <code>src/ad_seller/events/bus.py</code>, <code>src/ad_seller/events/approval.py</code></p>
+<ul>
+<li>
+<p>[ ] <strong>Step 1: Read event bus and approval gate implementations</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 2: Write tests</strong></p>
+</li>
+</ul>
+<p>Test cases:
+- Event published is received by subscriber
+- Subscriber filtering by event_type works
+- Wildcard subscriber ("*") receives all events
+- ApprovalGate.request_approval creates pending request
+- ApprovalGate.list_pending returns only pending items
+- Approval timeout detection works
+- Approve/reject updates status correctly</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 3: Run, fix, verify pass</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 4: Commit</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/unit/test_event_bus.py
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: add event bus pub/sub and approval gate tests&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-9-test-order-state-machine-expand-existing">Task 9: Test Order State Machine (expand existing)<a class="headerlink" href="#task-9-test-order-state-machine-expand-existing" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>tests/unit/test_order_state_machine.py</code>
+- Reference: <code>src/ad_seller/models/order_state_machine.py</code></p>
+<ul>
+<li>
+<p>[ ] <strong>Step 1: Read existing tests and the state machine</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 2: Add edge case tests</strong></p>
+</li>
+</ul>
+<p>Test cases:
+- Invalid transition raises InvalidTransitionError with clear message
+- Guard condition failure blocks transition
+- Audit log records every transition with actor and timestamp
+- Concurrent transitions on same order (race condition safety)
+- All 12 states reachable from draft via valid paths
+- Transition from terminal state (completed, failed) is blocked</p>
+<ul>
+<li>[ ] <strong>Step 3: Run full test suite</strong></li>
+</ul>
+<p>Run: <code>pytest tests/unit/test_order_state_machine.py -v</code>
+Expected: All PASS (existing + new)</p>
+<ul>
+<li>[ ] <strong>Step 4: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/unit/test_order_state_machine.py
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: expand order state machine edge case coverage&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="phase-c-integration-tests-with-dummy-data-seller-6he">Phase C: Integration Tests with Dummy Data (seller-6he)<a class="headerlink" href="#phase-c-integration-tests-with-dummy-data-seller-6he" title="Permanent link">&para;</a></h2>
+<h3 id="task-10-end-to-end-deal-flow-with-dummy-data">Task 10: End-to-End Deal Flow with Dummy Data<a class="headerlink" href="#task-10-end-to-end-deal-flow-with-dummy-data" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>tests/integration/test_deal_flow_e2e.py</code>
+- Create: <code>tests/integration/conftest.py</code>
+- Create: <code>tests/integration/fixtures/</code> (dummy responses)</p>
+<ul>
+<li>[ ] <strong>Step 1: Create test fixtures directory</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>tests/integration/fixtures
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Create dummy FreeWheel inventory response fixture</strong></li>
+</ul>
+<p>Create <code>tests/integration/fixtures/freewheel_inventory.json</code> with realistic but synthetic inventory data (3-5 products, CTV + display).</p>
+<ul>
+<li>[ ] <strong>Step 3: Create dummy SSP response fixtures</strong></li>
+</ul>
+<p>Create <code>tests/integration/fixtures/pubmatic_deal_response.json</code> and <code>tests/integration/fixtures/index_exchange_deal_response.json</code>.</p>
+<ul>
+<li>[ ] <strong>Step 4: Create conftest.py with shared fixtures</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="sd">&quot;&quot;&quot;Integration test fixtures.&quot;&quot;&quot;</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span><span class="p">,</span> <span class="n">MagicMock</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">mock_storage</span><span class="p">():</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;In-memory storage for integration tests.&quot;&quot;&quot;</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">ad_seller.storage.sqlite_backend</span><span class="w"> </span><span class="kn">import</span> <span class="n">SQLiteBackend</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    <span class="k">return</span> <span class="n">SQLiteBackend</span><span class="p">(</span><span class="s2">&quot;:memory:&quot;</span><span class="p">)</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="k">def</span><span class="w"> </span><span class="nf">mock_ad_server</span><span class="p">():</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Mock ad server that returns dummy inventory.&quot;&quot;&quot;</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>    <span class="c1"># Return fixture data</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>    <span class="o">...</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a>
+<a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<a id="__codelineno-16-21" name="__codelineno-16-21" href="#__codelineno-16-21"></a><span class="k">def</span><span class="w"> </span><span class="nf">mock_ssp_registry</span><span class="p">():</span>
+<a id="__codelineno-16-22" name="__codelineno-16-22" href="#__codelineno-16-22"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Mock SSP registry with dummy PubMatic + IX responses.&quot;&quot;&quot;</span>
+<a id="__codelineno-16-23" name="__codelineno-16-23" href="#__codelineno-16-23"></a>    <span class="o">...</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 5: Write end-to-end deal flow test</strong></li>
+</ul>
+<p>Test the full path: deal request → pricing → negotiation → approval → booking → SSP distribution.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_full_deal_flow</span><span class="p">(</span><span class="n">mock_storage</span><span class="p">,</span> <span class="n">mock_ad_server</span><span class="p">,</span> <span class="n">mock_ssp_registry</span><span class="p">):</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Deal request flows from receipt to SSP distribution.&quot;&quot;&quot;</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="c1"># 1. Buyer discovers inventory</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="c1"># 2. Buyer requests deal (CTV, PD, 1M impressions)</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>    <span class="c1"># 3. Pricing engine calculates CPM</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>    <span class="c1"># 4. Negotiation engine generates counter-offer</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="c1"># 5. Buyer accepts counter</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    <span class="c1"># 6. Approval gate triggered (if above threshold)</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>    <span class="c1"># 7. Deal booked in ad server</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>    <span class="c1"># 8. Deal distributed to SSP</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>    <span class="c1"># 9. Verify deal appears in orders list</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>    <span class="o">...</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 6: Run integration tests</strong></li>
+</ul>
+<p>Run: <code>pytest tests/integration/test_deal_flow_e2e.py -v</code>
+Expected: All PASS</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/integration/
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: add end-to-end deal flow integration tests with dummy data&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-11-mcp-server-integration-test-with-dummy-data">Task 11: MCP Server Integration Test with Dummy Data<a class="headerlink" href="#task-11-mcp-server-integration-test-with-dummy-data" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>tests/integration/test_mcp_integration.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write MCP tool integration test</strong></li>
+</ul>
+<p>Test the MCP tools as a business user would invoke them, with mocked backends:
+- <code>get_setup_status</code> → detect incomplete config
+- <code>list_products</code> → return dummy products
+- <code>create_deal_from_template</code> → create deal with dummy params
+- <code>list_orders</code> → show the created deal
+- <code>distribute_deal_via_ssp</code> → push to mocked SSP</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 2: Run, fix, verify pass</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Commit</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/integration/test_mcp_integration.py
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: add MCP server integration tests with dummy data&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-12-setup-wizard-flow-test">Task 12: Setup Wizard Flow Test<a class="headerlink" href="#task-12-setup-wizard-flow-test" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>tests/integration/test_setup_wizard_flow.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write setup wizard test</strong></li>
+</ul>
+<p>Simulate the business user's day-1 experience:
+1. Call <code>get_setup_status</code> → incomplete
+2. Call <code>set_publisher_identity</code> with name, domain, org_id
+3. Call <code>create_package</code> to add media kit entries
+4. Call <code>update_rate_card</code> to set pricing
+5. Call <code>set_approval_gates</code> to configure thresholds
+6. Call <code>get_setup_status</code> → complete</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 2: Run, fix, verify pass</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Commit</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>git<span class="w"> </span>add<span class="w"> </span>tests/integration/test_setup_wizard_flow.py
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test: add setup wizard end-to-end flow test&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="phase-d-mcp-prompts-slash-commands-implementation">Phase D: MCP Prompts (Slash Commands) Implementation<a class="headerlink" href="#phase-d-mcp-prompts-slash-commands-implementation" title="Permanent link">&para;</a></h2>
+<h3 id="task-13-add-9-mcp-prompts">Task 13: Add 9 MCP Prompts<a class="headerlink" href="#task-13-add-9-mcp-prompts" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p><strong>Dependency:</strong> Task 6 creates <code>tests/unit/test_mcp_server.py</code>. This task appends to that file — do not create a new file.</p>
+</blockquote>
+<p><strong>Files:</strong>
+- Modify: <code>src/ad_seller/interfaces/mcp_server.py</code>
+- Modify: <code>tests/unit/test_mcp_server.py</code> (created in Task 6)</p>
+<ul>
+<li>[ ] <strong>Step 1: Read the MCP server to find the right insertion point</strong></li>
+</ul>
+<p>The prompts go after the existing tools section, before the <code>.env helper</code> section.</p>
+<ul>
+<li>[ ] <strong>Step 2: Write failing test for prompt registration</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="sd">&quot;&quot;&quot;Tests for MCP prompt registration.&quot;&quot;&quot;</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_all_prompts_registered</span><span class="p">():</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;All 9 prompts should be registered on the MCP server.&quot;&quot;&quot;</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">ad_seller.interfaces.mcp_server</span><span class="w"> </span><span class="kn">import</span> <span class="n">mcp</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>    <span class="n">prompt_names</span> <span class="o">=</span> <span class="p">{</span><span class="n">p</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">mcp</span><span class="o">.</span><span class="n">_prompt_manager</span><span class="o">.</span><span class="n">list_prompts</span><span class="p">()}</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>    <span class="n">expected</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;setup&quot;</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">,</span> <span class="s2">&quot;inventory&quot;</span><span class="p">,</span> <span class="s2">&quot;deals&quot;</span><span class="p">,</span> <span class="s2">&quot;queue&quot;</span><span class="p">,</span>
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a>                <span class="s2">&quot;new-deal&quot;</span><span class="p">,</span> <span class="s2">&quot;configure&quot;</span><span class="p">,</span> <span class="s2">&quot;buyers&quot;</span><span class="p">,</span> <span class="s2">&quot;help&quot;</span><span class="p">}</span>
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a>    <span class="k">assert</span> <span class="n">expected</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="n">prompt_names</span><span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;Missing: </span><span class="si">{</span><span class="n">expected</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">prompt_names</span><span class="si">}</span><span class="s2">&quot;</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Run test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>pytest tests/unit/test_mcp_server.py::test_all_prompts_registered -v</code>
+Expected: FAIL (no prompts registered yet)</p>
+<ul>
+<li>[ ] <strong>Step 4: Implement all 9 prompts</strong></li>
+</ul>
+<p>Add to <code>mcp_server.py</code> after the last <code>@mcp.tool()</code> section:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="c1"># Prompts (Slash Commands)</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="c1"># =============================================================================</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">mcp.server.fastmcp.prompts.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">Message</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;setup&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;First-time guided setup wizard&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">setup_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]:</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Message</span><span class="p">(</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>        <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Check setup status and walk me through configuring everything &quot;</span>
+<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a>                <span class="s2">&quot;that&#39;s incomplete. Go step by step: publisher identity, ad server, &quot;</span>
+<a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a>                <span class="s2">&quot;SSPs, media kit, pricing, approval gates, and buyer agent access. &quot;</span>
+<a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a>                <span class="s2">&quot;Ask me one question at a time.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-16" name="__codelineno-22-16" href="#__codelineno-22-16"></a>    <span class="p">)]</span>
+<a id="__codelineno-22-17" name="__codelineno-22-17" href="#__codelineno-22-17"></a>
+<a id="__codelineno-22-18" name="__codelineno-22-18" href="#__codelineno-22-18"></a>
+<a id="__codelineno-22-19" name="__codelineno-22-19" href="#__codelineno-22-19"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;status&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Configuration and health overview&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-20" name="__codelineno-22-20" href="#__codelineno-22-20"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">status_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]:</span>
+<a id="__codelineno-22-21" name="__codelineno-22-21" href="#__codelineno-22-21"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Message</span><span class="p">(</span>
+<a id="__codelineno-22-22" name="__codelineno-22-22" href="#__codelineno-22-22"></a>        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-23" name="__codelineno-22-23" href="#__codelineno-22-23"></a>        <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Show me a complete status overview: configuration state, system &quot;</span>
+<a id="__codelineno-22-24" name="__codelineno-22-24" href="#__codelineno-22-24"></a>                <span class="s2">&quot;health, ad server connection, SSP connectors, and any issues &quot;</span>
+<a id="__codelineno-22-25" name="__codelineno-22-25" href="#__codelineno-22-25"></a>                <span class="s2">&quot;that need attention.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-26" name="__codelineno-22-26" href="#__codelineno-22-26"></a>    <span class="p">)]</span>
+<a id="__codelineno-22-27" name="__codelineno-22-27" href="#__codelineno-22-27"></a>
+<a id="__codelineno-22-28" name="__codelineno-22-28" href="#__codelineno-22-28"></a>
+<a id="__codelineno-22-29" name="__codelineno-22-29" href="#__codelineno-22-29"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;inventory&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;What inventory do I have to sell?&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-30" name="__codelineno-22-30" href="#__codelineno-22-30"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">inventory_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]:</span>
+<a id="__codelineno-22-31" name="__codelineno-22-31" href="#__codelineno-22-31"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Message</span><span class="p">(</span>
+<a id="__codelineno-22-32" name="__codelineno-22-32" href="#__codelineno-22-32"></a>        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-33" name="__codelineno-22-33" href="#__codelineno-22-33"></a>        <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Show me my current inventory: products, media kit packages, &quot;</span>
+<a id="__codelineno-22-34" name="__codelineno-22-34" href="#__codelineno-22-34"></a>                <span class="s2">&quot;and sync status. Highlight anything that needs attention.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-35" name="__codelineno-22-35" href="#__codelineno-22-35"></a>    <span class="p">)]</span>
+<a id="__codelineno-22-36" name="__codelineno-22-36" href="#__codelineno-22-36"></a>
+<a id="__codelineno-22-37" name="__codelineno-22-37" href="#__codelineno-22-37"></a>
+<a id="__codelineno-22-38" name="__codelineno-22-38" href="#__codelineno-22-38"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;deals&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Full status report on all deal activity&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-39" name="__codelineno-22-39" href="#__codelineno-22-39"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">deals_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]:</span>
+<a id="__codelineno-22-40" name="__codelineno-22-40" href="#__codelineno-22-40"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Message</span><span class="p">(</span>
+<a id="__codelineno-22-41" name="__codelineno-22-41" href="#__codelineno-22-41"></a>        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-42" name="__codelineno-22-42" href="#__codelineno-22-42"></a>        <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Give me a full status report on all deal activity: active deals, &quot;</span>
+<a id="__codelineno-22-43" name="__codelineno-22-43" href="#__codelineno-22-43"></a>                <span class="s2">&quot;deals in negotiation, recently completed deals, and any deals &quot;</span>
+<a id="__codelineno-22-44" name="__codelineno-22-44" href="#__codelineno-22-44"></a>                <span class="s2">&quot;with issues. Include SSP distribution status.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-45" name="__codelineno-22-45" href="#__codelineno-22-45"></a>    <span class="p">)]</span>
+<a id="__codelineno-22-46" name="__codelineno-22-46" href="#__codelineno-22-46"></a>
+<a id="__codelineno-22-47" name="__codelineno-22-47" href="#__codelineno-22-47"></a>
+<a id="__codelineno-22-48" name="__codelineno-22-48" href="#__codelineno-22-48"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;queue&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Inbound items needing publisher action&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-49" name="__codelineno-22-49" href="#__codelineno-22-49"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">queue_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]:</span>
+<a id="__codelineno-22-50" name="__codelineno-22-50" href="#__codelineno-22-50"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Message</span><span class="p">(</span>
+<a id="__codelineno-22-51" name="__codelineno-22-51" href="#__codelineno-22-51"></a>        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-52" name="__codelineno-22-52" href="#__codelineno-22-52"></a>        <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Show me everything in the inbound queue that needs my action: &quot;</span>
+<a id="__codelineno-22-53" name="__codelineno-22-53" href="#__codelineno-22-53"></a>                <span class="s2">&quot;pending deal requests, approvals waiting for my decision, and &quot;</span>
+<a id="__codelineno-22-54" name="__codelineno-22-54" href="#__codelineno-22-54"></a>                <span class="s2">&quot;proposals I need to review. Most urgent first.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-55" name="__codelineno-22-55" href="#__codelineno-22-55"></a>    <span class="p">)]</span>
+<a id="__codelineno-22-56" name="__codelineno-22-56" href="#__codelineno-22-56"></a>
+<a id="__codelineno-22-57" name="__codelineno-22-57" href="#__codelineno-22-57"></a>
+<a id="__codelineno-22-58" name="__codelineno-22-58" href="#__codelineno-22-58"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;new-deal&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Create a new deal with guided steps&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-59" name="__codelineno-22-59" href="#__codelineno-22-59"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">new_deal_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]:</span>
+<a id="__codelineno-22-60" name="__codelineno-22-60" href="#__codelineno-22-60"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Message</span><span class="p">(</span>
+<a id="__codelineno-22-61" name="__codelineno-22-61" href="#__codelineno-22-61"></a>        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-62" name="__codelineno-22-62" href="#__codelineno-22-62"></a>        <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Help me create a new deal. Walk me through it step by step: &quot;</span>
+<a id="__codelineno-22-63" name="__codelineno-22-63" href="#__codelineno-22-63"></a>                <span class="s2">&quot;which inventory, deal type (PG/PD/PA), pricing, targeting, &quot;</span>
+<a id="__codelineno-22-64" name="__codelineno-22-64" href="#__codelineno-22-64"></a>                <span class="s2">&quot;and which buyers or SSPs to distribute to.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-65" name="__codelineno-22-65" href="#__codelineno-22-65"></a>    <span class="p">)]</span>
+<a id="__codelineno-22-66" name="__codelineno-22-66" href="#__codelineno-22-66"></a>
+<a id="__codelineno-22-67" name="__codelineno-22-67" href="#__codelineno-22-67"></a>
+<a id="__codelineno-22-68" name="__codelineno-22-68" href="#__codelineno-22-68"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;configure&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Add or edit event bus flows, approval gates, and guard conditions&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-69" name="__codelineno-22-69" href="#__codelineno-22-69"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">configure_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]:</span>
+<a id="__codelineno-22-70" name="__codelineno-22-70" href="#__codelineno-22-70"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Message</span><span class="p">(</span>
+<a id="__codelineno-22-71" name="__codelineno-22-71" href="#__codelineno-22-71"></a>        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-72" name="__codelineno-22-72" href="#__codelineno-22-72"></a>        <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Show me all configurable automation rules: event bus flows, &quot;</span>
+<a id="__codelineno-22-73" name="__codelineno-22-73" href="#__codelineno-22-73"></a>                <span class="s2">&quot;approval gates, and guard conditions. Tell me what each one &quot;</span>
+<a id="__codelineno-22-74" name="__codelineno-22-74" href="#__codelineno-22-74"></a>                <span class="s2">&quot;does and let me add, modify, or remove them.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-75" name="__codelineno-22-75" href="#__codelineno-22-75"></a>    <span class="p">)]</span>
+<a id="__codelineno-22-76" name="__codelineno-22-76" href="#__codelineno-22-76"></a>
+<a id="__codelineno-22-77" name="__codelineno-22-77" href="#__codelineno-22-77"></a>
+<a id="__codelineno-22-78" name="__codelineno-22-78" href="#__codelineno-22-78"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;buyers&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Buyer agents accessing your media kit and inbound requests&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-79" name="__codelineno-22-79" href="#__codelineno-22-79"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">buyers_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]:</span>
+<a id="__codelineno-22-80" name="__codelineno-22-80" href="#__codelineno-22-80"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Message</span><span class="p">(</span>
+<a id="__codelineno-22-81" name="__codelineno-22-81" href="#__codelineno-22-81"></a>        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-82" name="__codelineno-22-82" href="#__codelineno-22-82"></a>        <span class="n">content</span><span class="o">=</span><span class="s2">&quot;Show me which buyer agents have been accessing my media kit &quot;</span>
+<a id="__codelineno-22-83" name="__codelineno-22-83" href="#__codelineno-22-83"></a>                <span class="s2">&quot;and inventory recently. For each buyer, show what they looked &quot;</span>
+<a id="__codelineno-22-84" name="__codelineno-22-84" href="#__codelineno-22-84"></a>                <span class="s2">&quot;at, whether they initiated any deals, and their current trust &quot;</span>
+<a id="__codelineno-22-85" name="__codelineno-22-85" href="#__codelineno-22-85"></a>                <span class="s2">&quot;level. I want to know who to follow up with.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-86" name="__codelineno-22-86" href="#__codelineno-22-86"></a>    <span class="p">)]</span>
+<a id="__codelineno-22-87" name="__codelineno-22-87" href="#__codelineno-22-87"></a>
+<a id="__codelineno-22-88" name="__codelineno-22-88" href="#__codelineno-22-88"></a>
+<a id="__codelineno-22-89" name="__codelineno-22-89" href="#__codelineno-22-89"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;help&quot;</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;What can this seller agent do?&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-90" name="__codelineno-22-90" href="#__codelineno-22-90"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">help_prompt</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]:</span>
+<a id="__codelineno-22-91" name="__codelineno-22-91" href="#__codelineno-22-91"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Message</span><span class="p">(</span>
+<a id="__codelineno-22-92" name="__codelineno-22-92" href="#__codelineno-22-92"></a>        <span class="n">role</span><span class="o">=</span><span class="s2">&quot;user&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-93" name="__codelineno-22-93" href="#__codelineno-22-93"></a>        <span class="n">content</span><span class="o">=</span><span class="s2">&quot;List all the things I can do with this seller agent, organized &quot;</span>
+<a id="__codelineno-22-94" name="__codelineno-22-94" href="#__codelineno-22-94"></a>                <span class="s2">&quot;by category. Include the slash commands available and a brief &quot;</span>
+<a id="__codelineno-22-95" name="__codelineno-22-95" href="#__codelineno-22-95"></a>                <span class="s2">&quot;description of each.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-96" name="__codelineno-22-96" href="#__codelineno-22-96"></a>    <span class="p">)]</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 5: Run test to verify it passes</strong></li>
+</ul>
+<p>Run: <code>pytest tests/unit/test_mcp_server.py::test_all_prompts_registered -v</code>
+Expected: PASS</p>
+<ul>
+<li>[ ] <strong>Step 6: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>git<span class="w"> </span>add<span class="w"> </span>src/ad_seller/interfaces/mcp_server.py<span class="w"> </span>tests/unit/test_mcp_server.py
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat: add 9 MCP prompts (slash commands) for Claude Desktop/web&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-14-implement-get_inbound_queue-tool">Task 14: Implement <code>get_inbound_queue</code> Tool<a class="headerlink" href="#task-14-implement-get_inbound_queue-tool" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>src/ad_seller/interfaces/mcp_server.py</code>
+- Test: <code>tests/unit/test_mcp_server.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing test</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_get_inbound_queue_returns_pending_items</span><span class="p">():</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Queue tool should aggregate pending approvals and proposal events.&quot;&quot;&quot;</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>    <span class="c1"># Mock ApprovalGate.list_pending() to return 2 pending approvals</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>    <span class="c1"># Mock event bus to return 1 proposal.received event</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>    <span class="c1"># Call get_inbound_queue()</span>
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a>    <span class="c1"># Verify 3 items returned, sorted by timestamp, tagged with type</span>
+<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>    <span class="o">...</span>
+</code></pre></div>
+<ul>
+<li>
+<p>[ ] <strong>Step 2: Run test to verify it fails</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Implement get_inbound_queue</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timedelta</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">()</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_inbound_queue</span><span class="p">(</span><span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Get all inbound items needing publisher action: pending approvals</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="sd">    and unresolved proposals. Most urgent first.&quot;&quot;&quot;</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>    <span class="n">items</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>    <span class="n">warnings</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a>
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a>    <span class="c1"># 1. Pending approvals</span>
+<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a>        <span class="n">storage</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_get_storage</span><span class="p">()</span>
+<a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..events.approval</span><span class="w"> </span><span class="kn">import</span> <span class="n">ApprovalGate</span>
+<a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a>        <span class="n">gate</span> <span class="o">=</span> <span class="n">ApprovalGate</span><span class="p">(</span><span class="n">storage</span><span class="p">)</span>
+<a id="__codelineno-25-15" name="__codelineno-25-15" href="#__codelineno-25-15"></a>        <span class="n">pending</span> <span class="o">=</span> <span class="k">await</span> <span class="n">gate</span><span class="o">.</span><span class="n">list_pending</span><span class="p">()</span>
+<a id="__codelineno-25-16" name="__codelineno-25-16" href="#__codelineno-25-16"></a>        <span class="k">for</span> <span class="n">approval</span> <span class="ow">in</span> <span class="n">pending</span><span class="p">:</span>
+<a id="__codelineno-25-17" name="__codelineno-25-17" href="#__codelineno-25-17"></a>            <span class="n">items</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+<a id="__codelineno-25-18" name="__codelineno-25-18" href="#__codelineno-25-18"></a>                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;approval&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-19" name="__codelineno-25-19" href="#__codelineno-25-19"></a>                <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">approval</span><span class="o">.</span><span class="n">approval_id</span><span class="p">,</span>
+<a id="__codelineno-25-20" name="__codelineno-25-20" href="#__codelineno-25-20"></a>                <span class="s2">&quot;summary&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">approval</span><span class="o">.</span><span class="n">gate_name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">approval</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;summary&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;Pending approval&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-21" name="__codelineno-25-21" href="#__codelineno-25-21"></a>                <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="n">approval</span><span class="o">.</span><span class="n">created_at</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+<a id="__codelineno-25-22" name="__codelineno-25-22" href="#__codelineno-25-22"></a>                <span class="s2">&quot;from&quot;</span><span class="p">:</span> <span class="n">approval</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;buyer&quot;</span><span class="p">,</span> <span class="s2">&quot;unknown&quot;</span><span class="p">),</span>
+<a id="__codelineno-25-23" name="__codelineno-25-23" href="#__codelineno-25-23"></a>                <span class="s2">&quot;urgency&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span> <span class="k">if</span> <span class="p">(</span><span class="n">approval</span><span class="o">.</span><span class="n">expires_at</span> <span class="ow">and</span> <span class="n">approval</span><span class="o">.</span><span class="n">expires_at</span> <span class="o">&lt;</span> <span class="n">datetime</span><span class="o">.</span><span class="n">utcnow</span><span class="p">()</span> <span class="o">+</span> <span class="n">timedelta</span><span class="p">(</span><span class="n">hours</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span> <span class="k">else</span> <span class="s2">&quot;normal&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-24" name="__codelineno-25-24" href="#__codelineno-25-24"></a>            <span class="p">})</span>
+<a id="__codelineno-25-25" name="__codelineno-25-25" href="#__codelineno-25-25"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-25-26" name="__codelineno-25-26" href="#__codelineno-25-26"></a>        <span class="n">warnings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not load approvals: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-25-27" name="__codelineno-25-27" href="#__codelineno-25-27"></a>
+<a id="__codelineno-25-28" name="__codelineno-25-28" href="#__codelineno-25-28"></a>    <span class="c1"># 2. Unresolved proposal events</span>
+<a id="__codelineno-25-29" name="__codelineno-25-29" href="#__codelineno-25-29"></a>    <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-25-30" name="__codelineno-25-30" href="#__codelineno-25-30"></a>        <span class="n">storage</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_get_storage</span><span class="p">()</span>
+<a id="__codelineno-25-31" name="__codelineno-25-31" href="#__codelineno-25-31"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..events.bus</span><span class="w"> </span><span class="kn">import</span> <span class="n">StorageEventBus</span>
+<a id="__codelineno-25-32" name="__codelineno-25-32" href="#__codelineno-25-32"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">..events.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">EventType</span>
+<a id="__codelineno-25-33" name="__codelineno-25-33" href="#__codelineno-25-33"></a>        <span class="n">bus</span> <span class="o">=</span> <span class="n">StorageEventBus</span><span class="p">(</span><span class="n">storage</span><span class="p">)</span>
+<a id="__codelineno-25-34" name="__codelineno-25-34" href="#__codelineno-25-34"></a>
+<a id="__codelineno-25-35" name="__codelineno-25-35" href="#__codelineno-25-35"></a>        <span class="n">received</span> <span class="o">=</span> <span class="k">await</span> <span class="n">bus</span><span class="o">.</span><span class="n">list_events</span><span class="p">(</span><span class="n">event_type</span><span class="o">=</span><span class="n">EventType</span><span class="o">.</span><span class="n">PROPOSAL_RECEIVED</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">)</span>
+<a id="__codelineno-25-36" name="__codelineno-25-36" href="#__codelineno-25-36"></a>        <span class="n">resolved_ids</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-25-37" name="__codelineno-25-37" href="#__codelineno-25-37"></a>        <span class="k">for</span> <span class="n">et</span> <span class="ow">in</span> <span class="p">[</span><span class="n">EventType</span><span class="o">.</span><span class="n">PROPOSAL_ACCEPTED</span><span class="p">,</span> <span class="n">EventType</span><span class="o">.</span><span class="n">PROPOSAL_REJECTED</span><span class="p">,</span> <span class="n">EventType</span><span class="o">.</span><span class="n">PROPOSAL_COUNTERED</span><span class="p">]:</span>
+<a id="__codelineno-25-38" name="__codelineno-25-38" href="#__codelineno-25-38"></a>            <span class="n">resolved</span> <span class="o">=</span> <span class="k">await</span> <span class="n">bus</span><span class="o">.</span><span class="n">list_events</span><span class="p">(</span><span class="n">event_type</span><span class="o">=</span><span class="n">et</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span>
+<a id="__codelineno-25-39" name="__codelineno-25-39" href="#__codelineno-25-39"></a>            <span class="n">resolved_ids</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">proposal_id</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">resolved</span><span class="p">)</span>
+<a id="__codelineno-25-40" name="__codelineno-25-40" href="#__codelineno-25-40"></a>
+<a id="__codelineno-25-41" name="__codelineno-25-41" href="#__codelineno-25-41"></a>        <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="n">received</span><span class="p">:</span>
+<a id="__codelineno-25-42" name="__codelineno-25-42" href="#__codelineno-25-42"></a>            <span class="k">if</span> <span class="n">event</span><span class="o">.</span><span class="n">proposal_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">resolved_ids</span><span class="p">:</span>
+<a id="__codelineno-25-43" name="__codelineno-25-43" href="#__codelineno-25-43"></a>                <span class="n">items</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+<a id="__codelineno-25-44" name="__codelineno-25-44" href="#__codelineno-25-44"></a>                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;proposal&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-45" name="__codelineno-25-45" href="#__codelineno-25-45"></a>                    <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">event</span><span class="o">.</span><span class="n">proposal_id</span> <span class="ow">or</span> <span class="n">event</span><span class="o">.</span><span class="n">event_id</span><span class="p">,</span>
+<a id="__codelineno-25-46" name="__codelineno-25-46" href="#__codelineno-25-46"></a>                    <span class="s2">&quot;summary&quot;</span><span class="p">:</span> <span class="n">event</span><span class="o">.</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;summary&quot;</span><span class="p">,</span> <span class="s2">&quot;New proposal&quot;</span><span class="p">),</span>
+<a id="__codelineno-25-47" name="__codelineno-25-47" href="#__codelineno-25-47"></a>                    <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="n">event</span><span class="o">.</span><span class="n">timestamp</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+<a id="__codelineno-25-48" name="__codelineno-25-48" href="#__codelineno-25-48"></a>                    <span class="s2">&quot;from&quot;</span><span class="p">:</span> <span class="n">event</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;buyer_agent&quot;</span><span class="p">,</span> <span class="s2">&quot;unknown&quot;</span><span class="p">),</span>
+<a id="__codelineno-25-49" name="__codelineno-25-49" href="#__codelineno-25-49"></a>                    <span class="s2">&quot;urgency&quot;</span><span class="p">:</span> <span class="s2">&quot;normal&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-50" name="__codelineno-25-50" href="#__codelineno-25-50"></a>                <span class="p">})</span>
+<a id="__codelineno-25-51" name="__codelineno-25-51" href="#__codelineno-25-51"></a>    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-25-52" name="__codelineno-25-52" href="#__codelineno-25-52"></a>        <span class="n">warnings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not load proposals: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-25-53" name="__codelineno-25-53" href="#__codelineno-25-53"></a>
+<a id="__codelineno-25-54" name="__codelineno-25-54" href="#__codelineno-25-54"></a>    <span class="n">items</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="s2">&quot;timestamp&quot;</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-25-55" name="__codelineno-25-55" href="#__codelineno-25-55"></a>    <span class="n">result</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;items&quot;</span><span class="p">:</span> <span class="n">items</span><span class="p">[:</span><span class="n">limit</span><span class="p">],</span> <span class="s2">&quot;total&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">items</span><span class="p">)}</span>
+<a id="__codelineno-25-56" name="__codelineno-25-56" href="#__codelineno-25-56"></a>    <span class="k">if</span> <span class="n">warnings</span><span class="p">:</span>
+<a id="__codelineno-25-57" name="__codelineno-25-57" href="#__codelineno-25-57"></a>        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;warnings&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">warnings</span>
+<a id="__codelineno-25-58" name="__codelineno-25-58" href="#__codelineno-25-58"></a>    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>
+<p>[ ] <strong>Step 4: Run test to verify it passes</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 5: Commit</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>git<span class="w"> </span>add<span class="w"> </span>src/ad_seller/interfaces/mcp_server.py<span class="w"> </span>tests/unit/test_mcp_server.py
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat: add get_inbound_queue composite tool for /queue prompt&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-15-implement-get_buyer_activity-tool">Task 15: Implement <code>get_buyer_activity</code> Tool<a class="headerlink" href="#task-15-implement-get_buyer_activity-tool" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>src/ad_seller/interfaces/mcp_server.py</code>
+- Test: <code>tests/unit/test_mcp_server.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing test</strong></li>
+</ul>
+<p>Test cases:
+- Returns buyer agents grouped by identity
+- Includes activity summary (event types seen)
+- Respects <code>days</code> parameter filter
+- Returns empty list gracefully when no activity</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 2: Run test to verify it fails</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Implement get_buyer_activity</strong></p>
+</li>
+</ul>
+<p>Query event bus for events with non-empty session_id in the last N days. Join with session records to get buyer identity. Group by buyer agent, summarize activity.</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 4: Run test to verify it passes</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 5: Commit</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>git<span class="w"> </span>add<span class="w"> </span>src/ad_seller/interfaces/mcp_server.py<span class="w"> </span>tests/unit/test_mcp_server.py
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat: add get_buyer_activity composite tool for /buyers prompt&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-16-implement-list_configurable_flows-tool">Task 16: Implement <code>list_configurable_flows</code> Tool<a class="headerlink" href="#task-16-implement-list_configurable_flows-tool" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>src/ad_seller/interfaces/mcp_server.py</code>
+- Test: <code>tests/unit/test_mcp_server.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write failing test</strong></li>
+</ul>
+<p>Test cases:
+- Returns approval gate config from settings
+- Returns guard conditions from OrderStateMachine._DEFAULT_TRANSITIONS
+- Returns event bus subscriber count (runtime)
+- Each section has <code>configurable</code> hint</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 2: Run test to verify it fails</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Implement list_configurable_flows</strong></p>
+</li>
+</ul>
+<p>Read settings for approval gates. Import <code>_build_default_rules()</code> from <code>order_state_machine</code> module — this converts the raw <code>_DEFAULT_TRANSITIONS</code> tuples into <code>TransitionRule</code> objects with <code>from_status</code>, <code>to_status</code>, <code>guard</code>, <code>description</code> fields. Query event bus <code>_subscribers</code> dict for active listener count. Note: event bus subscribers are runtime-only and will be empty on a fresh start.</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 4: Run test to verify it passes</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 5: Commit</strong></p>
+</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>git<span class="w"> </span>add<span class="w"> </span>src/ad_seller/interfaces/mcp_server.py<span class="w"> </span>tests/unit/test_mcp_server.py
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat: add list_configurable_flows composite tool for /configure prompt&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="phase-e-deployment-infra-validation">Phase E: Deployment &amp; Infra Validation<a class="headerlink" href="#phase-e-deployment-infra-validation" title="Permanent link">&para;</a></h2>
+<h3 id="task-17-docker-build-run-test">Task 17: Docker Build &amp; Run Test<a class="headerlink" href="#task-17-docker-build-run-test" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Reference: <code>Dockerfile</code>, <code>docker-compose.yml</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Build Docker image</strong></li>
+</ul>
+<p>Run: <code>docker build -f infra/docker/Dockerfile -t seller-agent:test .</code>
+Expected: Build succeeds, image created</p>
+<ul>
+<li>[ ] <strong>Step 2: Run with docker-compose</strong></li>
+</ul>
+<p>Run: <code>docker-compose -f infra/docker/docker-compose.yml up -d</code>
+Expected: All 3 services healthy (app, postgres, redis)</p>
+<ul>
+<li>[ ] <strong>Step 3: Hit health endpoint</strong></li>
+</ul>
+<p>Run: <code>curl -s http://localhost:8000/health | jq .</code>
+Expected: <code>{"status": "healthy", ...}</code></p>
+<ul>
+<li>[ ] <strong>Step 4: Hit MCP SSE endpoint</strong></li>
+</ul>
+<p>Run: <code>curl -s http://localhost:8000/mcp-sse/sse -H "Accept: text/event-stream" --max-time 5</code> (legacy SSE) or <code>curl -s http://localhost:8000/mcp -X POST -H "Accept: application/json, text/event-stream" --max-time 5</code> (Streamable HTTP)
+Expected: SSE connection established (may timeout after 5s, that's fine)</p>
+<ul>
+<li>[ ] <strong>Step 5: Tear down</strong></li>
+</ul>
+<p>Run: <code>docker-compose -f infra/docker/docker-compose.yml down -v</code></p>
+<ul>
+<li>[ ] <strong>Step 6: Document any issues found</strong></li>
+</ul>
+<p>If build fails or services don't start, document the issue and fix it before committing.</p>
+<hr />
+<h3 id="task-18-verify-envexample-completeness">Task 18: Verify .env.example Completeness<a class="headerlink" href="#task-18-verify-envexample-completeness" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>.env.example</code>
+- Reference: <code>src/ad_seller/config/settings.py</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Compare settings.py fields to .env.example</strong></li>
+</ul>
+<p>Every field in the Settings class should have a corresponding entry in <code>.env.example</code> with a comment explaining what it does.</p>
+<ul>
+<li>[ ] <strong>Step 2: Add missing FreeWheel config vars</strong></li>
+</ul>
+<p>Add <code>FREEWHEEL_SH_MCP_URL</code>, <code>FREEWHEEL_BC_MCP_URL</code>, <code>FREEWHEEL_INVENTORY_MODE</code>, <code>FREEWHEEL_NETWORK_ID</code> with descriptive comments.</p>
+<ul>
+<li>[ ] <strong>Step 3: Add missing SSP config vars</strong></li>
+</ul>
+<p>Ensure <code>SSP_CONNECTORS</code>, <code>SSP_ROUTING_RULES</code>, <code>PUBMATIC_MCP_URL</code>, <code>INDEX_EXCHANGE_API_URL</code> are all present.</p>
+<ul>
+<li>[ ] <strong>Step 4: Verify no secrets in .env.example</strong></li>
+</ul>
+<p>Confirm all values are placeholders, not real keys.</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>git<span class="w"> </span>add<span class="w"> </span>.env.example
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: complete .env.example with all configuration variables&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="phase-f-documentation-updates">Phase F: Documentation Updates<a class="headerlink" href="#phase-f-documentation-updates" title="Permanent link">&para;</a></h2>
+<h3 id="task-19-add-troubleshooting-guide">Task 19: Add Troubleshooting Guide<a class="headerlink" href="#task-19-add-troubleshooting-guide" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>docs/guides/troubleshooting.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Write troubleshooting guide</strong></li>
+</ul>
+<p>Sections:
+- <strong>Health check failures</strong>: what each check means, how to fix
+- <strong>Ad server connection errors</strong>: GAM auth issues, FreeWheel MCP connection failures
+- <strong>SSP sync failures</strong>: PubMatic MCP timeout, Index Exchange API errors
+- <strong>Storage issues</strong>: SQLite lock errors, PostgreSQL connection pool exhaustion, Redis connection refused
+- <strong>MCP connection problems</strong>: SSE timeout, Claude Desktop can't connect, ChatGPT connector errors
+- <strong>Common error codes</strong>: map HTTP status codes to likely causes
+- <strong>Logs</strong>: where to find them, what to look for</p>
+<ul>
+<li>[ ] <strong>Step 2: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>git<span class="w"> </span>add<span class="w"> </span>docs/guides/troubleshooting.md
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: add troubleshooting guide for common issues&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-20-update-claude-desktop-setup-guide">Task 20: Update Claude Desktop Setup Guide<a class="headerlink" href="#task-20-update-claude-desktop-setup-guide" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>docs/guides/claude-desktop-setup.md</code></p>
+<ul>
+<li>
+<p>[ ] <strong>Step 1: Read current guide</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 2: Add slash command reference section</strong></p>
+</li>
+</ul>
+<p>After the setup wizard section, add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="gu">## Available Slash Commands</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>Once connected, you can use these commands in any chat:
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>| Command | What it does |
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>|---------|-------------|
+<a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a>| <span class="sb">`/setup`</span> | Run the guided setup wizard (first-time or reconfigure) |
+<a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a>| <span class="sb">`/status`</span> | Check configuration and system health |
+<a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a>| <span class="sb">`/inventory`</span> | See your products and media kit packages |
+<a id="__codelineno-31-10" name="__codelineno-31-10" href="#__codelineno-31-10"></a>| <span class="sb">`/deals`</span> | Full report on all deal activity |
+<a id="__codelineno-31-11" name="__codelineno-31-11" href="#__codelineno-31-11"></a>| <span class="sb">`/queue`</span> | Inbound items waiting for your action |
+<a id="__codelineno-31-12" name="__codelineno-31-12" href="#__codelineno-31-12"></a>| <span class="sb">`/new-deal`</span> | Create a new deal step by step |
+<a id="__codelineno-31-13" name="__codelineno-31-13" href="#__codelineno-31-13"></a>| <span class="sb">`/configure`</span> | Manage event bus flows, approval gates, guard conditions |
+<a id="__codelineno-31-14" name="__codelineno-31-14" href="#__codelineno-31-14"></a>| <span class="sb">`/buyers`</span> | See which buyer agents are accessing your inventory |
+<a id="__codelineno-31-15" name="__codelineno-31-15" href="#__codelineno-31-15"></a>| <span class="sb">`/help`</span> | List all available capabilities |
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Update the "First-Run" section to reference /setup</strong></li>
+</ul>
+<p>Replace the vague "the seller agent detects that business setup isn't complete" with a clear instruction: "Type <code>/setup</code> to begin the guided configuration wizard."</p>
+<ul>
+<li>[ ] <strong>Step 4: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>git<span class="w"> </span>add<span class="w"> </span>docs/guides/claude-desktop-setup.md
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: add slash command reference to Claude setup guide&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-21-update-chatgpt-setup-guide">Task 21: Update ChatGPT Setup Guide<a class="headerlink" href="#task-21-update-chatgpt-setup-guide" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>docs/guides/chatgpt-setup.md</code></p>
+<ul>
+<li>
+<p>[ ] <strong>Step 1: Read current guide</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 2: Add natural language equivalents section</strong></p>
+</li>
+</ul>
+<p>Since ChatGPT doesn't surface MCP prompts as <code>/</code> commands, add a section explaining what to say instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="gu">## Getting Started After Setup</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>ChatGPT doesn&#39;t show slash commands, but you can use natural language:
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a>| Instead of <span class="sb">`/setup`</span> | Say: &quot;Help me set up my seller agent&quot; |
+<a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a>| Instead of <span class="sb">`/queue`</span> | Say: &quot;Show me what&#39;s in my inbound queue&quot; |
+<a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a>| Instead of <span class="sb">`/buyers`</span> | Say: &quot;Who&#39;s been looking at my inventory?&quot; |
+<a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a>...
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>git<span class="w"> </span>add<span class="w"> </span>docs/guides/chatgpt-setup.md
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: add natural language equivalents to ChatGPT setup guide&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-22-add-freewheel-integration-status-banner">Task 22: Add FreeWheel Integration Status Banner<a class="headerlink" href="#task-22-add-freewheel-integration-status-banner" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>FREEWHEEL_MCP_TOOL_PROPOSAL.md</code> (root level)</p>
+<ul>
+<li>[ ] <strong>Step 1: Add status banner at top</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="k">&gt; </span><span class="ge">**Implementation Status (2026-03-26):**</span>
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="k">&gt; </span><span class="ge">- Phase 1 (Read-Only): ✅ Complete</span>
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a><span class="k">&gt; </span><span class="ge">- Phase 2 (PD/PA Deal Booking): ✅ Complete (with auth stubs)</span>
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="k">&gt; </span><span class="ge">- Phase 3 (PG Cross-MCP): ✅ Auth implemented — SH (OAuth 2.0 ROPCG) + BC (Beeswax session cookie)</span>
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="k">&gt; </span><span class="ge">- See PROGRESS.md for current status</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>git<span class="w"> </span>add<span class="w"> </span>FREEWHEEL_MCP_TOOL_PROPOSAL.md
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: add implementation status banner to FreeWheel proposal&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-23-add-changelogmd">Task 23: Add CHANGELOG.md<a class="headerlink" href="#task-23-add-changelogmd" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>CHANGELOG.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Generate changelog from git history</strong></li>
+</ul>
+<p>Read the last 20 commit messages and group by feature area.</p>
+<ul>
+<li>[ ] <strong>Step 2: Write CHANGELOG.md</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="gh"># Changelog</span>
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a><span class="gu">## [Unreleased]</span>
+<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a>
+<a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a><span class="gu">### Added</span>
+<a id="__codelineno-37-6" name="__codelineno-37-6" href="#__codelineno-37-6"></a><span class="k">-</span><span class="w"> </span>9 MCP prompts (slash commands) for Claude Desktop/web
+<a id="__codelineno-37-7" name="__codelineno-37-7" href="#__codelineno-37-7"></a><span class="k">-</span><span class="w"> </span>3 composite tools: get_inbound_queue, get_buyer_activity, list_configurable_flows
+<a id="__codelineno-37-8" name="__codelineno-37-8" href="#__codelineno-37-8"></a><span class="k">-</span><span class="w"> </span>Comprehensive unit and integration tests (Phase 5)
+<a id="__codelineno-37-9" name="__codelineno-37-9" href="#__codelineno-37-9"></a><span class="k">-</span><span class="w"> </span>Troubleshooting guide
+<a id="__codelineno-37-10" name="__codelineno-37-10" href="#__codelineno-37-10"></a>
+<a id="__codelineno-37-11" name="__codelineno-37-11" href="#__codelineno-37-11"></a><span class="gu">### Fixed</span>
+<a id="__codelineno-37-12" name="__codelineno-37-12" href="#__codelineno-37-12"></a><span class="k">-</span><span class="w"> </span>Documentation tool/endpoint count discrepancies
+<a id="__codelineno-37-13" name="__codelineno-37-13" href="#__codelineno-37-13"></a><span class="k">-</span><span class="w"> </span>Port typo in media-kit guide (8001 → 8000)
+<a id="__codelineno-37-14" name="__codelineno-37-14" href="#__codelineno-37-14"></a>
+<a id="__codelineno-37-15" name="__codelineno-37-15" href="#__codelineno-37-15"></a><span class="gu">## [2.0.0] — 2026-03-23</span>
+<a id="__codelineno-37-16" name="__codelineno-37-16" href="#__codelineno-37-16"></a>
+<a id="__codelineno-37-17" name="__codelineno-37-17" href="#__codelineno-37-17"></a><span class="gu">### Added</span>
+<a id="__codelineno-37-18" name="__codelineno-37-18" href="#__codelineno-37-18"></a><span class="k">-</span><span class="w"> </span>MCP server with 33+ tools for Claude Desktop, ChatGPT, Cursor
+<a id="__codelineno-37-19" name="__codelineno-37-19" href="#__codelineno-37-19"></a><span class="k">-</span><span class="w"> </span>Interactive setup wizard (developer + business phases)
+<a id="__codelineno-37-20" name="__codelineno-37-20" href="#__codelineno-37-20"></a><span class="k">-</span><span class="w"> </span>Deal migration, deprecation, and lineage tracking
+<a id="__codelineno-37-21" name="__codelineno-37-21" href="#__codelineno-37-21"></a><span class="k">-</span><span class="w"> </span>Curator support with Agent Range as day-one curator
+<a id="__codelineno-37-22" name="__codelineno-37-22" href="#__codelineno-37-22"></a><span class="k">-</span><span class="w"> </span>IAB Deals API v1.0 integration
+<a id="__codelineno-37-23" name="__codelineno-37-23" href="#__codelineno-37-23"></a><span class="k">-</span><span class="w"> </span>SSP connector abstraction (PubMatic MCP, Index Exchange REST)
+<a id="__codelineno-37-24" name="__codelineno-37-24" href="#__codelineno-37-24"></a><span class="k">-</span><span class="w"> </span>SSP deal distribution in ExecutionActivationFlow
+<a id="__codelineno-37-25" name="__codelineno-37-25" href="#__codelineno-37-25"></a><span class="k">-</span><span class="w"> </span>FreeWheel Streaming Hub integration (Phases 1-2)
+<a id="__codelineno-37-26" name="__codelineno-37-26" href="#__codelineno-37-26"></a><span class="k">-</span><span class="w"> </span>IaC deployment (CloudFormation + Terraform)
+<a id="__codelineno-37-27" name="__codelineno-37-27" href="#__codelineno-37-27"></a><span class="k">-</span><span class="w"> </span>Docker + docker-compose with PostgreSQL + Redis
+<a id="__codelineno-37-28" name="__codelineno-37-28" href="#__codelineno-37-28"></a>...
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>git<span class="w"> </span>add<span class="w"> </span>CHANGELOG.md
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: add CHANGELOG.md&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="phase-g-user-experience-validation">Phase G: User Experience Validation<a class="headerlink" href="#phase-g-user-experience-validation" title="Permanent link">&para;</a></h2>
+<h3 id="task-24-engineer-persona-walkthrough">Task 24: Engineer Persona Walkthrough<a class="headerlink" href="#task-24-engineer-persona-walkthrough" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>docs/validation/engineer-walkthrough-results.md</code> (findings log)</p>
+<ul>
+<li>[ ] <strong>Step 1: Clone fresh and follow developer-setup.md</strong></li>
+</ul>
+<p>Validate that a new engineer can:
+1. Clone the repo
+2. Install dependencies (<code>pip install -e ".[dev]"</code>)
+3. Copy <code>.env.example</code> to <code>.env</code>
+4. Run <code>ad-seller init</code> (CLI)
+5. Start the server (<code>uvicorn ad_seller.interfaces.api.main:app</code>)
+6. Hit <code>/health</code> endpoint
+7. See MCP tools listed</p>
+<p>Document any steps that fail or are confusing.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run all tests</strong></li>
+</ul>
+<p>Run: <code>pytest -v</code>
+Expected: All tests pass on a clean install</p>
+<ul>
+<li>[ ] <strong>Step 3: Document issues found and fix them</strong></li>
+</ul>
+<hr />
+<h3 id="task-25-product-manager-persona-walkthrough">Task 25: Product Manager Persona Walkthrough<a class="headerlink" href="#task-25-product-manager-persona-walkthrough" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>docs/validation/pm-walkthrough-results.md</code> (findings log)</p>
+<ul>
+<li>[ ] <strong>Step 1: Simulate Claude Desktop connection</strong></li>
+</ul>
+<p>Follow <code>docs/guides/claude-desktop-setup.md</code>:
+1. Add the MCP URL to Claude Desktop settings
+2. Verify the integration appears
+3. Type <code>/</code> and verify all 9 prompts appear
+4. Run <code>/setup</code> and walk through the wizard
+5. Run <code>/status</code> to verify configuration</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 2: Simulate daily operations</strong></p>
+</li>
+<li>
+<p><code>/inventory</code> — see what's available</p>
+</li>
+<li><code>/new-deal</code> — create a test deal</li>
+<li><code>/deals</code> — see the deal in the status report</li>
+<li>
+<p><code>/queue</code> — check for inbound items</p>
+</li>
+<li>
+<p>[ ] <strong>Step 3: Document any confusing UX or missing guidance</strong></p>
+</li>
+</ul>
+<hr />
+<h3 id="task-26-ad-ops-persona-walkthrough">Task 26: Ad Ops Persona Walkthrough<a class="headerlink" href="#task-26-ad-ops-persona-walkthrough" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>docs/validation/adops-walkthrough-results.md</code> (findings log)</p>
+<ul>
+<li>[ ] <strong>Step 1: Check inbound queue</strong></li>
+</ul>
+<p>Run <code>/queue</code> — verify it shows pending approvals and proposals clearly.</p>
+<ul>
+<li>[ ] <strong>Step 2: Check buyer activity</strong></li>
+</ul>
+<p>Run <code>/buyers</code> — verify it shows which buyer agents have been active.</p>
+<ul>
+<li>[ ] <strong>Step 3: Configure approval gates</strong></li>
+</ul>
+<p>Run <code>/configure</code> — verify the user can:
+1. See current approval gate settings
+2. Add a new gate (e.g., "require approval for deals &gt; $50 CPM")
+3. Modify an existing guard condition</p>
+<ul>
+<li>[ ] <strong>Step 4: Document any workflow gaps</strong></li>
+</ul>
+<hr />
+<h2 id="phase-h-final-cleanup-push">Phase H: Final Cleanup &amp; Push<a class="headerlink" href="#phase-h-final-cleanup-push" title="Permanent link">&para;</a></h2>
+<h3 id="task-27-run-full-test-suite">Task 27: Run Full Test Suite<a class="headerlink" href="#task-27-run-full-test-suite" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- All test files</p>
+<ul>
+<li>[ ] <strong>Step 1: Run all tests</strong></li>
+</ul>
+<p>Run: <code>pytest -v --tb=short</code>
+Expected: All PASS</p>
+<ul>
+<li>[ ] <strong>Step 2: Run linter</strong></li>
+</ul>
+<p>Run: <code>ruff check src/ tests/</code>
+Expected: No errors</p>
+<ul>
+<li>
+<p>[ ] <strong>Step 3: Fix any failures</strong></p>
+</li>
+<li>
+<p>[ ] <strong>Step 4: Commit fixes if any</strong></p>
+</li>
+</ul>
+<hr />
+<h3 id="task-28-update-progressmd">Task 28: Update PROGRESS.md<a class="headerlink" href="#task-28-update-progressmd" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>.beads/PROGRESS.md</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Regenerate progress</strong></li>
+</ul>
+<p>Run: <code>python .beads/generate_progress.py</code></p>
+<ul>
+<li>[ ] <strong>Step 2: Close completed beads issues</strong></li>
+</ul>
+<p>Close seller-f1x (unit tests) and seller-6he (dummy data tests) if all their tests pass.</p>
+<ul>
+<li>[ ] <strong>Step 3: Sync beads</strong></li>
+</ul>
+<p>Run: <code>bd sync</code></p>
+<ul>
+<li>[ ] <strong>Step 4: Push everything</strong></li>
+</ul>
+<p>Run: <code>git push origin main</code>
+Expected: Clean push, all changes on origin</p>
+<hr />
+<h2 id="task-summary">Task Summary<a class="headerlink" href="#task-summary" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Tasks</th>
+<th>Focus</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0: Rename, Lint &amp; Compat</td>
+<td>0A-0C</td>
+<td>Rename Deal Library → Deal Library, lint codebase, buyer agent compatibility check</td>
+</tr>
+<tr>
+<td>A: Git Hygiene</td>
+<td>1-2</td>
+<td>Clean state, fix doc numbers</td>
+</tr>
+<tr>
+<td>B: Unit Tests</td>
+<td>3-9</td>
+<td>Pricing, negotiation, media kit, MCP, SSP, events, orders</td>
+</tr>
+<tr>
+<td>C: Integration Tests</td>
+<td>10-12</td>
+<td>E2E deal flow, MCP integration, setup wizard</td>
+</tr>
+<tr>
+<td>D: MCP Prompts</td>
+<td>13-16</td>
+<td>9 prompts + 3 composite tools</td>
+</tr>
+<tr>
+<td>E: Infra Validation</td>
+<td>17-18</td>
+<td>Docker build, .env completeness</td>
+</tr>
+<tr>
+<td>F: Documentation</td>
+<td>19-23</td>
+<td>Troubleshooting, Claude/ChatGPT guides, changelog</td>
+</tr>
+<tr>
+<td>G: UX Validation</td>
+<td>24-26</td>
+<td>Engineer, PM, ad ops walkthroughs</td>
+</tr>
+<tr>
+<td>H: Final Cleanup</td>
+<td>27-28</td>
+<td>Full test suite, progress update, push</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

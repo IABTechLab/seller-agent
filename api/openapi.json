@@ -1,0 +1,6999 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ad Seller System API",
+    "description": "IAB OpenDirect 2.1 compliant seller agent for programmatic advertising. Supports product discovery, tiered pricing, proposal evaluation, multi-round negotiation, deal execution, order management, and change requests.",
+    "contact": {
+      "name": "IAB Tech Lab",
+      "url": "https://iabtechlab.com/"
+    },
+    "license": {
+      "name": "Apache 2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    },
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Root",
+        "description": "API root.",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Health",
+        "description": "Health check endpoint.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "List Products",
+        "description": "List all products in the catalog.\n\nReads from the cached static catalog (see `_get_static_product_catalog`)\ninstead of running ProductSetupFlow per request \u2014 kicking off the flow\nspins up an OpenDirect MCP session that hangs in `session.initialize()`.",
+        "operationId": "list_products_products_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products/{product_id}": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Get Product",
+        "description": "Get a specific product.\n\nReads from the cached static catalog instead of running ProductSetupFlow\nper request (see `list_products` for rationale).",
+        "operationId": "get_product_products__product_id__get",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pricing": {
+      "post": {
+        "tags": [
+          "Pricing"
+        ],
+        "summary": "Get Pricing",
+        "description": "Get pricing for a product based on buyer context.",
+        "operationId": "get_pricing_pricing_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PricingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/proposals": {
+      "post": {
+        "tags": [
+          "Proposals"
+        ],
+        "summary": "Submit Proposal",
+        "description": "Submit a proposal for review.",
+        "operationId": "submit_proposal_proposals_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deals": {
+      "post": {
+        "tags": [
+          "Deals"
+        ],
+        "summary": "Generate Deal",
+        "description": "Generate a deal from an accepted proposal.",
+        "operationId": "generate_deal_deals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DealRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DealResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/discovery": {
+      "post": {
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "Discovery Query",
+        "description": "Process a discovery query about inventory.",
+        "operationId": "discovery_query_discovery_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoveryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List Events",
+        "description": "List events, optionally filtered by flow_id, event_type, or session_id.",
+        "operationId": "list_events_events_get",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flow Id"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{event_id}": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Get Event",
+        "description": "Get a specific event by ID.",
+        "operationId": "get_event_events__event_id__get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/approvals": {
+      "get": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "List Pending Approvals",
+        "description": "List all pending approval requests.",
+        "operationId": "list_pending_approvals_approvals_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/approvals/{approval_id}": {
+      "get": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "Get Approval",
+        "description": "Get a specific approval request and its response (if any).",
+        "operationId": "get_approval_approvals__approval_id__get",
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Approval Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/approvals/{approval_id}/decide": {
+      "post": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "Decide Approval",
+        "description": "Submit a human decision for a pending approval.",
+        "operationId": "decide_approval_approvals__approval_id__decide_post",
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Approval Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/approvals/{approval_id}/resume": {
+      "post": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "Resume Flow",
+        "description": "Resume a flow after an approval decision has been submitted.\n\nLoads the flow state snapshot, applies the decision, and returns\nthe final result without re-running expensive crew evaluations.",
+        "operationId": "resume_flow_approvals__approval_id__resume_post",
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Approval Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Create Session",
+        "description": "Create a new buyer conversation session.",
+        "operationId": "create_session_sessions_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "List Sessions",
+        "description": "List sessions, optionally filtered by buyer identity or status.",
+        "operationId": "list_sessions_sessions_get",
+        "parameters": [
+          {
+            "name": "buyer_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Buyer Key"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Get Session",
+        "description": "Get session details and conversation history.",
+        "operationId": "get_session_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{session_id}/messages": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Send Session Message",
+        "description": "Send a message within a session and get a response.",
+        "operationId": "send_session_message_sessions__session_id__messages_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{session_id}/close": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Close Session Endpoint",
+        "description": "Close a session.",
+        "operationId": "close_session_endpoint_sessions__session_id__close_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/proposals/{proposal_id}/counter": {
+      "post": {
+        "tags": [
+          "Negotiation"
+        ],
+        "summary": "Counter Proposal",
+        "description": "Submit a counter-offer in an ongoing negotiation.\n\nLoads or creates a NegotiationHistory, evaluates the buyer's offer,\npersists the updated history, and emits a NEGOTIATION_ROUND event.",
+        "operationId": "counter_proposal_proposals__proposal_id__counter_post",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Proposal Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CounterOfferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/proposals/{proposal_id}/negotiation": {
+      "get": {
+        "tags": [
+          "Negotiation"
+        ],
+        "summary": "Get Negotiation Status",
+        "description": "Get full negotiation history for a proposal.",
+        "operationId": "get_negotiation_status_proposals__proposal_id__negotiation_get",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Proposal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media-kit": {
+      "get": {
+        "tags": [
+          "Media Kit"
+        ],
+        "summary": "Media Kit Overview",
+        "description": "Public media kit catalog overview.",
+        "operationId": "media_kit_overview_media_kit_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media-kit/packages": {
+      "get": {
+        "tags": [
+          "Media Kit"
+        ],
+        "summary": "List Media Kit Packages",
+        "description": "List packages with public view (price ranges, no exact pricing).\n\nAccepts the same audience-filter triple as `GET /packages` so public\ndiscovery callers can narrow by audience type without authenticating.",
+        "operationId": "list_media_kit_packages_media_kit_packages_get",
+        "parameters": [
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Layer"
+            }
+          },
+          {
+            "name": "featured_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Featured Only"
+            }
+          },
+          {
+            "name": "audience_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience Type"
+            }
+          },
+          {
+            "name": "audience_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience Id"
+            }
+          },
+          {
+            "name": "audience_taxonomy_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience Taxonomy Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media-kit/packages/{package_id}": {
+      "get": {
+        "tags": [
+          "Media Kit"
+        ],
+        "summary": "Get Media Kit Package",
+        "description": "Get a single package with public view.",
+        "operationId": "get_media_kit_package_media_kit_packages__package_id__get",
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Package Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media-kit/search": {
+      "post": {
+        "tags": [
+          "Media Kit"
+        ],
+        "summary": "Search Media Kit",
+        "description": "Search packages by keyword. Authenticated buyers get richer results.\n\nPer proposal \u00a75.7 + bead ar-2wxa, the scoring corpus now includes\n`audience_capabilities.standard_segment_ids` +\n`audience_capabilities.contextual_segment_ids` alongside keywords/tags\n-- a query mentioning a known IAB segment ID ranks packages that\ndeclare it higher than packages that don't.\n\nThe optional `audience_filter` body field restricts results to packages\nthat match its type/id/version triple, parallel to `GET /packages`.",
+        "operationId": "search_media_kit_media_kit_search_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaKitSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/packages": {
+      "get": {
+        "tags": [
+          "Packages"
+        ],
+        "summary": "List Packages",
+        "description": "List packages with tier-gated view.\n\nAudience filter (proposal \u00a75.7 + bead ar-2wxa):\n\n- `audience_type`: one of `standard` | `contextual` | `agentic`.\n- `audience_id`: taxonomy ID for standard/contextual; URI for agentic.\n  Requires `audience_type` to disambiguate which capability list to\n  search.\n- `audience_taxonomy_version`: optional version constraint; when unset\n  the seller's lock-file version is authoritative.\n\nEmpty results return `[]`, not 404 -- matches the existing behavior for\nlayer/featured filters.",
+        "operationId": "list_packages_packages_get",
+        "parameters": [
+          {
+            "name": "buyer_tier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "public",
+              "title": "Buyer Tier"
+            }
+          },
+          {
+            "name": "agency_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agency Id"
+            }
+          },
+          {
+            "name": "advertiser_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Advertiser Id"
+            }
+          },
+          {
+            "name": "layer",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Layer"
+            }
+          },
+          {
+            "name": "audience_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience Type"
+            }
+          },
+          {
+            "name": "audience_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience Id"
+            }
+          },
+          {
+            "name": "audience_taxonomy_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience Taxonomy Version"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Create Package",
+        "description": "Create a curated package (Layer 2).",
+        "operationId": "create_package_packages_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/packages/{package_id}": {
+      "get": {
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Get Package",
+        "description": "Get a single package with tier-gated view.",
+        "operationId": "get_package_packages__package_id__get",
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Package Id"
+            }
+          },
+          {
+            "name": "buyer_tier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "public",
+              "title": "Buyer Tier"
+            }
+          },
+          {
+            "name": "agency_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agency Id"
+            }
+          },
+          {
+            "name": "advertiser_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Advertiser Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Update Package",
+        "description": "Update an existing package.",
+        "operationId": "update_package_packages__package_id__put",
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Package Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Updates"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Delete Package",
+        "description": "Archive a package (soft delete).",
+        "operationId": "delete_package_packages__package_id__delete",
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Package Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/packages/assemble": {
+      "post": {
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Assemble Package",
+        "description": "Assemble a dynamic package (Layer 3) from product IDs.",
+        "operationId": "assemble_package_packages_assemble_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DynamicPackageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/packages/sync": {
+      "post": {
+        "tags": [
+          "Packages"
+        ],
+        "summary": "Sync Packages",
+        "description": "Trigger ad server inventory sync (Layer 1).",
+        "operationId": "sync_packages_packages_sync_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/api-keys": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "List Api Keys",
+        "description": "List all API keys (metadata only, no secrets).",
+        "operationId": "list_api_keys_auth_api_keys_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Create Api Key",
+        "description": "Create a new API key for a buyer.\n\nThe response contains the full API key which is shown ONLY ONCE.\nStore it securely \u2014 it cannot be retrieved again.",
+        "operationId": "create_api_key_auth_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/api-keys/{key_id}": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Get Api Key Details",
+        "description": "Get details for a specific API key.",
+        "operationId": "get_api_key_details_auth_api_keys__key_id__get",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Revoke Api Key",
+        "description": "Revoke an API key. Revoked keys return 401 on use.",
+        "operationId": "revoke_api_key_auth_api_keys__key_id__delete",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/agent.json": {
+      "get": {
+        "tags": [
+          "Agent Registry"
+        ],
+        "summary": "Agent Card",
+        "description": "Serve this seller agent's card for A2A discovery.\n\nReturns an A2A-protocol-compliant agent card describing this\nseller's capabilities, supported protocols, and inventory types.\nBuyer agents and registries fetch this to discover the seller.",
+        "operationId": "agent_card__well_known_agent_json_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/registry/agents": {
+      "get": {
+        "tags": [
+          "Agent Registry"
+        ],
+        "summary": "List Registered Agents",
+        "description": "List agents in the local registry.\n\nFilterable by agent_type (buyer, seller, tool_provider, data_provider, other)\nand trust_status (unknown, registered, approved, preferred, blocked).",
+        "operationId": "list_registered_agents_registry_agents_get",
+        "parameters": [
+          {
+            "name": "agent_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Type"
+            }
+          },
+          {
+            "name": "trust_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trust Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/registry/agents/{agent_id}": {
+      "get": {
+        "tags": [
+          "Agent Registry"
+        ],
+        "summary": "Get Registered Agent",
+        "description": "Get details for a specific registered agent.",
+        "operationId": "get_registered_agent_registry_agents__agent_id__get",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Agent Registry"
+        ],
+        "summary": "Remove Registered Agent",
+        "description": "Remove an agent from the local registry.",
+        "operationId": "remove_registered_agent_registry_agents__agent_id__delete",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/registry/agents/discover": {
+      "post": {
+        "tags": [
+          "Agent Registry"
+        ],
+        "summary": "Discover Agent",
+        "description": "Discover an agent by URL.\n\nFetches the agent's card from .well-known/agent.json, checks\nall configured registries (AAMP + extras) for verification, and\nregisters the agent locally with appropriate trust status.",
+        "operationId": "discover_agent_registry_agents_discover_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoverAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/registry/agents/{agent_id}/trust": {
+      "put": {
+        "tags": [
+          "Agent Registry"
+        ],
+        "summary": "Update Agent Trust",
+        "description": "Update an agent's trust status.\n\nUse this to approve, prefer, or block agents. Trust status determines\nthe maximum access tier:\n- unknown \u2192 PUBLIC (price ranges only)\n- registered \u2192 SEAT (exact prices, no negotiation)\n- approved \u2192 ADVERTISER (full access)\n- preferred \u2192 ADVERTISER + custom pricing rules\n- blocked \u2192 403 rejected, zero data access",
+        "operationId": "update_agent_trust_registry_agents__agent_id__trust_put",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Agent Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTrustRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/quotes": {
+      "post": {
+        "tags": [
+          "Quotes"
+        ],
+        "summary": "Create Quote",
+        "description": "Request a non-binding price quote from the seller.\n\nThe seller evaluates the request against existing pricing rules and\nreturns a quote with pricing, terms, and availability. Quotes are\nephemeral with a 24-hour TTL \u2014 no Deal ID is created.",
+        "operationId": "create_quote_api_v1_quotes_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequestModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/quotes/{quote_id}": {
+      "get": {
+        "tags": [
+          "Quotes"
+        ],
+        "summary": "Get Quote",
+        "description": "Retrieve a previously issued quote.\n\nReturns 410 Gone if the quote has expired.",
+        "operationId": "get_quote_api_v1_quotes__quote_id__get",
+        "parameters": [
+          {
+            "name": "quote_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Quote Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals": {
+      "post": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Book Deal",
+        "description": "Book a deal from a previously issued quote.\n\nThe seller validates the quote, generates a Deal ID, and returns\nconfirmed terms. This is the commit point \u2014 the quote becomes bound.\n\n**Wire format (proposal \u00a75.6 + \u00a76 row 14b):** the seller accepts both\naudience-plan content types --\n``application/vnd.ucp.embedding+json; v=1`` (legacy UCP carrier) and\n``application/vnd.iab.agentic-audiences+json; v=1`` (new IAB Agentic\nAudiences alias). FastAPI's body parsing is content-type-permissive, so\nboth names round-trip the same Pydantic model with no custom dependency\nneeded; the dual acceptance is exercised by\n``tests/unit/test_deal_booking_snapshot.py``.\n\n**Snapshot (proposal \u00a75.1 Step 2 + wire-format \u00a76.5):** when the request\ncarries an ``audience_plan``, the seller persists it verbatim as\n``audience_plan_snapshot`` against the deal record and returns the\nsnapshot plus a per-role ``audience_match_summary`` so the buyer can\nverify the booking. The snapshot is authoritative for the lifetime of\nthe deal -- if seller capabilities change mid-flight, the snapshot is\nhonored (see ``services/fulfillment.honor_audience_plan_snapshot``).\n\n**Forensic logging (proposal \u00a75.1 Step 2):** the\n``audience_plan_id`` hash is logged at INFO via\n``ad_seller.audience.booking``. The buyer logs the same hash on its\nside; matching entries are the cross-system anchor for dispute\nresolution.",
+        "operationId": "book_deal_api_v1_deals_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DealBookingRequestModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agentic-audience/match": {
+      "post": {
+        "tags": [
+          "Audience"
+        ],
+        "summary": "Agentic Audience Match",
+        "description": "Match a buyer-supplied agentic `AudienceRef` against this seller.\n\nPer proposal \u00a75.7 + \u00a76 row 11. Returns a match score and quality bucket.\nThe score is mock-quality (deterministic from sha256 of `identifier`);\nthe real embedding-similarity model is Epic 2 (E2-2).\n\nBehavior:\n- Non-agentic refs return HTTP 400.\n- Sellers with no top-level agentic capability (legacy / agentic\n  decommissioned) return `agentic_supported_by_seller=False`,\n  `match_quality=\"POOR\"`, score 0.\n- Otherwise the score is deterministic per `identifier` and bucketed\n  into `STRONG | MODERATE | WEAK | POOR`.",
+        "operationId": "agentic_audience_match_agentic_audience_match_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgenticAudienceMatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/{deal_id}": {
+      "get": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Get Deal By Id",
+        "description": "Get the current status of a deal.\n\nPerforms a lazy expiry check for deals in 'proposed' status.",
+        "operationId": "get_deal_by_id_api_v1_deals__deal_id__get",
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Create Order",
+        "description": "Create a new order and persist its state machine.",
+        "operationId": "create_order_api_v1_orders_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "List Orders",
+        "description": "List orders, optionally filtered by status.",
+        "operationId": "list_orders_api_v1_orders_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/report": {
+      "get": {
+        "tags": [
+          "Orders",
+          "Audit"
+        ],
+        "summary": "Get Orders Report",
+        "description": "Summary report across all orders.\n\nReturns counts by status, transition frequency by actor type,\nand average time-in-state metrics.",
+        "operationId": "get_orders_report_api_v1_orders_report_get",
+        "parameters": [
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{order_id}": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Get Order",
+        "description": "Get order current status and audit trail.",
+        "operationId": "get_order_api_v1_orders__order_id__get",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{order_id}/history": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Get Order History",
+        "description": "Get the full transition history for an order.",
+        "operationId": "get_order_history_api_v1_orders__order_id__history_get",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{order_id}/transition": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Transition Order",
+        "description": "Transition an order to a new state.\n\nValidates the transition against the state machine rules and\nrecords the change in the audit log.",
+        "operationId": "transition_order_api_v1_orders__order_id__transition_post",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/change-requests": {
+      "post": {
+        "tags": [
+          "Change Requests"
+        ],
+        "summary": "Create Change Request",
+        "description": "Submit a change request for an existing order.\n\nValidates the change against the current order state, classifies\nseverity, and routes to approval if needed.",
+        "operationId": "create_change_request_api_v1_change_requests_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChangeRequestModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Change Requests"
+        ],
+        "summary": "List Change Requests",
+        "description": "List change requests, optionally filtered by order or status.",
+        "operationId": "list_change_requests_api_v1_change_requests_get",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/change-requests/{cr_id}": {
+      "get": {
+        "tags": [
+          "Change Requests"
+        ],
+        "summary": "Get Change Request",
+        "description": "Get a change request by ID.",
+        "operationId": "get_change_request_api_v1_change_requests__cr_id__get",
+        "parameters": [
+          {
+            "name": "cr_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cr Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/change-requests/{cr_id}/review": {
+      "post": {
+        "tags": [
+          "Change Requests"
+        ],
+        "summary": "Review Change Request",
+        "description": "Approve or reject a pending change request.",
+        "operationId": "review_change_request_api_v1_change_requests__cr_id__review_post",
+        "parameters": [
+          {
+            "name": "cr_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cr Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewChangeRequestModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/change-requests/{cr_id}/apply": {
+      "post": {
+        "tags": [
+          "Change Requests"
+        ],
+        "summary": "Apply Change Request",
+        "description": "Apply an approved change request to the order.\n\nUpdates the order with the proposed values from the change request.",
+        "operationId": "apply_change_request_api_v1_change_requests__cr_id__apply_post",
+        "parameters": [
+          {
+            "name": "cr_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cr Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{order_id}/audit": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Get Order Audit",
+        "description": "Detailed audit log for an order with optional filters.\n\nFilters:\n  - actor: filter transitions by actor (exact or prefix match)\n  - from_date: ISO date, only transitions on or after this date\n  - to_date: ISO date, only transitions on or before this date",
+        "operationId": "get_order_audit_api_v1_orders__order_id__audit_get",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor"
+            }
+          },
+          {
+            "name": "from_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/from-template": {
+      "post": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Create Deal From Template",
+        "description": "Create a deal directly from template parameters (quote + auto-book).\n\nAccepts structured template params instead of requiring a pre-existing\nquote. Internally runs the pricing engine, validates the buyer's max_cpm\nagainst the floor price, and auto-books the deal if acceptable.\n\nReturns 201 with the created deal on success.\nReturns 422 when max_cpm is below the seller's floor price, including\nthe seller's minimum price in the response.\nReturns 401 for unauthenticated requests.",
+        "operationId": "create_deal_from_template_api_v1_deals_from_template_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DealFromTemplateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DealFromTemplateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/supply-chain": {
+      "get": {
+        "tags": [
+          "Supply Chain"
+        ],
+        "summary": "Get Supply Chain",
+        "description": "Return sellers.json-based self-description of this seller instance.\n\nIf SELLERS_JSON_PATH is configured, parses the real sellers.json file\nper IAB spec. Otherwise returns a default single-node chain.\nAlso includes an OpenRTB-compatible schain object.",
+        "operationId": "get_supply_chain_api_v1_supply_chain_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplyChainResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/{deal_id}/performance": {
+      "get": {
+        "tags": [
+          "Deal Performance"
+        ],
+        "summary": "Get Deal Performance",
+        "description": "Return delivery stats for a deal.\n\nProvides performance feedback for buyer SPO (Supply Path Optimization).\nReturns placeholder/mock stats initially \u2014 real ad server integration\ncomes in a future phase.",
+        "operationId": "get_deal_performance_api_v1_deals__deal_id__performance_get",
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/bulk": {
+      "post": {
+        "tags": [
+          "Bulk Operations"
+        ],
+        "summary": "Bulk Deal Operations",
+        "description": "Process a batch of deal operations (create/update/cancel).\n\nEnables the Deal Library buyer agent to efficiently manage multiple\ndeals in a single request. Each operation is processed independently\nand returns per-operation success/failure.",
+        "operationId": "bulk_deal_operations_api_v1_deals_bulk_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDealRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkDealResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products/{product_id}/inventory-type": {
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Override Inventory Type",
+        "description": "Override the auto-detected inventory type for a product.\n\nPublishers can correct misclassified inventory types from ad server sync\nor apply custom categorization. The override persists across future syncs.",
+        "operationId": "override_inventory_type_api_v1_products__product_id__inventory_type_post",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryTypeOverride"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Get Inventory Type Override",
+        "description": "Get the current inventory type override for a product, if any.",
+        "operationId": "get_inventory_type_override_api_v1_products__product_id__inventory_type_get",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Delete Inventory Type Override",
+        "description": "Remove an inventory type override, reverting to auto-detected type.",
+        "operationId": "delete_inventory_type_override_api_v1_products__product_id__inventory_type_delete",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rate-card": {
+      "get": {
+        "tags": [
+          "Pricing"
+        ],
+        "summary": "Get Rate Card",
+        "description": "Get the current rate card (base CPMs by inventory type).\n\nThe rate card drives floor pricing during inventory sync and\ndeal creation. Can be updated via PUT to reflect ad server rate cards.",
+        "operationId": "get_rate_card_api_v1_rate_card_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Pricing"
+        ],
+        "summary": "Update Rate Card",
+        "description": "Update the rate card with current base CPMs from ad server.\n\nPublishers should update this when their ad server rate cards change.\nThe pricing engine uses these values as base prices before applying\ntier discounts and volume adjustments.",
+        "operationId": "update_rate_card_api_v1_rate_card_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/RateCardEntry"
+                },
+                "type": "array",
+                "title": "Entries"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inventory-sync/status": {
+      "get": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Get Inventory Sync Status",
+        "description": "Get the current status of the periodic inventory sync scheduler.",
+        "operationId": "get_inventory_sync_status_api_v1_inventory_sync_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inventory-sync/trigger": {
+      "post": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Trigger Inventory Sync",
+        "description": "Manually trigger an inventory sync.\n\nArgs:\n    incremental: If true, only sync items changed since last sync\n        (based on stored sync watermark). Full sync if false or no\n        previous watermark exists.",
+        "operationId": "trigger_inventory_sync_api_v1_inventory_sync_trigger_post",
+        "parameters": [
+          {
+            "name": "incremental",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Incremental"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/export": {
+      "get": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Export Deals",
+        "description": "Export deals in DSP-native format for platform connectors.\n\nArgs:\n    format: Export format \u2014 generic, ttd, dv360, amazon, xandr\n    status: Filter by deal status (confirmed, proposed, cancelled)\n\nReturns deals formatted for the target DSP's import requirements.\nEnables buyer Phase 4D platform connectors to pull deals natively.",
+        "operationId": "export_deals_api_v1_deals_export_get",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "generic",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inventory-sync/watermark": {
+      "get": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Get Sync Watermark",
+        "description": "Get the last sync watermark (used for incremental sync).",
+        "operationId": "get_sync_watermark_api_v1_inventory_sync_watermark_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/push": {
+      "post": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Push Deal To Buyers",
+        "description": "Push a deal to one or more buyer endpoints via IAB Deals API v1.0.\n\nThe seller sends deal terms to buyer DSPs. Each buyer receives an\nHTTP POST with the full IAB Deal object and responds with acceptance status.\n\nThis is the standardized deal distribution path \u2014 alternative to\nSSP-mediated distribution (PubMatic, Index Exchange, etc.).",
+        "operationId": "push_deal_to_buyers_api_v1_deals_push_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DealPushRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/{deal_id}/buyer-status": {
+      "get": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Get Deal Buyer Status",
+        "description": "Query a buyer for their acceptance status of a deal.\n\nPolls the buyer's deal status endpoint to check if the deal\nhas been approved, rejected, or is ready to serve.",
+        "operationId": "get_deal_buyer_status_api_v1_deals__deal_id__buyer_status_get",
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deal Id"
+            }
+          },
+          {
+            "name": "buyer_url",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Buyer Url"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/distribute": {
+      "post": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Distribute Deal Via Ssp",
+        "description": "Distribute a deal through configured SSP(s).\n\nRoutes the deal to the appropriate SSP based on routing rules\nor explicit ssp_name. The SSP handles DSP-side distribution.\n\nSupports multiple SSPs: PubMatic (MCP), Index Exchange (REST),\nMagnite (REST), or any configured SSP connector.",
+        "operationId": "distribute_deal_via_ssp_api_v1_deals_distribute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SSPDealDistributeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/{deal_id}/ssp-troubleshoot": {
+      "get": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Troubleshoot Deal Via Ssp",
+        "description": "Troubleshoot a deal via SSP diagnostics.\n\nCalls the SSP's troubleshooting tool (e.g., PubMatic's\ndeal_troubleshooting) to diagnose performance issues.",
+        "operationId": "troubleshoot_deal_via_ssp_api_v1_deals__deal_id__ssp_troubleshoot_get",
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deal Id"
+            }
+          },
+          {
+            "name": "ssp_name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ssp Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/curators": {
+      "get": {
+        "tags": [
+          "Curators"
+        ],
+        "summary": "List Curators",
+        "description": "List all registered curators.\n\nReturns curators who can create deals against this publisher's\ninventory. Agent Range is pre-registered as a day-one curator.",
+        "operationId": "list_curators_api_v1_curators_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Curators"
+        ],
+        "summary": "Register Curator",
+        "description": "Register a new curator.\n\nCurators can then create deals against this publisher's inventory\nvia the /api/v1/deals/curated endpoint.",
+        "operationId": "register_curator_api_v1_curators_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CuratorRegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/curators/{curator_id}": {
+      "get": {
+        "tags": [
+          "Curators"
+        ],
+        "summary": "Get Curator",
+        "description": "Get details for a specific curator.",
+        "operationId": "get_curator_api_v1_curators__curator_id__get",
+        "parameters": [
+          {
+            "name": "curator_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Curator Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/curated": {
+      "post": {
+        "tags": [
+          "Curators"
+        ],
+        "summary": "Create Curated Deal",
+        "description": "Create a deal with curator overlay.\n\nThe curator's fee is added on top of the publisher's base price.\nThe curator appears as a node in the deal's schain. The buyer\npays the total CPM (publisher + curator fee).\n\nThe deal is created via the normal from-template flow, then\nenriched with curator identity, fee, and targeting overlay.",
+        "operationId": "create_curated_deal_api_v1_deals_curated_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CuratedDealRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/{deal_id}/migrate": {
+      "post": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Migrate Deal",
+        "description": "Migrate (replace) an existing deal with a new one.\n\nCreates a replacement deal with parent_deal_id lineage pointing\nto the old deal, then deprecates the old deal. The buyer's Deal\nJockey can follow the lineage chain to track deal evolution.\n\nReturns the new deal with lineage metadata.",
+        "operationId": "migrate_deal_api_v1_deals__deal_id__migrate_post",
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deal Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x_api_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X Api Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DealMigrationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/{deal_id}/deprecate": {
+      "post": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Deprecate Deal",
+        "description": "Deprecate a deal with reason and optional replacement.\n\nMarks the deal as deprecated rather than cancelled \u2014 preserving\nthe history that this deal was intentionally sunset. If a\nreplacement_deal_id is provided, creates a lineage link.\n\nThe buyer's Deal Library uses this to:\n- Know which deals to stop targeting\n- Follow lineage to the replacement deal\n- Feed SPO scoring (why was this path deprecated?)",
+        "operationId": "deprecate_deal_api_v1_deals__deal_id__deprecate_post",
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DealDeprecationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deals/{deal_id}/lineage": {
+      "get": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "Get Deal Lineage",
+        "description": "Get the lineage chain for a deal.\n\nWalks parent_deal_id backwards and replacement_deal_id forwards\nto show the full evolution of a deal through migrations.",
+        "operationId": "get_deal_lineage_api_v1_deals__deal_id__lineage_get",
+        "parameters": [
+          {
+            "name": "deal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgenticAudienceMatchRequest": {
+        "properties": {
+          "audience_ref": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Audience Ref"
+          },
+          "package_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "audience_ref"
+        ],
+        "title": "AgenticAudienceMatchRequest",
+        "description": "API request model for POST /agentic-audience/match (proposal \u00a75.7).\n\nAccepts a single `AudienceRef` (must be `type=agentic`) and an optional\npackage_id scope. Returns a deterministic mock-quality match score and\nquality bucket. Real model is Epic 2 / E2-2."
+      },
+      "ApprovalDecisionRequest": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "decided_by": {
+            "type": "string",
+            "title": "Decided By",
+            "default": "anonymous"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "modifications": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Modifications",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "ApprovalDecisionRequest",
+        "description": "Request to submit an approval decision."
+      },
+      "AudienceFilterModel": {
+        "properties": {
+          "audience_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience Type"
+          },
+          "audience_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience Id"
+          },
+          "taxonomy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taxonomy Version"
+          }
+        },
+        "type": "object",
+        "title": "AudienceFilterModel",
+        "description": "Optional audience filter sub-object on `POST /media-kit/search`.\n\nMirrors the query-param triple on `GET /packages`: type + id + version.\nWhen present, search results are restricted to packages whose\n`audience_capabilities` match. See proposal \u00a75.7 + bead ar-2wxa."
+      },
+      "BulkDealOperation": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "deal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Id"
+          },
+          "quote_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Id"
+          },
+          "buyer_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuoteBuyerIdentityModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "BulkDealOperation",
+        "description": "A single operation in a bulk deal request."
+      },
+      "BulkDealOperationResult": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "deal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "action",
+          "success"
+        ],
+        "title": "BulkDealOperationResult",
+        "description": "Result of a single bulk operation."
+      },
+      "BulkDealRequest": {
+        "properties": {
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/BulkDealOperation"
+            },
+            "type": "array",
+            "title": "Operations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operations"
+        ],
+        "title": "BulkDealRequest",
+        "description": "Batch of deal operations."
+      },
+      "BulkDealResponse": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "succeeded": {
+            "type": "integer",
+            "title": "Succeeded"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BulkDealOperationResult"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "succeeded",
+          "failed",
+          "results"
+        ],
+        "title": "BulkDealResponse",
+        "description": "Batch results for bulk deal operations."
+      },
+      "CounterOfferRequest": {
+        "properties": {
+          "buyer_price": {
+            "type": "number",
+            "title": "Buyer Price"
+          },
+          "buyer_tier": {
+            "type": "string",
+            "title": "Buyer Tier",
+            "default": "public"
+          },
+          "agency_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Id"
+          },
+          "advertiser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertiser Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "buyer_price"
+        ],
+        "title": "CounterOfferRequest",
+        "description": "Request to submit a counter-offer in a negotiation."
+      },
+      "CreateApiKeyRequest": {
+        "properties": {
+          "seat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seat Id"
+          },
+          "seat_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seat Name"
+          },
+          "dsp_platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dsp Platform"
+          },
+          "agency_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Id"
+          },
+          "agency_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Name"
+          },
+          "agency_holding_company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Holding Company"
+          },
+          "advertiser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertiser Id"
+          },
+          "advertiser_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertiser Name"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          },
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Days"
+          }
+        },
+        "type": "object",
+        "title": "CreateApiKeyRequest",
+        "description": "Request to create a new API key for a buyer."
+      },
+      "CreateChangeRequestModel": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "title": "Order Id"
+          },
+          "change_type": {
+            "type": "string",
+            "title": "Change Type"
+          },
+          "diffs": {
+            "items": {
+              "$ref": "#/components/schemas/FieldDiffModel"
+            },
+            "type": "array",
+            "title": "Diffs",
+            "default": []
+          },
+          "proposed_values": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Values"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By",
+            "default": "system"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_id",
+          "change_type"
+        ],
+        "title": "CreateChangeRequestModel",
+        "description": "Request to create a change request for an order."
+      },
+      "CreateOrderRequest": {
+        "properties": {
+          "deal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Id"
+          },
+          "quote_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote Id"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "title": "CreateOrderRequest",
+        "description": "Request to create a new order."
+      },
+      "CreateSessionRequest": {
+        "properties": {
+          "seat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seat Id"
+          },
+          "agency_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Id"
+          },
+          "advertiser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertiser Id"
+          },
+          "is_authenticated": {
+            "type": "boolean",
+            "title": "Is Authenticated",
+            "default": false
+          },
+          "agent_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Url"
+          }
+        },
+        "type": "object",
+        "title": "CreateSessionRequest",
+        "description": "Request to create a new session."
+      },
+      "CuratedDealRequest": {
+        "properties": {
+          "curator_id": {
+            "type": "string",
+            "title": "Curator Id"
+          },
+          "deal_type": {
+            "type": "string",
+            "title": "Deal Type",
+            "default": "PMP"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "max_cpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Cpm"
+          },
+          "impressions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impressions"
+          },
+          "flight_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight Start"
+          },
+          "flight_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight End"
+          },
+          "buyer_seat_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Buyer Seat Ids",
+            "default": []
+          },
+          "audience_segments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Audience Segments",
+            "default": []
+          },
+          "content_categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Content Categories",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "curator_id"
+        ],
+        "title": "CuratedDealRequest",
+        "description": "Request to create a curated deal."
+      },
+      "CuratorRegistrationRequest": {
+        "properties": {
+          "curator_id": {
+            "type": "string",
+            "title": "Curator Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "curator_type": {
+            "type": "string",
+            "title": "Curator Type",
+            "default": "full_service"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fee_type": {
+            "type": "string",
+            "title": "Fee Type",
+            "default": "percent"
+          },
+          "fee_value": {
+            "type": "number",
+            "title": "Fee Value",
+            "default": 0.0
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "audience_segments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Audience Segments",
+            "default": []
+          },
+          "content_categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Content Categories",
+            "default": []
+          },
+          "supported_deal_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Deal Types",
+            "default": [
+              "pmp",
+              "preferred",
+              "pg"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "curator_id",
+          "name",
+          "domain"
+        ],
+        "title": "CuratorRegistrationRequest",
+        "description": "Request to register a new curator."
+      },
+      "DealBookingRequestModel": {
+        "properties": {
+          "quote_id": {
+            "type": "string",
+            "title": "Quote Id"
+          },
+          "buyer_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuoteBuyerIdentityModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "audience_plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience Plan"
+          }
+        },
+        "type": "object",
+        "required": [
+          "quote_id"
+        ],
+        "title": "DealBookingRequestModel",
+        "description": "API request model for POST /api/v1/deals.\n\n`audience_plan` is optional and follows the wire shape documented at\n`docs/api/audience_plan_wire_format.md`. When present the seller\npre-flights it against its own `audience_capabilities` and rejects\nwith a structured `audience_plan_unsupported` error if any part\ncannot be honored (proposal \u00a75.7 layer 3)."
+      },
+      "DealDeprecationRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "replacement_deal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement Deal Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "DealDeprecationRequest",
+        "description": "Request to deprecate a deal."
+      },
+      "DealFromTemplateRequest": {
+        "properties": {
+          "deal_type": {
+            "type": "string",
+            "title": "Deal Type"
+          },
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "impressions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impressions"
+          },
+          "max_cpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Cpm"
+          },
+          "flight_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight Start"
+          },
+          "flight_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight End"
+          },
+          "buyer_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuoteBuyerIdentityModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deal_type",
+          "product_id"
+        ],
+        "title": "DealFromTemplateRequest",
+        "description": "Request model for POST /api/v1/deals/from-template."
+      },
+      "DealFromTemplateResponse": {
+        "properties": {
+          "deal_id": {
+            "type": "string",
+            "title": "Deal Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "deal_type": {
+            "type": "string",
+            "title": "Deal Type"
+          },
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "actual_price_cpm": {
+            "type": "number",
+            "title": "Actual Price Cpm"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "impressions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impressions"
+          },
+          "flight_start": {
+            "type": "string",
+            "title": "Flight Start"
+          },
+          "flight_end": {
+            "type": "string",
+            "title": "Flight End"
+          },
+          "buyer_tier": {
+            "type": "string",
+            "title": "Buyer Tier"
+          },
+          "activation_instructions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Activation Instructions"
+          },
+          "schain": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schain"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deal_id",
+          "status",
+          "deal_type",
+          "product_id",
+          "actual_price_cpm",
+          "flight_start",
+          "flight_end",
+          "buyer_tier",
+          "activation_instructions",
+          "created_at"
+        ],
+        "title": "DealFromTemplateResponse",
+        "description": "Response for template-based deal creation."
+      },
+      "DealMigrationRequest": {
+        "properties": {
+          "old_deal_id": {
+            "type": "string",
+            "title": "Old Deal Id"
+          },
+          "deal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Type"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "max_cpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Cpm"
+          },
+          "impressions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impressions"
+          },
+          "flight_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight Start"
+          },
+          "flight_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight End"
+          },
+          "buyer_seat_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyer Seat Ids"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "buyer_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuoteBuyerIdentityModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "old_deal_id"
+        ],
+        "title": "DealMigrationRequest",
+        "description": "Request to migrate (replace) an existing deal."
+      },
+      "DealPushRequest": {
+        "properties": {
+          "deal_id": {
+            "type": "string",
+            "title": "Deal Id"
+          },
+          "buyer_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Buyer Urls"
+          },
+          "buyer_api_keys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyer Api Keys"
+          },
+          "deal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Type"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "impressions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impressions"
+          },
+          "flight_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight Start"
+          },
+          "flight_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight End"
+          },
+          "buyer_seat_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyer Seat Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deal_id",
+          "buyer_urls"
+        ],
+        "title": "DealPushRequest",
+        "description": "Request to push a deal to buyer(s)."
+      },
+      "DealRequest": {
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "title": "Proposal Id"
+          },
+          "dsp_platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dsp Platform"
+          }
+        },
+        "type": "object",
+        "required": [
+          "proposal_id"
+        ],
+        "title": "DealRequest",
+        "description": "Request to generate a deal."
+      },
+      "DealResponse": {
+        "properties": {
+          "deal_id": {
+            "type": "string",
+            "title": "Deal Id"
+          },
+          "deal_type": {
+            "type": "string",
+            "title": "Deal Type"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "pricing_model": {
+            "type": "string",
+            "title": "Pricing Model"
+          },
+          "openrtb_params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Openrtb Params"
+          },
+          "activation_instructions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Activation Instructions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deal_id",
+          "deal_type",
+          "price",
+          "pricing_model",
+          "openrtb_params",
+          "activation_instructions"
+        ],
+        "title": "DealResponse",
+        "description": "Deal generation response."
+      },
+      "DiscoverAgentRequest": {
+        "properties": {
+          "agent_url": {
+            "type": "string",
+            "title": "Agent Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_url"
+        ],
+        "title": "DiscoverAgentRequest",
+        "description": "Request to discover an agent by URL."
+      },
+      "DiscoveryRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "buyer_tier": {
+            "type": "string",
+            "title": "Buyer Tier",
+            "default": "public"
+          },
+          "agency_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Id"
+          },
+          "agent_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "DiscoveryRequest",
+        "description": "Discovery query request."
+      },
+      "DynamicPackageRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "product_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Product Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "product_ids"
+        ],
+        "title": "DynamicPackageRequest",
+        "description": "Request to assemble a dynamic package from product IDs."
+      },
+      "FieldDiffModel": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "old_value": {
+            "title": "Old Value"
+          },
+          "new_value": {
+            "title": "New Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field"
+        ],
+        "title": "FieldDiffModel"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InventoryTypeOverride": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "inventory_type": {
+            "type": "string",
+            "title": "Inventory Type"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "inventory_type"
+        ],
+        "title": "InventoryTypeOverride",
+        "description": "Override inventory type classification for a product."
+      },
+      "MediaKitSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "buyer_tier": {
+            "type": "string",
+            "title": "Buyer Tier",
+            "default": "public"
+          },
+          "agency_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Id"
+          },
+          "advertiser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertiser Id"
+          },
+          "audience_filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AudienceFilterModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "MediaKitSearchRequest",
+        "description": "Request to search packages."
+      },
+      "PackageCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "product_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Product Ids",
+            "default": []
+          },
+          "cat": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cat",
+            "default": []
+          },
+          "cattax": {
+            "type": "integer",
+            "title": "Cattax",
+            "default": 2
+          },
+          "audience_capabilities": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience Capabilities"
+          },
+          "audience_segment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Audience Segment Ids",
+            "default": []
+          },
+          "device_types": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Device Types",
+            "default": []
+          },
+          "ad_formats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ad Formats",
+            "default": []
+          },
+          "geo_targets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Geo Targets",
+            "default": []
+          },
+          "base_price": {
+            "type": "number",
+            "title": "Base Price"
+          },
+          "floor_price": {
+            "type": "number",
+            "title": "Floor Price"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "default": []
+          },
+          "is_featured": {
+            "type": "boolean",
+            "title": "Is Featured",
+            "default": false
+          },
+          "seasonal_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seasonal Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "base_price",
+          "floor_price"
+        ],
+        "title": "PackageCreateRequest",
+        "description": "Request to create a curated package.\n\nAccepts the new typed `audience_capabilities` shape (proposal \u00a75.7).\nLegacy callers may still send `audience_segment_ids: list[str]` as\nflat input -- the field is retained as deprecated and will be folded\ninto `audience_capabilities.standard_segment_ids` (with implicit\nAT 1.1) by `create_package`."
+      },
+      "PricingRequest": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "buyer_tier": {
+            "type": "string",
+            "title": "Buyer Tier",
+            "default": "public"
+          },
+          "agency_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Id"
+          },
+          "advertiser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertiser Id"
+          },
+          "volume": {
+            "type": "integer",
+            "title": "Volume",
+            "default": 0
+          },
+          "agent_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id"
+        ],
+        "title": "PricingRequest",
+        "description": "Request for pricing information."
+      },
+      "PricingResponse": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "base_price": {
+            "type": "number",
+            "title": "Base Price"
+          },
+          "final_price": {
+            "type": "number",
+            "title": "Final Price"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "tier_discount": {
+            "type": "number",
+            "title": "Tier Discount"
+          },
+          "volume_discount": {
+            "type": "number",
+            "title": "Volume Discount"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "base_price",
+          "final_price",
+          "currency",
+          "tier_discount",
+          "volume_discount",
+          "rationale"
+        ],
+        "title": "PricingResponse",
+        "description": "Pricing response."
+      },
+      "ProposalRequest": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "deal_type": {
+            "type": "string",
+            "title": "Deal Type"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "impressions": {
+            "type": "integer",
+            "title": "Impressions"
+          },
+          "start_date": {
+            "type": "string",
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "title": "End Date"
+          },
+          "buyer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyer Id"
+          },
+          "agency_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Id"
+          },
+          "advertiser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertiser Id"
+          },
+          "agent_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "deal_type",
+          "price",
+          "impressions",
+          "start_date",
+          "end_date"
+        ],
+        "title": "ProposalRequest",
+        "description": "Request to submit a proposal."
+      },
+      "ProposalResponse": {
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "title": "Proposal Id"
+          },
+          "recommendation": {
+            "type": "string",
+            "title": "Recommendation"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "counter_terms": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counter Terms"
+          },
+          "approval_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "proposal_id",
+          "recommendation",
+          "status"
+        ],
+        "title": "ProposalResponse",
+        "description": "Proposal submission response."
+      },
+      "QuoteBuyerIdentityModel": {
+        "properties": {
+          "seat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seat Id"
+          },
+          "agency_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agency Id"
+          },
+          "advertiser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertiser Id"
+          },
+          "dsp_platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dsp Platform"
+          }
+        },
+        "type": "object",
+        "title": "QuoteBuyerIdentityModel",
+        "description": "Buyer identity in a quote request."
+      },
+      "QuoteRequestModel": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "deal_type": {
+            "type": "string",
+            "title": "Deal Type"
+          },
+          "impressions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impressions"
+          },
+          "flight_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight Start"
+          },
+          "flight_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight End"
+          },
+          "target_cpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Cpm"
+          },
+          "buyer_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuoteBuyerIdentityModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "deal_type"
+        ],
+        "title": "QuoteRequestModel",
+        "description": "API request model for POST /api/v1/quotes."
+      },
+      "RateCardEntry": {
+        "properties": {
+          "inventory_type": {
+            "type": "string",
+            "title": "Inventory Type"
+          },
+          "base_cpm": {
+            "type": "number",
+            "title": "Base Cpm"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Date"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "inventory_type",
+          "base_cpm"
+        ],
+        "title": "RateCardEntry",
+        "description": "Rate card entry mapping inventory type to base CPM."
+      },
+      "ReviewChangeRequestModel": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "decided_by": {
+            "type": "string",
+            "title": "Decided By",
+            "default": "system"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "ReviewChangeRequestModel",
+        "description": "Approve or reject a change request."
+      },
+      "SSPDealDistributeRequest": {
+        "properties": {
+          "deal_id": {
+            "type": "string",
+            "title": "Deal Id"
+          },
+          "deal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deal Type",
+            "default": "PMP"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "advertiser": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertiser"
+          },
+          "cpm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpm"
+          },
+          "buyer_seat_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyer Seat Ids"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "targeting": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targeting"
+          },
+          "ssp_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ssp Name"
+          },
+          "inventory_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inventory Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deal_id"
+        ],
+        "title": "SSPDealDistributeRequest",
+        "description": "Request to distribute a deal through configured SSPs."
+      },
+      "SessionMessageRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "SessionMessageRequest",
+        "description": "Request to send a message within a session."
+      },
+      "SupplyChainNodeModel": {
+        "properties": {
+          "asi": {
+            "type": "string",
+            "title": "Asi"
+          },
+          "sid": {
+            "type": "string",
+            "title": "Sid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "seller_type": {
+            "type": "string",
+            "title": "Seller Type"
+          },
+          "is_direct": {
+            "type": "boolean",
+            "title": "Is Direct"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asi",
+          "sid",
+          "name",
+          "domain",
+          "seller_type",
+          "is_direct"
+        ],
+        "title": "SupplyChainNodeModel",
+        "description": "A node in the supply chain (sellers.json format)."
+      },
+      "SupplyChainResponse": {
+        "properties": {
+          "seller_id": {
+            "type": "string",
+            "title": "Seller Id"
+          },
+          "seller_name": {
+            "type": "string",
+            "title": "Seller Name"
+          },
+          "seller_type": {
+            "type": "string",
+            "title": "Seller Type"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "is_direct": {
+            "type": "boolean",
+            "title": "Is Direct"
+          },
+          "supported_deal_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Deal Types"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "schain": {
+            "items": {
+              "$ref": "#/components/schemas/SupplyChainNodeModel"
+            },
+            "type": "array",
+            "title": "Schain"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": "1.0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seller_id",
+          "seller_name",
+          "seller_type",
+          "domain",
+          "is_direct",
+          "supported_deal_types",
+          "schain"
+        ],
+        "title": "SupplyChainResponse",
+        "description": "Supply chain transparency response (sellers.json-like self-description)."
+      },
+      "TransitionOrderRequest": {
+        "properties": {
+          "to_status": {
+            "type": "string",
+            "title": "To Status"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor",
+            "default": "system"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to_status"
+        ],
+        "title": "TransitionOrderRequest",
+        "description": "Request to transition an order to a new state."
+      },
+      "UpdateTrustRequest": {
+        "properties": {
+          "trust_status": {
+            "type": "string",
+            "title": "Trust Status"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trust_status"
+        ],
+        "title": "UpdateTrustRequest",
+        "description": "Request to update an agent's trust status."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Core",
+      "description": "Health check and API root"
+    },
+    {
+      "name": "Products",
+      "description": "Product catalog browsing"
+    },
+    {
+      "name": "Pricing",
+      "description": "Tiered pricing with buyer context"
+    },
+    {
+      "name": "Proposals",
+      "description": "Proposal submission and evaluation"
+    },
+    {
+      "name": "Deals",
+      "description": "Deal generation from accepted proposals"
+    },
+    {
+      "name": "Discovery",
+      "description": "Natural language inventory discovery"
+    },
+    {
+      "name": "Events",
+      "description": "Event bus log inspection"
+    },
+    {
+      "name": "Approvals",
+      "description": "Human-in-the-loop approval workflow"
+    },
+    {
+      "name": "Sessions",
+      "description": "Multi-turn buyer conversation sessions"
+    },
+    {
+      "name": "Negotiation",
+      "description": "Multi-round price negotiation"
+    },
+    {
+      "name": "Media Kit",
+      "description": "Public media kit and package catalog"
+    },
+    {
+      "name": "Packages",
+      "description": "Package management (authenticated/admin)"
+    },
+    {
+      "name": "Authentication",
+      "description": "API key lifecycle management"
+    },
+    {
+      "name": "Agent Registry",
+      "description": "A2A agent discovery and trust management"
+    },
+    {
+      "name": "Quotes",
+      "description": "Non-binding price quotes (IAB Deals API v1.0)"
+    },
+    {
+      "name": "Deal Booking",
+      "description": "Quote-to-deal booking (IAB Deals API v1.0)"
+    },
+    {
+      "name": "Orders",
+      "description": "Order state machine and lifecycle management"
+    },
+    {
+      "name": "Change Requests",
+      "description": "Post-deal modification requests"
+    },
+    {
+      "name": "Audit",
+      "description": "Order audit logs and operational reports"
+    },
+    {
+      "name": "Supply Chain",
+      "description": "Supply chain transparency (sellers.json-like self-description)"
+    },
+    {
+      "name": "Deal Performance",
+      "description": "Deal delivery and performance metrics"
+    },
+    {
+      "name": "Bulk Operations",
+      "description": "Batch deal create/update/cancel"
+    }
+  ]
+}
