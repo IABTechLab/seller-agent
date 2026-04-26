@@ -279,6 +279,7 @@ class TestQuoteToDealFlow:
         mock_flow.state = MagicMock()
         mock_flow.state.products = products
         mock_flow.kickoff = AsyncMock()
+        mock_flow.kickoff_async = AsyncMock()
 
         # ar-0vtg: POST /api/v1/quotes now reads from `_get_static_product_catalog`
         # rather than running ProductSetupFlow per request. The deal-booking

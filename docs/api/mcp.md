@@ -6,7 +6,8 @@ MCP is the **primary interface** for the seller agent. Publishers manage their a
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/mcp/sse` | GET | SSE transport for persistent MCP sessions |
+| `/mcp` | POST / GET | Streamable HTTP transport (current MCP standard, protocol 2025-06-18) — recommended |
+| `/mcp-sse/sse` | GET | Legacy HTTP+SSE transport (protocol 2024-11-05, deprecated) — kept for backwards compat |
 
 ### Setup
 
@@ -17,7 +18,7 @@ MCP is the **primary interface** for the seller agent. Publishers manage their a
 **Codex:** Add to `~/.codex/config.toml`:
 ```toml
 [mcp_servers.seller-agent]
-url = "https://your-server.example.com/mcp/sse"
+url = "https://your-server.example.com/mcp"
 bearer_token_env_var = "SELLER_AGENT_API_KEY"
 ```
 
@@ -26,7 +27,7 @@ bearer_token_env_var = "SELLER_AGENT_API_KEY"
 {
   "mcpServers": {
     "seller-agent": {
-      "url": "https://your-server.example.com/mcp/sse",
+      "url": "https://your-server.example.com/mcp",
       "headers": { "Authorization": "Bearer <operator-api-key>" }
     }
   }
@@ -148,7 +149,7 @@ See full setup guides: [Claude](../guides/claude-desktop-setup.md) | [ChatGPT, C
 | **Response format** | Typed tool results | Mixed text + structured data | JSON |
 | **Speed** | Fastest | Moderate (LLM processing) | Fast |
 | **Determinism** | Fully deterministic | Non-deterministic (LLM) | Fully deterministic |
-| **Transport** | SSE (Streamable HTTP) | HTTP POST (JSON-RPC 2.0) | HTTP verbs |
+| **Transport** | Streamable HTTP (SSE fallback) | HTTP POST (JSON-RPC 2.0) | HTTP verbs |
 
 ## See Also
 

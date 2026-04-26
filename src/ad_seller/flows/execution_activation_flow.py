@@ -11,6 +11,7 @@ This flow handles:
 - Tracking entity mappings
 """
 
+import asyncio
 import uuid
 from datetime import datetime
 from typing import Any, Optional
@@ -87,22 +88,27 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
         # Generate execution order ID
         self.state.execution_order_id = f"exec-{uuid.uuid4().hex[:8]}"
 
+        # Isolated via create_task to prevent httpcore/anyio CancelScope
+        # from leaking into the parent flow listener task.
         try:
-            async with UnifiedClient() as client:
-                result = await client.create_execution_order(
-                    proposal_id=self.state.proposal_id or self.state.deal_id,
-                    execution_order_id=self.state.execution_order_id,
-                    status="draft",
-                    external_ids={
-                        "execution_type": self.state.execution_type,
-                        "deal_id": self.state.deal_id,
-                    },
-                )
-
-                if not result.success:
-                    self.state.warnings.append(f"Could not create execution order: {result.error}")
+            await asyncio.create_task(self._od_create_execution_order())
         except Exception as e:
             self.state.warnings.append(f"Execution order creation failed: {e}")
+
+    async def _od_create_execution_order(self) -> None:
+        """Create execution order in OpenDirect — runs in an isolated task."""
+        async with UnifiedClient() as client:
+            result = await client.create_execution_order(
+                proposal_id=self.state.proposal_id or self.state.deal_id,
+                execution_order_id=self.state.execution_order_id,
+                status="draft",
+                external_ids={
+                    "execution_type": self.state.execution_type,
+                    "deal_id": self.state.deal_id,
+                },
+            )
+            if not result.success:
+                self.state.warnings.append(f"Could not create execution order: {result.error}")
 
     @listen(create_execution_order)
     async def determine_sync_path(self) -> None:
@@ -313,14 +319,17 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
             return
 
         try:
-            async with UnifiedClient() as client:
-                # Update execution order status to booked
-                await client.update_proposal(
-                    proposal_id=self.state.execution_order_id,
-                    status=ExecutionOrderStatus.BOOKED.value,
-                )
+            await asyncio.create_task(self._od_update_execution_status())
         except Exception as e:
             self.state.warnings.append(f"Status update failed: {e}")
+
+    async def _od_update_execution_status(self) -> None:
+        """Update execution order status in OpenDirect — runs in an isolated task."""
+        async with UnifiedClient() as client:
+            await client.update_proposal(
+                proposal_id=self.state.execution_order_id,
+                status=ExecutionOrderStatus.BOOKED.value,
+            )
 
     @listen(update_execution_status)
     async def finalize(self) -> None:

@@ -18,7 +18,7 @@ graph LR
     end
 
     subgraph "Seller Agent"
-        MCP_S["/mcp/sse<br/>MCP Server"]
+        MCP_S["/mcp (Streamable HTTP)<br/>MCP Server"]
         A2A_S["/a2a/seller/jsonrpc<br/>A2A Server"]
         REST_S["REST API<br/>58 endpoints"]
         NLP[NL Processing]
@@ -59,7 +59,7 @@ graph TB
 
     subgraph "Seller Agent"
         subgraph "Protocol Layer"
-            MCP[MCP Server<br/>/mcp/sse]
+            MCP[MCP Server<br/>/mcp Streamable HTTP]
             A2A[A2A Server<br/>/a2a/seller/jsonrpc]
             API[REST API<br/>58 endpoints, 19 tags]
         end
@@ -184,7 +184,7 @@ graph LR
 
     BA -->|"1. Discover (GET /.well-known/agent.json)"| SA
     BA -->|"2. Get API Key (POST /auth/api-keys)"| SA
-    BA -->|"3. MCP: Structured tool calls (/mcp/sse)"| SA
+    BA -->|"3. MCP: Structured tool calls (/mcp Streamable HTTP)"| SA
     BA -->|"4. A2A: Natural language (/a2a/seller/jsonrpc)"| SA
     BA -->|"5. REST: Browse, quote, book, negotiate"| SA
 

@@ -235,7 +235,7 @@ async def list_products(limit: int = 50) -> str:
     from ..flows import ProductSetupFlow
 
     flow = ProductSetupFlow()
-    await flow.kickoff()
+    await flow.kickoff_async()
 
     products = []
     for pid, product in list(flow.state.products.items())[:limit]:
@@ -404,7 +404,7 @@ async def get_pricing(product_id: str, buyer_tier: str = "public", volume: int =
     from ..models.pricing_tiers import TieredPricingConfig
 
     setup = ProductSetupFlow()
-    await setup.kickoff()
+    await setup.kickoff_async()
     product = setup.state.products.get(product_id)
 
     if not product:

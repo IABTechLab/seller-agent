@@ -80,37 +80,29 @@ with case-insensitive variable names.
 
 ### Supported Providers
 
-The seller agent uses CrewAI's `LLM` class, which wraps [litellm](https://docs.litellm.ai/) — supporting **100+ LLM providers** out of the box. Models are specified using litellm's `provider/model-name` format. No code changes are required to switch providers.
+The seller agent uses CrewAI's native provider integrations via `provider/model-name` format. No code changes are required to switch providers. Install the matching extra (e.g., `pip install "crewai[anthropic]"` or `pip install "crewai[openai]"`).
 
-| Provider | Model Format | API Key Variable |
-|----------|-------------|-----------------|
-| **Anthropic** (default) | `anthropic/claude-sonnet-4-5-20250929` | `ANTHROPIC_API_KEY` |
-| **OpenAI** | `openai/gpt-4o` | `OPENAI_API_KEY` |
-| **Azure OpenAI** | `azure/my-deployment` | `AZURE_API_KEY`, `AZURE_API_BASE` |
-| **Google Vertex AI** | `vertex_ai/gemini-pro` | `GOOGLE_APPLICATION_CREDENTIALS` |
-| **AWS Bedrock** | `bedrock/anthropic.claude-3-sonnet` | AWS credentials |
-| **Cohere** | `cohere/command-r-plus` | `COHERE_API_KEY` |
-| **Ollama** (local) | `ollama/llama3` | — (runs locally) |
+| Provider | Model Format | API Key Variable | Install Extra |
+|----------|-------------|-----------------|---------------|
+| **Anthropic** (default) | `anthropic/claude-sonnet-4-5-20250929` | `ANTHROPIC_API_KEY` | `crewai[anthropic]` |
+| **OpenAI** | `openai/gpt-4o` | `OPENAI_API_KEY` | `crewai[openai]` |
+| **Google Gemini** | `gemini/gemini-2.0-flash` | `GOOGLE_API_KEY` | `crewai[gemini]` |
+| **Azure OpenAI** | `azure/my-deployment` | `AZURE_API_KEY`, `AZURE_API_BASE` | `crewai[azure]` |
+| **AWS Bedrock** | `bedrock/anthropic.claude-3-sonnet` | AWS credentials | `crewai[bedrock]` |
 
 **Example — switching to OpenAI:**
 
 ```bash
+# Install: pip install "crewai[openai]"
 DEFAULT_LLM_MODEL=openai/gpt-4o
 MANAGER_LLM_MODEL=openai/gpt-4o
 OPENAI_API_KEY=sk-xxxxx
 ```
 
-**Example — local Ollama (no API key needed):**
-
-```bash
-DEFAULT_LLM_MODEL=ollama/llama3
-MANAGER_LLM_MODEL=ollama/llama3
-```
-
 !!! note "Prompt Tuning"
     Agent prompts are tuned and tested with Claude models. Other providers work but may produce different quality results. If you switch providers, test negotiation and pricing flows to verify acceptable output quality.
 
-For the full list of supported providers, see the [litellm documentation](https://docs.litellm.ai/docs/providers).
+For other providers, see the [CrewAI LLM documentation](https://docs.crewai.com/en/learn/litellm-removal-guide).
 
 ## Database & Storage
 

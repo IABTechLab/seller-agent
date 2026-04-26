@@ -30,7 +30,7 @@ The seller agent exposes four communication interfaces:
 
 | Interface | Protocol | Use Case |
 |-----------|----------|----------|
-| **MCP** | `/mcp/sse` | Primary interface — 41 tools for Claude, ChatGPT, Codex, Cursor, and buyer agents |
+| **MCP** | `/mcp` (Streamable HTTP), `/mcp-sse/sse` (legacy) | Primary interface — 41 tools for Claude, ChatGPT, Codex, Cursor, and buyer agents |
 | **A2A** | `/a2a/{agent}/jsonrpc` | Conversational JSON-RPC 2.0 for natural language queries |
 | **REST** | `/api/v1/*` | Programmatic access — 82 endpoints across 15 groups |
 | **Chat** | `/chat` | Web-based conversational interface for human buyers |
@@ -40,7 +40,7 @@ The seller agent exposes four communication interfaces:
 ## Architecture
 
 ```
-Claude / ChatGPT / Codex ──→ MCP SSE (/mcp/sse) ──┐
+Claude / ChatGPT / Codex ──→ MCP /mcp (Streamable HTTP) ──┐
 Buyer Agents ──→ A2A / REST ───────────────────────┤
                                                     ▼
                                               FastAPI App
@@ -109,7 +109,7 @@ Add the seller agent to Claude (desktop or web) and the setup wizard walks you t
 {
   "mcpServers": {
     "seller-agent": {
-      "url": "http://localhost:8000/mcp/sse",
+      "url": "http://localhost:8000/mcp",
       "headers": { "Authorization": "Bearer <your-operator-key>" }
     }
   }

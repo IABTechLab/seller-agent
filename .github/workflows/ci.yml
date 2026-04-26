@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src/
+
+      - name: Unit tests
+        env:
+          ANTHROPIC_API_KEY: test-key-for-ci
+        run: pytest tests/unit/ -v --tb=short
+
+      - name: Integration tests
+        env:
+          ANTHROPIC_API_KEY: test-key-for-ci
+        run: pytest tests/integration/ -v --tb=short
