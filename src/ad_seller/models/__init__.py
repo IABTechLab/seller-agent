@@ -15,6 +15,20 @@ from .agent_registry import (
     RegistrySource,
     TrustStatus,
 )
+from .audience_capabilities import (
+    AgenticCapabilities,
+    AgenticCapabilityFlag,
+    AudienceCapabilities,
+    CapabilityAudienceBlock,
+    MaxRefsPerRole,
+    TaxonomyLockHashes,
+    build_capability_audience_block,
+    load_taxonomy_lock_hashes,
+)
+from .audience_ref import (
+    AudienceRef,
+    ComplianceContext,
+)
 from .api_key import (
     ApiKeyCreateRequest,
     ApiKeyCreateResponse,
@@ -117,6 +131,7 @@ from .linear_tv import (
     SupplyPoolEntry,
 )
 from .media_kit import (
+    AudienceCapabilityPublicSummary,
     AuthenticatedPackageView,
     Package,
     PackageLayer,
@@ -246,6 +261,18 @@ __all__ = [
     "PackagePlacement",
     "PublicPackageView",
     "AuthenticatedPackageView",
+    "AudienceCapabilityPublicSummary",
+    # Audience capabilities (proposal §5.7)
+    "AudienceCapabilities",
+    "AgenticCapabilities",
+    "AgenticCapabilityFlag",
+    "AudienceRef",
+    "ComplianceContext",
+    "CapabilityAudienceBlock",
+    "MaxRefsPerRole",
+    "TaxonomyLockHashes",
+    "build_capability_audience_block",
+    "load_taxonomy_lock_hashes",
     # Negotiation
     "NegotiationAction",
     "NegotiationHistory",
