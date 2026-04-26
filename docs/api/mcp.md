@@ -6,8 +6,10 @@ MCP is the **primary interface** for the seller agent. Publishers manage their a
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/mcp` | POST / GET | Streamable HTTP transport (current MCP standard, protocol 2025-06-18) — recommended |
+| `/mcp/mcp` | POST / GET | Streamable HTTP transport (current MCP standard, protocol 2025-06-18) — recommended |
 | `/mcp-sse/sse` | GET | Legacy HTTP+SSE transport (protocol 2024-11-05, deprecated) — kept for backwards compat |
+
+> **Path note:** The MCP sub-app is mounted at `/mcp`, but Starlette sub-app routing means the working client URL is `/mcp/mcp`. Connecting to bare `/mcp` returns a 307 redirect that most MCP clients cannot follow.
 
 ### Setup
 
@@ -18,7 +20,7 @@ MCP is the **primary interface** for the seller agent. Publishers manage their a
 **Codex:** Add to `~/.codex/config.toml`:
 ```toml
 [mcp_servers.seller-agent]
-url = "https://your-server.example.com/mcp"
+url = "https://your-server.example.com/mcp/mcp"
 bearer_token_env_var = "SELLER_AGENT_API_KEY"
 ```
 
@@ -27,7 +29,7 @@ bearer_token_env_var = "SELLER_AGENT_API_KEY"
 {
   "mcpServers": {
     "seller-agent": {
-      "url": "https://your-server.example.com/mcp",
+      "url": "https://your-server.example.com/mcp/mcp",
       "headers": { "Authorization": "Bearer <operator-api-key>" }
     }
   }
