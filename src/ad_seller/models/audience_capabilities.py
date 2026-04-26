@@ -67,6 +67,25 @@ class AgenticCapabilities(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+    @classmethod
+    def modern_default(cls) -> "AgenticCapabilities":
+        """Build a 'modern' agentic-capable seller declaration.
+
+        Per E2-2 + E2-6: a seller running the agent_range stack can match
+        against agentic refs minted by the buyer's locked sentence-transformers
+        model (384-dim, in [256, 1024]) on all three IAB Agentic Audiences
+        signal types (identity / contextual / reinforcement). Sellers opt in
+        by setting their package's `agentic_capabilities = AgenticCapabilities.modern_default()`;
+        the global default on `Package` stays None for backward compat.
+        """
+
+        return cls(
+            supported_signal_types=["identity", "contextual", "reinforcement"],
+            embedding_dim_range=(256, 1024),
+            spec_version="draft-2026-01",
+            consent_modes=["IAB-TCFv2", "GPP", "advertiser-1p"],
+        )
+
 
 class AudienceCapabilities(BaseModel):
     """Typed audience-capability declaration for a `Package`.
