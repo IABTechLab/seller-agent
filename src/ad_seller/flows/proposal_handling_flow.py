@@ -630,3 +630,41 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             result["_flow_state_snapshot"] = self.state.model_dump(mode="json")
 
         return result
+
+    async def handle_proposal_async(
+        self,
+        proposal_id: str,
+        proposal_data: dict[str, Any],
+        buyer_context: Optional[BuyerContext] = None,
+        products: Optional[dict] = None,
+    ) -> dict[str, Any]:
+        """Async version of handle_proposal using kickoff_async().
+
+        Use this from async FastAPI handlers to avoid blocking the event loop
+        with the synchronous kickoff() call.
+        """
+        self.state.proposal_id = proposal_id
+        self.state.proposal_data = proposal_data
+        self.state.buyer_context = buyer_context
+        if products:
+            self.state.products = products
+
+        await self.kickoff_async()
+
+        result = {
+            "proposal_id": proposal_id,
+            "recommendation": self.state.recommendation,
+            "status": self.state.status.value,
+            "evaluation": self.state.evaluation.model_dump() if self.state.evaluation else None,
+            "counter_terms": self.state.counter_terms,
+            "upsell_suggestions": self.state.upsell_suggestions,
+            "errors": self.state.errors,
+            "warnings": self.state.warnings,
+        }
+
+        if self.state.status == ExecutionStatus.PENDING_APPROVAL:
+            result["pending_approval"] = True
+            result["flow_id"] = self.state.flow_id
+            result["_flow_state_snapshot"] = self.state.model_dump(mode="json")
+
+        return result

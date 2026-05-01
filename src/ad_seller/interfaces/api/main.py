@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -584,9 +584,9 @@ def _get_static_product_catalog() -> dict[str, Any]:
     ]
 
     products: dict[str, ProductDefinition] = {}
-    for cfg in default_products:
+    for i, cfg in enumerate(default_products):
         product_def = ProductDefinition(
-            product_id=f"prod-{uuid.uuid4().hex[:8]}",
+            product_id=f"prod-{i + 1:03d}",
             name=cfg["name"],
             description=cfg.get("description"),
             inventory_type=cfg["inventory_type"],
@@ -691,6 +691,114 @@ async def get_product(product_id: str):
     return _serialize_product(product)
 
 
+class ProductSearchFilters(BaseModel):
+    """Filters for product search (mirrors buyer OpenDirectClient.search_products)."""
+
+    channel: Optional[str] = None
+    adFormat: Optional[str] = None
+    minPrice: Optional[float] = None
+    maxPrice: Optional[float] = None
+    deliveryType: Optional[str] = None
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+def _serialize_product_iab(product: Any) -> dict[str, Any]:
+    """Serialize a ProductDefinition to IAB OpenDirect 2.1 wire format.
+
+    The buyer's OpenDirectClient.search_products() parses the response via
+    Product.model_validate() which requires camelCase aliases: publisherId,
+    basePrice, rateType.  _serialize_product() uses our internal snake_case
+    shape for UI consumers; this variant targets the buyer agent wire spec.
+    """
+    publisher_id = _get_api_settings().seller_organization_id or "seller-pub-001"
+    deal_types = [dt.value for dt in product.supported_deal_types]
+    delivery = "Guaranteed" if "programmaticguaranteed" in deal_types else "NonGuaranteed"
+    return {
+        "id": product.product_id,
+        "publisherId": publisher_id,
+        "name": product.name,
+        "description": product.description or "",
+        "basePrice": product.base_cpm,
+        "rateType": "CPM",
+        "deliveryType": delivery,
+        "availableImpressions": 1_000_000,
+        "targeting": {"capabilities": ["geo", "demographic", "contextual"]},
+        # Pass our extra fields through; buyer Product ignores unknown fields
+        "product_id": product.product_id,
+        "inventory_type": product.inventory_type,
+        "floor_cpm": product.floor_cpm,
+        "deal_types": deal_types,
+    }
+
+
+@app.post("/products/search", tags=["Products"])
+async def search_products(filters: ProductSearchFilters):
+    """Search products with optional filters.
+
+    Returns IAB OpenDirect 2.1 camelCase shape so the buyer's
+    Product.model_validate() can parse publisherId / basePrice / rateType.
+    """
+    catalog = _get_static_product_catalog()
+    products = list(catalog["products"].values())
+    if filters.channel:
+        products = [p for p in products if p.inventory_type == filters.channel]
+    if filters.minPrice is not None:
+        products = [p for p in products if p.base_cpm >= filters.minPrice]
+    if filters.maxPrice is not None:
+        products = [p for p in products if p.base_cpm <= filters.maxPrice]
+    return {"products": [_serialize_product_iab(p) for p in products[: filters.limit]]}
+
+
+class AvailsCheckRequest(BaseModel):
+    """Availability check request (mirrors buyer AvailsRequest schema).
+
+    Accepts both camelCase (productId) and snake_case (product_id) so callers
+    using either convention work without a 422.
+    """
+
+    productId: Optional[str] = Field(None, alias="productId")
+    product_id: Optional[str] = Field(None, alias="product_id")
+    startDate: Optional[str] = Field(None, alias="startDate")
+    start_date: Optional[str] = Field(None, alias="start_date")
+    endDate: Optional[str] = Field(None, alias="endDate")
+    end_date: Optional[str] = Field(None, alias="end_date")
+    requestedImpressions: Optional[int] = None
+    budget: Optional[float] = None
+    targeting: Optional[dict] = None
+
+    model_config = {"populate_by_name": True}
+
+    def resolved_product_id(self) -> str:
+        """Return whichever of productId/product_id was supplied."""
+        return self.productId or self.product_id or ""
+
+
+@app.post("/products/avails", tags=["Products"])
+async def check_product_avails(request: AvailsCheckRequest):
+    """Check availability for a product.
+
+    FIX-4: Added to support buyer's AvailsCheckTool which calls
+    POST /products/avails. Returns static 1M available impressions,
+    matching the placeholder already used in ProposalHandlingFlow.
+    """
+    pid = request.resolved_product_id()
+    catalog = _get_static_product_catalog()
+    product = catalog["products"].get(pid)
+    if not product:
+        raise HTTPException(status_code=404, detail=f"Product {pid} not found")
+    requested = request.requestedImpressions or 0
+    available = 1_000_000
+    return {
+        "productId": pid,
+        "availableImpressions": available,
+        "guaranteedImpressions": int(available * 0.85),
+        "estimatedCpm": product.base_cpm,
+        "totalCost": round((product.base_cpm / 1000) * requested, 2) if requested else 0.0,
+        "deliveryConfidence": 85.0,
+        "availableTargeting": ["geo", "demographic", "contextual"],
+    }
+
+
 @app.post("/pricing", response_model=PricingResponse, tags=["Pricing"])
 async def get_pricing(
     request: PricingRequest,
@@ -753,9 +861,15 @@ async def submit_proposal(
 
     from ...flows import ProductSetupFlow, ProposalHandlingFlow
 
-    # Get products
-    setup_flow = ProductSetupFlow()
-    await setup_flow.kickoff_async()
+    # Run ProductSetupFlow to get the serial-ID product catalog (prod-001…prod-012).
+    # Wrap in try/except so a setup failure doesn't produce a raw 500.
+    try:
+        setup_flow = ProductSetupFlow()
+        await setup_flow.kickoff_async()
+        products = setup_flow.state.products
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("ProductSetupFlow failed: %s", exc)
+        products = {}
 
     # Enforce agent registry
     _, max_tier = await _resolve_and_enforce_agent(request.agent_url)
@@ -770,7 +884,6 @@ async def submit_proposal(
         max_access_tier=max_tier,
     )
 
-    # Process proposal
     proposal_id = f"prop-{uuid.uuid4().hex[:8]}"
     proposal_data = {
         "product_id": request.product_id,
@@ -782,13 +895,22 @@ async def submit_proposal(
         "buyer_id": request.buyer_id,
     }
 
-    flow = ProposalHandlingFlow()
-    result = flow.handle_proposal(
-        proposal_id=proposal_id,
-        proposal_data=proposal_data,
-        buyer_context=context,
-        products=setup_flow.state.products,
-    )
+    try:
+        flow = ProposalHandlingFlow()
+        result = await flow.handle_proposal_async(
+            proposal_id=proposal_id,
+            proposal_data=proposal_data,
+            buyer_context=context,
+            products=products,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("ProposalHandlingFlow failed for %s: %s", proposal_id, exc)
+        return ProposalResponse(
+            proposal_id=proposal_id,
+            recommendation="reject",
+            status="failed",
+            errors=[f"Proposal evaluation error: {exc}"],
+        )
 
     # If pending approval, create the approval request
     if result.get("pending_approval"):
@@ -821,8 +943,8 @@ async def submit_proposal(
 
     return ProposalResponse(
         proposal_id=proposal_id,
-        recommendation=result["recommendation"],
-        status=result["status"],
+        recommendation=result.get("recommendation") or "reject",
+        status=result.get("status", "failed"),
         counter_terms=result.get("counter_terms"),
         errors=result.get("errors", []),
     )
