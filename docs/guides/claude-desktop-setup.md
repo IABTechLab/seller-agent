@@ -23,7 +23,7 @@ Works on both **Claude Desktop** and **Claude on the web** (claude.ai):
 1. Open Claude Desktop or go to [claude.ai](https://claude.ai)
 2. Go to **Settings > Integrations**
 3. Click **"+ Add Custom Integration"**
-4. Enter your seller agent's MCP URL: `https://your-publisher.example.com/mcp/mcp`
+4. Enter your seller agent's MCP URL: `https://your-publisher.example.com/mcp`
 5. If prompted for authentication, enter your operator API key
 6. Click **Save**
 
@@ -54,6 +54,34 @@ For seller agents running on `localhost`:
 4. Save and restart Claude Desktop
 
 > **Note**: The JSON config method is for **local stdio servers only**. Remote servers must use the Settings > Integrations UI.
+
+Alternatively, if you are running the seller agent as an HTTP server (`uvicorn ad_seller.interfaces.api.main:app --port 8000`), use `mcp-remote` to bridge it:
+
+**Using npx (Node.js required):**
+```json
+{
+  "mcpServers": {
+    "seller-agent": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8000/mcp/"]
+    }
+  }
+}
+```
+
+**Using uvx (Python only, no Node.js needed — `uvx` comes with `uv`):**
+```json
+{
+  "mcpServers": {
+    "seller-agent": {
+      "command": "uvx",
+      "args": ["mcp-remote", "http://localhost:8000/mcp/"]
+    }
+  }
+}
+```
+
+> The trailing slash on `/mcp/` is required.
 
 ## Step 2: First-Run Setup Wizard
 
