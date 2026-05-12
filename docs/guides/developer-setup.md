@@ -107,20 +107,43 @@ Save the returned API key.
 
 ## Step 7: Generate Claude Desktop Config
 
-Create `claude_desktop_config.json` for your business team:
+Create `claude_desktop_config.json` for your business team.
 
+**For Claude Desktop (local server via npx):**
 ```json
 {
   "mcpServers": {
     "seller-agent": {
-      "url": "http://your-server:8000/mcp/mcp",
-      "headers": {
-        "Authorization": "Bearer <operator-api-key-from-step-6>"
-      }
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://your-server:8000/mcp/",
+        "--header",
+        "Authorization: Bearer <operator-api-key-from-step-6>"
+      ]
     }
   }
 }
 ```
+
+**For Claude Desktop (local server via uvx — Python only, no Node.js needed):**
+```json
+{
+  "mcpServers": {
+    "seller-agent": {
+      "command": "uvx",
+      "args": [
+        "mcp-remote",
+        "http://your-server:8000/mcp/",
+        "--header",
+        "Authorization: Bearer <operator-api-key-from-step-6>"
+      ]
+    }
+  }
+}
+```
+
+> The trailing slash on `/mcp/` is required for `mcp-remote`.
 
 ## Step 8: Hand Off
 
