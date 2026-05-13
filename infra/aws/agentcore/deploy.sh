@@ -30,7 +30,7 @@ set -euo pipefail
 REGION="${AWS_REGION:-us-west-2}"
 AGENT_NAME="${AGENT_NAME:-}"
 AWS_PROFILE="${AWS_PROFILE:-}"
-LLM_MODEL="${DEFAULT_LLM_MODEL:-bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0}"
+LLM_MODEL="${DEFAULT_LLM_MODEL:-bedrock/us.amazon.nova-pro-v1:0}"
 DO_TEST=false
 TEST_ONLY=false
 DO_CLEANUP=false
@@ -364,6 +364,8 @@ deploy_mcp_runtime() {
     --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
+    --env "CREW_MEMORY_ENABLED=true"
+    --env "MEMORY_LLM_MODEL=bedrock/us.amazon.nova-lite-v1:0"
   )
 
   if [[ "${STORAGE_TYPE}" == "postgres" ]]; then
@@ -435,6 +437,8 @@ deploy_http_runtime() {
     --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
+    --env "CREW_MEMORY_ENABLED=true"
+    --env "MEMORY_LLM_MODEL=bedrock/us.amazon.nova-lite-v1:0"
   )
 
   if [[ "${STORAGE_TYPE}" == "postgres" ]]; then

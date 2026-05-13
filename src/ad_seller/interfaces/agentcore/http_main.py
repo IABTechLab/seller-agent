@@ -440,6 +440,17 @@ async def _run_crew_with_crewai(prompt: str, payload: dict) -> dict:
     except ImportError:
         logger.warning("patches.crewai_bedrock_fix not available — skipping")
 
+    # Apply AgentCore memory patch (read_only mode — no RememberTool injection)
+    if os.environ.get("CREW_MEMORY_ENABLED", "false").lower() == "true":
+        try:
+            from patches.crewai_agentcore_memory import apply_patches as apply_memory_patches
+            _session = payload.get("session_id", payload.get("runtimeSessionId", ""))
+            apply_memory_patches(session_id=_session or None, actor_id="seller-agent")
+        except ImportError:
+            logger.warning("patches.crewai_agentcore_memory not available — skipping")
+        except Exception as e:
+            logger.warning(f"AgentCore memory patch failed: {e}")
+
     publisher_crew = PublisherCrew()
 
     bedrock_model = os.environ.get(
