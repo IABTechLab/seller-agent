@@ -13,9 +13,6 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-_SUPPORTED_VERSIONS = ("v202505", "v202508", "v202511", "v202602")
-_DEFAULT_VERSION = "v202505"
-
 from ..config import get_settings
 from ..models.gam import (
     GAMAdUnit,
@@ -37,6 +34,9 @@ from ..models.gam import (
     GAMTargeting,
     GAMUnitType,
 )
+
+_SUPPORTED_VERSIONS = ("v202505", "v202508", "v202511", "v202602")
+_DEFAULT_VERSION = "v202505"
 
 
 class GAMSoapClient:
