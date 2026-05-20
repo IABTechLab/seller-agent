@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     gam_network_code: Optional[str] = None  # GAM network ID
     gam_json_key_path: Optional[str] = None  # Path to service account JSON key
     gam_application_name: str = "AdSellerSystem"  # Application name for GAM API
-    gam_api_version: str = "v202411"  # SOAP API version
+    gam_api_version: str = "v202505"  # SOAP API version
     gam_default_trafficker_id: Optional[str] = None  # Default trafficker user ID
 
     # FreeWheel Configuration (alternative ad server)

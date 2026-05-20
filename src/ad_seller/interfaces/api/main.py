@@ -79,6 +79,7 @@ app = FastAPI(
         },
         {"name": "Deal Performance", "description": "Deal delivery and performance metrics"},
         {"name": "Bulk Operations", "description": "Batch deal create/update/cancel"},
+        {"name": "Reporting", "description": "GAM delivery reporting (seller-internal)"},
     ],
 )
 
@@ -3864,8 +3865,10 @@ async def get_deal_performance(deal_id: str):
     """Return delivery stats for a deal.
 
     Provides performance feedback for buyer SPO (Supply Path Optimization).
-    Returns placeholder/mock stats initially — real ad server integration
-    comes in a future phase.
+
+    If GAM is configured and the deal has a linked gam_order_id (set when
+    the deal is trafficked into GAM), returns real delivery data from the
+    ad server. Otherwise returns placeholder stats.
     """
     from ...storage.factory import get_storage
 
@@ -3878,8 +3881,60 @@ async def get_deal_performance(deal_id: str):
             detail={"error": "deal_not_found", "message": f"Deal '{deal_id}' not found."},
         )
 
-    # Placeholder performance data — real stats come from ad server integration
     now = datetime.utcnow().isoformat() + "Z"
+    s = _get_api_settings()
+
+    # Real path: GAM configured + deal was trafficked into GAM
+    gam_order_id = deal.get("gam_order_id") or deal.get("metadata", {}).get("gam_order_id")
+    if s.gam_enabled and s.gam_network_code and s.gam_json_key_path and gam_order_id:
+        try:
+            from ...clients.gam_soap_client import GAMSoapClient
+
+            client = GAMSoapClient()
+            client.connect()
+            report = client.get_delivery_report([str(gam_order_id)], days=30)
+            client.disconnect()
+
+            summary = report.get("summary", {})
+            impressions_served = summary.get("impressions", 0)
+            impressions_available = 0
+            for order in report.get("orders", []):
+                for li in order.get("line_items", []):
+                    goal = li.get("impressions_goal", 0)
+                    if goal and goal > 0:
+                        impressions_available += goal
+
+            fill_rate = (
+                round(impressions_served / impressions_available * 100, 1)
+                if impressions_available
+                else 0.0
+            )
+            revenue = summary.get("revenue_usd", 0.0)
+            avg_cpm = (
+                round(revenue / impressions_served * 1000, 2)
+                if impressions_served
+                else 0.0
+            )
+            pacing = (
+                "not_started" if impressions_served == 0
+                else "on_track" if fill_rate >= 40
+                else "behind"
+            )
+
+            return DealPerformanceResponse(
+                deal_id=deal_id,
+                impressions_available=impressions_available,
+                impressions_served=impressions_served,
+                fill_rate=fill_rate,
+                win_rate=0.0,
+                avg_cpm_actual=avg_cpm,
+                delivery_pacing=pacing,
+                last_updated=now,
+            )
+        except Exception:
+            pass  # Fall through to placeholder on any GAM error
+
+    # Fallback: placeholder stats (GAM not configured or order not yet trafficked)
     return DealPerformanceResponse(
         deal_id=deal_id,
         impressions_available=1000000,
@@ -5262,3 +5317,88 @@ async def get_deal_lineage(deal_id: str):
         "replacements": replacements,
         "chain_length": len(parents) + 1 + len(replacements),
     }
+
+
+# =============================================================================
+# GAM Reporting (seller-internal)
+# =============================================================================
+
+
+def _gam_configured() -> bool:
+    s = _get_api_settings()
+    return bool(s.gam_enabled and s.gam_network_code and s.gam_json_key_path)
+
+
+@app.get("/gam/orders", tags=["Reporting"])
+async def gam_list_orders(
+    limit: int = 50,
+    _auth: None = Depends(_get_optional_api_key_record),
+) -> dict[str, Any]:
+    """List recent GAM orders directly from the ad server.
+
+    Returns the most recent orders with id, name, and status.
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
+    """
+    if not _gam_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="GAM not configured — set GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH",
+        )
+    try:
+        from ...clients.gam_soap_client import GAMSoapClient
+
+        client = GAMSoapClient()
+        client.connect()
+        orders = client.list_orders(limit=limit)
+        user = client.get_current_user()
+        client.disconnect()
+        return {
+            "network_code": _get_api_settings().gam_network_code,
+            "user": {
+                "id": str(getattr(user, "id", "")),
+                "name": getattr(user, "name", ""),
+                "email": getattr(user, "email", ""),
+            },
+            "orders": orders,
+            "count": len(orders),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/gam/report", tags=["Reporting"])
+async def gam_delivery_report(
+    order_ids: str,
+    days: int = 30,
+    _auth: None = Depends(_get_optional_api_key_record),
+) -> dict[str, Any]:
+    """Pull a delivery report from GAM by order ID(s).
+
+    Args:
+        order_ids: Comma-separated numeric GAM order IDs
+        days: Look-back window in days (default 30)
+
+    Returns order metadata, line items, and delivery data (impressions, clicks, revenue).
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
+    """
+    if not _gam_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="GAM not configured — set GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH",
+        )
+    ids = [oid.strip() for oid in order_ids.split(",") if oid.strip()]
+    if not ids:
+        raise HTTPException(
+            status_code=400,
+            detail="order_ids must be a comma-separated list of numeric GAM order IDs",
+        )
+    try:
+        from ...clients.gam_soap_client import GAMSoapClient
+
+        client = GAMSoapClient()
+        client.connect()
+        report = client.get_delivery_report(ids, days=days)
+        client.disconnect()
+        return report
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

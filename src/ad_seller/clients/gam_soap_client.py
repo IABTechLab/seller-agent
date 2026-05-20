@@ -5,10 +5,16 @@
 
 Provides methods for writing to GAM using the SOAP API.
 Used for creating orders, line items, and managing audience segments.
+Also provides read/reporting methods for delivery data.
 """
 
-from datetime import datetime
+import io
+import time
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
+
+_SUPPORTED_VERSIONS = ("v202505", "v202508", "v202511", "v202602")
+_DEFAULT_VERSION = "v202505"
 
 from ..config import get_settings
 from ..models.gam import (
@@ -60,7 +66,8 @@ class GAMSoapClient:
         self.network_code = network_code or settings.gam_network_code
         self.credentials_path = credentials_path or settings.gam_json_key_path
         self.application_name = settings.gam_application_name
-        self.api_version = settings.gam_api_version
+        raw_version = settings.gam_api_version or _DEFAULT_VERSION
+        self.api_version = raw_version if raw_version in _SUPPORTED_VERSIONS else _DEFAULT_VERSION
         self.default_trafficker_id = settings.gam_default_trafficker_id
 
         self._client: Optional[Any] = None
@@ -654,3 +661,236 @@ class GAMSoapClient:
         """
         user_service = self._get_service("UserService")
         return user_service.getCurrentUser()
+
+    # =========================================================================
+    # Reporting — Read Operations
+    # =========================================================================
+
+    def list_orders(self, limit: int = 50) -> list[dict[str, Any]]:
+        """List recent orders in the network.
+
+        Args:
+            limit: Maximum number of orders to return
+
+        Returns:
+            List of dicts with id, name, status
+        """
+        from googleads import ad_manager
+
+        order_service = self._get_service("OrderService")
+        sb = ad_manager.StatementBuilder()
+        sb.Limit(limit)
+        result = order_service.getOrdersByStatement(sb.ToStatement())
+        return [
+            {
+                "id": str(getattr(o, "id", "")),
+                "name": getattr(o, "name", ""),
+                "status": str(getattr(o, "status", "")),
+            }
+            for o in (getattr(result, "results", None) or [])
+        ]
+
+    def get_order_by_id(self, order_id: str) -> dict[str, Any]:
+        """Fetch a single order by numeric ID.
+
+        Args:
+            order_id: GAM order ID
+
+        Returns:
+            Dict with id, name, status, advertiser_id, start_date, end_date
+        """
+        from googleads import ad_manager
+
+        order_service = self._get_service("OrderService")
+        sb = ad_manager.StatementBuilder()
+        sb.Where("id = :id").WithBindVariable("id", int(order_id))
+        sb.Limit(1)
+        result = order_service.getOrdersByStatement(sb.ToStatement())
+        orders = getattr(result, "results", None) or []
+        if not orders:
+            return {}
+        o = orders[0]
+        return {
+            "id": str(getattr(o, "id", "")),
+            "name": getattr(o, "name", ""),
+            "status": str(getattr(o, "status", "")),
+            "advertiser_id": str(getattr(o, "advertiserId", "")),
+            "start_date": str(getattr(o, "startDateTime", "")),
+            "end_date": str(getattr(o, "endDateTime", "")),
+        }
+
+    def list_line_items_for_order(self, order_id: str) -> list[dict[str, Any]]:
+        """List line items for a given order ID.
+
+        Args:
+            order_id: GAM order ID
+
+        Returns:
+            List of dicts with id, name, status, impressions_goal, cost_type
+        """
+        from googleads import ad_manager
+
+        li_service = self._get_service("LineItemService")
+        sb = ad_manager.StatementBuilder()
+        sb.Where("orderId = :orderId").WithBindVariable("orderId", int(order_id))
+        result = li_service.getLineItemsByStatement(sb.ToStatement())
+        return [
+            {
+                "id": str(getattr(li, "id", "")),
+                "name": getattr(li, "name", ""),
+                "status": str(getattr(li, "status", "")),
+                "impressions_goal": getattr(
+                    getattr(li, "primaryGoal", None), "units", -1
+                ),
+                "cost_type": str(getattr(li, "costType", "CPM")),
+            }
+            for li in (getattr(result, "results", None) or [])
+        ]
+
+    def run_delivery_report(
+        self,
+        order_ids: list[str],
+        days: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Submit a delivery report job and return rows as dicts.
+
+        Polls until the job completes (max ~60 s) then downloads CSV rows.
+
+        Args:
+            order_ids: List of GAM order IDs (numeric strings)
+            days: Look-back window in days (default 30)
+
+        Returns:
+            List of row dicts with keys:
+                order_id, order_name, line_item_id, line_item_name,
+                impressions, clicks, revenue_usd
+        """
+        report_svc = self._get_service("ReportService")
+        today = date.today()
+        start = today - timedelta(days=days)
+
+        report_job = {
+            "reportQuery": {
+                "dimensions": [
+                    "ORDER_ID",
+                    "ORDER_NAME",
+                    "LINE_ITEM_ID",
+                    "LINE_ITEM_NAME",
+                ],
+                "columns": [
+                    "AD_SERVER_IMPRESSIONS",
+                    "AD_SERVER_CLICKS",
+                    "AD_SERVER_CPM_AND_CPC_REVENUE",
+                ],
+                "dateRangeType": "CUSTOM_DATE",
+                "startDate": {
+                    "year": start.year,
+                    "month": start.month,
+                    "day": start.day,
+                },
+                "endDate": {
+                    "year": today.year,
+                    "month": today.month,
+                    "day": today.day,
+                },
+            }
+        }
+
+        job = report_svc.runReportJob(report_job)
+        job_id = job.id
+
+        for _ in range(20):
+            time.sleep(3)
+            status = str(report_svc.getReportJobStatus(job_id))
+            if status == "COMPLETED":
+                break
+            if status == "FAILED":
+                return [{"error": f"Report job {job_id} failed"}]
+
+        downloader = self._client.GetDataDownloader(version=self.api_version)
+        buf = io.BytesIO()
+        downloader.DownloadReportToFile(
+            job_id, "CSV_EXCEL", buf, use_gzip_compression=False
+        )
+        buf.seek(0)
+        lines = buf.read().decode("utf-8").splitlines()
+
+        if len(lines) < 2:
+            return []
+
+        rows = []
+        for line in lines[1:]:
+            if line.startswith("Total"):
+                continue
+            parts = line.split(",")
+            if len(parts) < 7:
+                continue
+            rows.append(
+                {
+                    "order_id": parts[0].strip(),
+                    "order_name": parts[1].strip(),
+                    "line_item_id": parts[2].strip(),
+                    "line_item_name": parts[3].strip(),
+                    "impressions": int(parts[4].strip() or 0),
+                    "clicks": int(parts[5].strip() or 0),
+                    "revenue_usd": float(parts[6].strip() or 0),
+                }
+            )
+        return rows
+
+    def get_delivery_report(
+        self,
+        order_ids: list[str],
+        days: int = 30,
+    ) -> dict[str, Any]:
+        """Fetch order metadata + line items + delivery rows for given order IDs.
+
+        Args:
+            order_ids: List of GAM order IDs
+            days: Look-back window in days
+
+        Returns:
+            {
+                "orders": [{"order_id", "order_name", "status", "line_items": [...]}],
+                "report_rows": [...],
+                "summary": {"impressions", "clicks", "revenue_usd"}
+            }
+        """
+        orders_out: list[dict[str, Any]] = []
+        for oid in order_ids:
+            entry: dict[str, Any] = {"order_id": oid}
+            try:
+                order = self.get_order_by_id(oid)
+                entry.update(
+                    {
+                        "order_name": order.get("name", oid),
+                        "status": order.get("status", "UNKNOWN"),
+                    }
+                )
+            except Exception as e:
+                entry.update({"order_name": oid, "status": "ERROR", "error": str(e)})
+            try:
+                entry["line_items"] = self.list_line_items_for_order(oid)
+            except Exception as e:
+                entry["line_items"] = []
+                entry["line_items_error"] = str(e)
+            orders_out.append(entry)
+
+        report_rows: list[dict[str, Any]] = []
+        try:
+            report_rows = self.run_delivery_report(order_ids, days=days)
+        except Exception as e:
+            report_rows = [{"error": str(e)}]
+
+        ok = [r for r in report_rows if "error" not in r]
+        summary = {
+            "impressions": sum(r.get("impressions", 0) for r in ok),
+            "clicks": sum(r.get("clicks", 0) for r in ok),
+            "revenue_usd": round(sum(r.get("revenue_usd", 0) for r in ok), 2),
+        }
+
+        return {
+            "orders": orders_out,
+            "report_rows": report_rows,
+            "summary": summary,
+        }
