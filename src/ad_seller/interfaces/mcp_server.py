@@ -510,6 +510,54 @@ async def get_deal_performance(deal_id: str) -> str:
 
 
 @mcp.tool()
+async def list_gam_orders(limit: int = 50) -> str:
+    """List recent orders from Google Ad Manager (GAM).
+
+    Returns order id, name, and status for each order in the network.
+    Also returns the authenticated service account user and network code.
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
+    """
+    import httpx
+
+    settings = _get_settings()
+    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(f"{url}/gam/orders", params={"limit": limit})
+        if resp.status_code == 503:
+            return "GAM not configured — set GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env"
+        return resp.text
+
+
+@mcp.tool()
+async def get_gam_delivery_report(order_ids: str, days: int = 30) -> str:
+    """Pull a delivery report from Google Ad Manager for one or more orders.
+
+    Args:
+        order_ids: Comma-separated numeric GAM order IDs (e.g. '54058762,54058882')
+        days: Look-back window in days (default 30)
+
+    Returns order metadata, line items, and delivery data (impressions, clicks, revenue).
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
+    """
+    import httpx
+
+    settings = _get_settings()
+    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.get(
+            f"{url}/gam/report",
+            params={"order_ids": order_ids, "days": days},
+        )
+        if resp.status_code == 503:
+            return "GAM not configured — set GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env"
+        if resp.status_code == 400:
+            return "order_ids must be a comma-separated list of numeric GAM order IDs"
+        return resp.text
+
+
+@mcp.tool()
 async def push_deal_to_buyers(deal_id: str, buyer_urls: str) -> str:
     """Push a deal to buyer endpoints via IAB Deals API v1.0.
     Pass buyer_urls as comma-separated list."""
