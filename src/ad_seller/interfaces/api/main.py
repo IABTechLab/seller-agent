@@ -5332,11 +5332,16 @@ def _gam_configured() -> bool:
 @app.get("/gam/orders", tags=["Reporting"])
 async def gam_list_orders(
     limit: int = 50,
+    agent_created_only: bool = False,
     _auth: None = Depends(_get_optional_api_key_record),
 ) -> dict[str, Any]:
     """List recent GAM orders directly from the ad server.
 
-    Returns the most recent orders with id, name, and status.
+    Args:
+        limit: Maximum number of orders to return (default 50)
+        agent_created_only: If true, return only orders created by the agent
+            (those with an externalOrderId matching an OpenDirect deal_id)
+
     Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
     """
     if not _gam_configured():
@@ -5346,10 +5351,30 @@ async def gam_list_orders(
         )
     try:
         from ...clients.gam_soap_client import GAMSoapClient
+        from ...storage.factory import get_storage
 
         client = GAMSoapClient()
         client.connect()
-        orders = client.list_orders(limit=limit)
+
+        if agent_created_only:
+            # Use SQLite as source of truth — find all deals with gam_order_id set
+            storage = await get_storage()
+            all_deals = await storage.list_deals()
+            linked = [
+                {"deal_id": d.get("deal_id"), "gam_order_id": d.get("gam_order_id")}
+                for d in all_deals
+                if d.get("gam_order_id")
+            ]
+            orders = []
+            for link in linked[:limit]:
+                order = client.get_order_by_id(link["gam_order_id"])
+                if order:
+                    order["external_order_id"] = link["deal_id"]
+                    order["agent_created"] = True
+                    orders.append(order)
+        else:
+            orders = client.list_orders(limit=limit)
+
         user = client.get_current_user()
         client.disconnect()
         return {

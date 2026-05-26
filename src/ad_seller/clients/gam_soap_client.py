@@ -228,7 +228,13 @@ class GAMSoapClient:
         if notes:
             order["notes"] = notes
         if external_order_id:
-            order["externalOrderId"] = external_order_id
+            # GAM externalOrderId must be numeric — store non-numeric IDs in notes
+            try:
+                order["externalOrderId"] = int(external_order_id)
+            except (ValueError, TypeError):
+                order["notes"] = (
+                    f"{order.get('notes', '')} [deal_id:{external_order_id}]".strip()
+                )
 
         result = order_service.createOrders([order])
         order_data = result[0]
@@ -666,29 +672,52 @@ class GAMSoapClient:
     # Reporting — Read Operations
     # =========================================================================
 
-    def list_orders(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_orders(
+        self,
+        limit: int = 50,
+        agent_created_only: bool = False,
+    ) -> list[dict[str, Any]]:
         """List recent orders in the network.
 
         Args:
             limit: Maximum number of orders to return
+            agent_created_only: If True, return only orders created by the
+                agent (those with an externalOrderId set, which the agent
+                stores as the OpenDirect deal_id e.g. DEMO-xxxx)
 
         Returns:
-            List of dicts with id, name, status
+            List of dicts with id, name, status, external_order_id (deal_id if agent-created)
         """
         from googleads import ad_manager
 
         order_service = self._get_service("OrderService")
         sb = ad_manager.StatementBuilder()
+        if agent_created_only:
+            sb.Where("externalOrderId != ''")
         sb.Limit(limit)
         result = order_service.getOrdersByStatement(sb.ToStatement())
-        return [
-            {
-                "id": str(getattr(o, "id", "")),
-                "name": getattr(o, "name", ""),
-                "status": str(getattr(o, "status", "")),
-            }
-            for o in (getattr(result, "results", None) or [])
-        ]
+        import re
+
+        rows = []
+        for o in getattr(result, "results", None) or []:
+            external_id = getattr(o, "externalOrderId", None)
+            notes = getattr(o, "notes", "") or ""
+            # Extract deal_id from notes if stored as [deal_id:DEMO-xxxx]
+            deal_id_from_notes = None
+            match = re.search(r"\[deal_id:([^\]]+)\]", notes)
+            if match:
+                deal_id_from_notes = match.group(1)
+            agent_deal_id = deal_id_from_notes or (str(external_id) if external_id else None)
+            rows.append(
+                {
+                    "id": str(getattr(o, "id", "")),
+                    "name": getattr(o, "name", ""),
+                    "status": str(getattr(o, "status", "")),
+                    "external_order_id": agent_deal_id,
+                    "agent_created": bool(agent_deal_id),
+                }
+            )
+        return rows
 
     def get_order_by_id(self, order_id: str) -> dict[str, Any]:
         """Fetch a single order by numeric ID.
@@ -710,13 +739,23 @@ class GAMSoapClient:
         if not orders:
             return {}
         o = orders[0]
+
+        def _fmt_date(dt: Any) -> str:
+            """Format a GAM SOAP DateTime object as YYYY-MM-DD."""
+            if dt is None:
+                return ""
+            d = getattr(dt, "date", None)
+            if d is None:
+                return str(dt)
+            return f"{getattr(d, 'year', '')-0:04d}-{getattr(d, 'month', ''):02d}-{getattr(d, 'day', ''):02d}"
+
         return {
             "id": str(getattr(o, "id", "")),
             "name": getattr(o, "name", ""),
             "status": str(getattr(o, "status", "")),
             "advertiser_id": str(getattr(o, "advertiserId", "")),
-            "start_date": str(getattr(o, "startDateTime", "")),
-            "end_date": str(getattr(o, "endDateTime", "")),
+            "start_date": _fmt_date(getattr(o, "startDateTime", None)),
+            "end_date": _fmt_date(getattr(o, "endDateTime", None)),
         }
 
     def list_line_items_for_order(self, order_id: str) -> list[dict[str, Any]]:

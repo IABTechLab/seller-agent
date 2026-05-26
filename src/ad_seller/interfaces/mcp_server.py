@@ -510,11 +510,16 @@ async def get_deal_performance(deal_id: str) -> str:
 
 
 @mcp.tool()
-async def list_gam_orders(limit: int = 50) -> str:
-    """List recent orders from Google Ad Manager (GAM).
+async def list_gam_orders(limit: int = 50, agent_created_only: bool = False) -> str:
+    """List orders from Google Ad Manager (GAM).
 
-    Returns order id, name, and status for each order in the network.
-    Also returns the authenticated service account user and network code.
+    Args:
+        limit: Maximum number of orders to return (default 50)
+        agent_created_only: If True, return only orders created by the agent
+            (linked to an OpenDirect deal_id). Use this to see campaigns the
+            agent has booked, separated from manually created orders.
+
+    Returns order id, name, status, and whether the order was agent-created.
     Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
     """
     import httpx
@@ -523,7 +528,10 @@ async def list_gam_orders(limit: int = 50) -> str:
     url = getattr(settings, "seller_agent_url", "http://localhost:8000")
 
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/gam/orders", params={"limit": limit})
+        resp = await client.get(
+            f"{url}/gam/orders",
+            params={"limit": limit, "agent_created_only": agent_created_only},
+        )
         if resp.status_code == 503:
             return "GAM not configured — set GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env"
         return resp.text
