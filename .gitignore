@@ -100,3 +100,8 @@ Thumbs.db
 
 # mkdocs build output
 site/
+
+#SQLIte database files
+*.db-journal
+*.db-wal
+*.db-shm

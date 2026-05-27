@@ -3,12 +3,14 @@
 
 """Low-level MCP client wrapper for FreeWheel MCP servers.
 
-Handles SSE connection, JSON-RPC tool invocation, session management,
-and error normalization for both Streaming Hub and Buyer Cloud MCPs.
+Handles MCP transport negotiation (Streamable HTTP and SSE), JSON-RPC
+tool invocation, session management, and error normalization for both
+Streaming Hub and Buyer Cloud MCPs.
 """
 
 import logging
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,7 @@ class FreeWheelMCPError(Exception):
 
 
 class FreeWheelMCPClient:
-    """Wraps mcp.ClientSession for calling FreeWheel MCP tools over SSE.
+    """Wraps mcp.ClientSession for calling FreeWheel MCP tools.
 
     Usage:
         client = FreeWheelMCPClient()
@@ -34,7 +36,8 @@ class FreeWheelMCPClient:
 
     def __init__(self) -> None:
         self._session: Any = None  # mcp.ClientSession
-        self._transport: Any = None  # SSE transport
+        self._transport: Any = None  # MCP transport context manager
+        self._transport_mode: Optional[str] = None
         self._session_id: Optional[str] = None
         self._url: Optional[str] = None
         self._connected: bool = False
@@ -49,7 +52,7 @@ class FreeWheelMCPClient:
         auth_params: Optional[dict[str, str]] = None,
         login_tool: Optional[str] = None,
     ) -> None:
-        """Connect to a FreeWheel MCP server via SSE.
+        """Connect to a FreeWheel MCP server.
 
         Args:
             url: MCP server URL (e.g. https://shmcp.freewheel.com)
@@ -57,21 +60,53 @@ class FreeWheelMCPClient:
             login_tool: Name of the login tool (e.g. "streaming_hub_login")
         """
         from mcp import ClientSession
-        from mcp.client.sse import sse_client
 
-        self._url = url
         logger.info("Connecting to FreeWheel MCP at %s", url)
 
-        # Establish SSE transport and session
-        self._transport = sse_client(url)
-        read_stream, write_stream = await self._transport.__aenter__()
-        self._session = ClientSession(read_stream, write_stream)
-        await self._session.__aenter__()
+        attempts = _build_transport_attempts(url)
+        last_error: Optional[Exception] = None
 
-        # Initialize the MCP session
-        await self._session.initialize()
-        self._connected = True
-        logger.info("MCP session established with %s", url)
+        for mode, candidate_url in attempts:
+            try:
+                self._session = None
+                self._transport = None
+
+                if mode == "streamable_http":
+                    from mcp.client.streamable_http import streamablehttp_client
+
+                    self._transport = streamablehttp_client(candidate_url)
+                    transport_tuple = await self._transport.__aenter__()
+                    read_stream, write_stream = transport_tuple[0], transport_tuple[1]
+                else:
+                    from mcp.client.sse import sse_client
+
+                    self._transport = sse_client(candidate_url)
+                    read_stream, write_stream = await self._transport.__aenter__()
+
+                self._session = ClientSession(read_stream, write_stream)
+                await self._session.__aenter__()
+                await self._session.initialize()
+
+                self._connected = True
+                self._transport_mode = mode
+                self._url = candidate_url
+                logger.info("MCP session established with %s (transport=%s)", candidate_url, mode)
+                break
+            except Exception as exc:
+                last_error = exc
+                await self._close_partial_connection()
+                logger.debug(
+                    "MCP connect attempt failed (transport=%s, url=%s): %s",
+                    mode,
+                    candidate_url,
+                    exc,
+                )
+        else:
+            tried = ", ".join(f"{mode}:{candidate_url}" for mode, candidate_url in attempts)
+            message = f"Unable to connect to FreeWheel MCP. Tried: {tried}."
+            if last_error:
+                message = f"{message} Last error: {last_error}"
+            raise ConnectionError(message) from last_error
 
         # Authenticate if login tool provided
         if login_tool and auth_params:
@@ -113,6 +148,13 @@ class FreeWheelMCPClient:
             except Exception as e:
                 logger.warning("Logout tool failed (non-fatal): %s", e)
 
+        await self._close_partial_connection()
+        self._session_id = None
+        logger.info("Disconnected from FreeWheel MCP at %s", self._url)
+
+    async def _close_partial_connection(self) -> None:
+        """Close session/transport resources after failed or completed connections."""
+
         if self._session:
             try:
                 await self._session.__aexit__(None, None, None)
@@ -128,8 +170,7 @@ class FreeWheelMCPClient:
             self._transport = None
 
         self._connected = False
-        self._session_id = None
-        logger.info("Disconnected from FreeWheel MCP at %s", self._url)
+        self._transport_mode = None
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
         """Call an MCP tool and return the parsed result.
@@ -193,3 +234,34 @@ class FreeWheelMCPClient:
 
         result = await self._session.list_tools()
         return [tool.name for tool in result.tools]
+
+
+def _build_transport_attempts(url: str) -> list[tuple[str, str]]:
+    """Build ordered MCP transport/url attempts from a configured endpoint."""
+    parsed = urlparse(url)
+    base = url.rstrip("/")
+    path = (parsed.path or "").rstrip("/")
+
+    attempts: list[tuple[str, str]] = []
+    if path.endswith("/sse"):
+        if base:
+            attempts.append(("sse", base))
+        root_url = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+        if root_url:
+            attempts.append(("streamable_http", root_url))
+    else:
+        if base:
+            attempts.append(("streamable_http", base))
+            attempts.append(("sse", f"{base}/sse"))
+            attempts.append(("sse", f"{base}/mcp-sse/sse"))
+            attempts.append(("sse", base))
+
+    # Preserve order while deduplicating attempts.
+    unique_attempts: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for attempt in attempts:
+        if attempt in seen:
+            continue
+        seen.add(attempt)
+        unique_attempts.append(attempt)
+    return unique_attempts
