@@ -354,7 +354,9 @@ class FreeWheelOAuthManager:
             webbrowser.open(authorize_url)
 
         try:
-            callback_params = await asyncio.to_thread(callback_server.wait_for_result, timeout_seconds)
+            callback_params = await asyncio.to_thread(
+                callback_server.wait_for_result, timeout_seconds
+            )
         finally:
             callback_server.server_close()
 

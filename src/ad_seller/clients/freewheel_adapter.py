@@ -27,7 +27,6 @@ from .ad_server_base import (
     BookingResult,
 )
 from .freewheel_mcp_client import FreeWheelMCPClient
-from .freewheel_oauth import FreeWheelOAuthManager, build_oauth_mcp_url
 from .freewheel_normalizer import (
     micros_to_dollars,
     normalize_audience_segments,
@@ -35,6 +34,7 @@ from .freewheel_normalizer import (
     normalize_deal,
     normalize_inventory,
 )
+from .freewheel_oauth import FreeWheelOAuthManager, build_oauth_mcp_url
 
 logger = logging.getLogger(__name__)
 
@@ -65,16 +65,12 @@ class FreeWheelAdServerClient(AdServerClient):
 
     def _get_sh_oauth_manager(self) -> FreeWheelOAuthManager:
         if self._sh_oauth_manager is None:
-            self._sh_oauth_manager = FreeWheelOAuthManager.for_provider(
-                self._get_settings(), "sh"
-            )
+            self._sh_oauth_manager = FreeWheelOAuthManager.for_provider(self._get_settings(), "sh")
         return self._sh_oauth_manager
 
     def _get_bc_oauth_manager(self) -> FreeWheelOAuthManager:
         if self._bc_oauth_manager is None:
-            self._bc_oauth_manager = FreeWheelOAuthManager.for_provider(
-                self._get_settings(), "bc"
-            )
+            self._bc_oauth_manager = FreeWheelOAuthManager.for_provider(self._get_settings(), "bc")
         return self._bc_oauth_manager
 
     # =========================================================================
