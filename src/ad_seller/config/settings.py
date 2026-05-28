@@ -87,16 +87,21 @@ class Settings(BaseSettings):
     #                   for agentic selling in FreeWheel (template deals / packages)
     freewheel_inventory_mode: str = "deals_only"  # full, deals_only
     # Streaming Hub MCP — publisher-side (inventory, deals, audiences)
-    # Auth: OAuth 2.0 ROPCG via streaming_hub_login tool (7-day token TTL)
+    # Auth: OAuth 2.1 PKCE via /mcp/oauth.
     freewheel_sh_mcp_url: Optional[str] = None  # e.g. https://shmcp.freewheel.com
-    freewheel_sh_username: Optional[str] = None  # SH publisher account username
-    freewheel_sh_password: Optional[str] = None  # SH publisher account password
+    freewheel_sh_oauth_client_id: Optional[str] = None
+    freewheel_sh_oauth_client_name: str = "Ad Seller Agent"
+    freewheel_sh_oauth_redirect_uri: str = "http://127.0.0.1:8765/callback"
+    freewheel_sh_oauth_scope: str = "api"
+    freewheel_sh_oauth_token_path: str = "~/.config/ad-seller/freewheel-sh-oauth.json"
     # Buyer Cloud MCP — demand-side (campaign execution, creatives, reporting)
-    # Auth: Beeswax session cookie via buyer_cloud_login tool (100h / 30-day TTL)
-    freewheel_bc_mcp_url: Optional[str] = None  # e.g. https://<buzz_key>.api.beeswax.com
-    freewheel_bc_email: Optional[str] = None  # Beeswax account email
-    freewheel_bc_password: Optional[str] = None  # Beeswax account password
-    freewheel_bc_buzz_key: Optional[str] = None  # Buzz API key (determines API hostname)
+    # Auth: OAuth 2.1 PKCE via /mcp/oauth.
+    freewheel_bc_mcp_url: Optional[str] = None  # e.g. https://bcmcp.freewheel.com
+    freewheel_bc_oauth_client_id: Optional[str] = None
+    freewheel_bc_oauth_client_name: str = "Ad Seller Agent"
+    freewheel_bc_oauth_redirect_uri: str = "http://127.0.0.1:8766/callback"
+    freewheel_bc_oauth_scope: str = "api"
+    freewheel_bc_oauth_token_path: str = "~/.config/ad-seller/freewheel-bc-oauth.json"
 
     # SSP Connectors (publishers can configure multiple SSPs)
     # Comma-separated list of SSP names to enable

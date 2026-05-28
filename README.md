@@ -19,7 +19,7 @@ An AI-powered inventory management system for **publishers and SSPs** to automat
 - **Manage orders** with a full state machine (draft → booked → delivering → complete)
 - **Human-in-the-loop** approval gates with configurable guard conditions
 - **Connect to ad servers** via a pluggable interface — GAM, FreeWheel, and CSV (demo/testing) supported
-- **Authenticate with FreeWheel** — SH (OAuth 2.0 ROPCG) + Buyer Cloud (Beeswax session cookie) with auto-reconnect
+- **Authenticate with FreeWheel** — browser-based OAuth 2.1 PKCE for SH + Buyer Cloud, with refresh-token auto-reconnect
 - **Support curators** — Agent Range pre-registered, fee-based curation with schain
 - **Track deal lineage** — migration, deprecation, and full evolution chain
 - **Supply chain transparency** — sellers.json parsing with OpenRTB schain in deal responses
@@ -192,9 +192,9 @@ INDEX_EXCHANGE_API_URL=https://api.indexexchange.com
 | Custom | Pluggable | Implement `AdServerClient` ABC |
 
 **FreeWheel authentication:**
-- **Streaming Hub:** OAuth 2.0 ROPCG via `streaming_hub_login` MCP tool (7-day token TTL)
-- **Buyer Cloud:** Beeswax session cookie via `buyer_cloud_login` MCP tool (30-day TTL with `keep_logged_in`)
-- Auto-reconnect on session expiry for both SH and BC
+- **Streaming Hub:** OAuth 2.1 PKCE bootstrap via `ad-seller freewheel-login --provider sh`, then bearer auth to `/mcp/oauth`
+- **Buyer Cloud:** OAuth 2.1 PKCE bootstrap via `ad-seller freewheel-login --provider bc`, then bearer auth to `/mcp/oauth`
+- Auto-refresh and reconnect on access-token expiry (re-run bootstrap only when refresh is invalid/expired)
 - Inventory mode: `FREEWHEEL_INVENTORY_MODE=deals_only` (default) exposes only pre-configured deals, or `full` for all inventory
 
 **CSV adapter:** Full CRUD with atomic writes and file locking — use for testing and demos without an ad server. Sample data included for CTV streaming and web display.

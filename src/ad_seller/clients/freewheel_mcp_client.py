@@ -39,6 +39,7 @@ class FreeWheelMCPClient:
         self._transport: Any = None  # MCP transport context manager
         self._transport_mode: Optional[str] = None
         self._session_id: Optional[str] = None
+        self._configured_url: Optional[str] = None
         self._url: Optional[str] = None
         self._connected: bool = False
 
@@ -49,6 +50,7 @@ class FreeWheelMCPClient:
     async def connect(
         self,
         url: str,
+        headers: Optional[dict[str, str]] = None,
         auth_params: Optional[dict[str, str]] = None,
         login_tool: Optional[str] = None,
     ) -> None:
@@ -61,6 +63,7 @@ class FreeWheelMCPClient:
         """
         from mcp import ClientSession
 
+        self._configured_url = url
         logger.info("Connecting to FreeWheel MCP at %s", url)
 
         attempts = _build_transport_attempts(url)
@@ -74,13 +77,13 @@ class FreeWheelMCPClient:
                 if mode == "streamable_http":
                     from mcp.client.streamable_http import streamablehttp_client
 
-                    self._transport = streamablehttp_client(candidate_url)
+                    self._transport = streamablehttp_client(candidate_url, headers=headers)
                     transport_tuple = await self._transport.__aenter__()
                     read_stream, write_stream = transport_tuple[0], transport_tuple[1]
                 else:
                     from mcp.client.sse import sse_client
 
-                    self._transport = sse_client(candidate_url)
+                    self._transport = sse_client(candidate_url, headers=headers)
                     read_stream, write_stream = await self._transport.__aenter__()
 
                 self._session = ClientSession(read_stream, write_stream)
@@ -118,6 +121,8 @@ class FreeWheelMCPClient:
 
     async def reconnect(
         self,
+        url: Optional[str] = None,
+        headers: Optional[dict[str, str]] = None,
         auth_params: Optional[dict[str, str]] = None,
         login_tool: Optional[str] = None,
     ) -> None:
@@ -127,6 +132,14 @@ class FreeWheelMCPClient:
         """
         if not self._connected or not self._session:
             raise ConnectionError("Cannot reconnect — not connected. Call connect() first.")
+
+        if headers is not None and not login_tool:
+            reconnect_url = url or self._configured_url or self._url
+            if not reconnect_url:
+                raise ConnectionError("Cannot reconnect — no URL available.")
+            await self._close_partial_connection()
+            await self.connect(url=reconnect_url, headers=headers)
+            return
 
         self._session_id = None  # Clear stale session
 

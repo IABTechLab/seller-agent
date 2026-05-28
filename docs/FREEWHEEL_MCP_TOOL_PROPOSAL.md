@@ -1,7 +1,7 @@
 > **Implementation Status (2026-03-27):**
 > - Phase 1 (Read-Only): ✅ Complete
 > - Phase 2 (PD/PA Deal Booking): ✅ Complete
-> - Phase 3 (PG Cross-MCP): ✅ Auth implemented — SH (OAuth 2.0 ROPCG) + BC (Beeswax session cookie)
+> - Phase 3 (PG Cross-MCP): ✅ Auth implemented — SH + BC via OAuth 2.1 PKCE (`/mcp/oauth`)
 > - See `.beads/PROGRESS.md` for current status
 
 # FreeWheel Dual-MCP Integration — Seller Agent Architecture & Tool Requirements
@@ -174,10 +174,10 @@ The Streaming Hub MCP (`shmcp.freewheel.com`) is the publisher-side ad server. T
 
 | Tool | Purpose | Notes |
 |---|---|---|
-| `streaming_hub_login` | Establish session | Returns `session_id` injected into all subsequent calls |
-| `streaming_hub_logout` | End session | Called on disconnect |
+| OAuth 2.1 PKCE (`/oauth/*`) | Bootstrap session | Browser login, auth code + token exchange |
+| `/mcp/oauth` | MCP tool transport | Bearer token required; server injects upstream FreeWheel session |
 
-**Seller agent auth flow:** On `connect()`, the adapter calls `streaming_hub_login` with configured username/password (OAuth 2.0 ROPCG via `https://api.freewheel.tv/auth/token`). The returned `session_id` is stored and injected into all subsequent SH tool calls. Tokens are valid for 7 days; the adapter auto-reconnects on session expiry.
+**Seller agent auth flow:** Run `ad-seller freewheel-login --provider sh` once to complete browser-based OAuth PKCE bootstrap, then the adapter connects to `https://shmcp.freewheel.com/mcp/oauth` with `Authorization: Bearer <token>`. Access tokens refresh automatically; if refresh expires/invalidates, rerun the bootstrap command.
 
 ### 1.2 Inventory Discovery
 
@@ -271,11 +271,10 @@ The Buyer Cloud MCP (`bcmcp.freewheel.com`) is the demand-side (Beeswax DSP). Th
 
 | Tool | Purpose | Notes |
 |---|---|---|
-| OAuth 2.0 token endpoint | Get access token | `client_id` + `client_secret` → `access_token` |
-| `buyer_cloud_login` | Establish session | Email/password/buzz_key → session cookie |
-| `buyer_cloud_logout` | End session | Called on disconnect |
+| OAuth 2.1 PKCE (`/oauth/*`) | Bootstrap session | Browser login, auth code + token exchange |
+| `/mcp/oauth` | MCP tool transport | Bearer token required; server injects upstream Buyer Cloud session |
 
-**Seller agent auth flow:** On `connect()`, the adapter first obtains an OAuth 2.0 access token, then calls `buyer_cloud_login` with email/password/buzz_key. Both credentials are needed for full API access.
+**Seller agent auth flow:** Run `ad-seller freewheel-login --provider bc` once to complete browser-based OAuth PKCE bootstrap, then the adapter connects to `https://bcmcp.freewheel.com/mcp/oauth` with `Authorization: Bearer <token>`. Access tokens refresh automatically; if refresh expires/invalidates, rerun the bootstrap command.
 
 ### 2.2 Campaign Execution
 
@@ -489,8 +488,8 @@ This table shows every `AdServerClient` method and which MCP tool(s) the seller 
 
 | Seller Agent Method | MCP | Streaming Hub Tool(s) | Buyer Cloud Tool(s) |
 |---|---|---|---|
-| `connect()` | Both | `streaming_hub_login` | OAuth 2.0 + `buyer_cloud_login` |
-| `disconnect()` | Both | `streaming_hub_logout` | `buyer_cloud_logout` |
+| `connect()` | Both | OAuth PKCE bootstrap + `/mcp/oauth` bearer auth | OAuth PKCE bootstrap + `/mcp/oauth` bearer auth |
+| `disconnect()` | Both | Close MCP transport | Close MCP transport |
 | `list_inventory()` | SH | `sh_1_0_list-sites` + `sh_1_0_site-sections` | — |
 | `list_audience_segments()` | SH | `sh_1_0_list-audience-items` | — |
 | `create_order()` | — | Not used (direct-sold only) | — |
@@ -703,8 +702,8 @@ The seller agent connects to **both** MCPs for cross-MCP PG booking:
 
 | # | SH Tool Name | Category | Seller Agent Usage |
 |---|---|---|---|
-| 1 | `streaming_hub_login` | Auth | Session establishment |
-| 2 | `streaming_hub_logout` | Auth | Session cleanup |
+| 1 | OAuth PKCE (`ad-seller freewheel-login --provider sh`) | Auth | Browser bootstrap + refresh token state |
+| 2 | `/mcp/oauth` | Auth transport | Bearer-token MCP session |
 | 3 | `sh_1_0_list-sites` | Inventory | List sites/networks |
 | 4 | `sh_1_0_site-sections` | Inventory | List sections within site |
 | 5 | `sh_1_0_listinventorypackages` | Inventory | List inventory packages |
@@ -726,8 +725,8 @@ The seller agent connects to **both** MCPs for cross-MCP PG booking:
 
 | # | BC Tool Name | Category | Seller Agent Usage |
 |---|---|---|---|
-| 1 | `buyer_cloud_login` | Auth | Session establishment |
-| 2 | `buyer_cloud_logout` | Auth | Session cleanup |
+| 1 | OAuth PKCE (`ad-seller freewheel-login --provider bc`) | Auth | Browser bootstrap + refresh token state |
+| 2 | `/mcp/oauth` | Auth transport | Bearer-token MCP session |
 | 3 | `bc_v2_get_campaigns` | Campaign | List campaigns |
 | 4 | `bc_v2_create_campaign` | Campaign | Create campaign (PG binding) |
 | 5 | `bc_v2_activate_campaign` | Campaign | Activate campaign |

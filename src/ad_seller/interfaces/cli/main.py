@@ -227,6 +227,58 @@ def connect(
     asyncio.run(test_connection())
 
 
+@app.command("freewheel-login")
+def freewheel_login(
+    provider: str = typer.Option(
+        "sh",
+        "--provider",
+        "-p",
+        help="OAuth provider to bootstrap: sh (Streaming Hub) or bc (Buyer Cloud)",
+    ),
+    open_browser: bool = typer.Option(
+        True,
+        "--browser/--no-browser",
+        help="Open the authorization URL in your default browser",
+    ),
+    timeout_seconds: int = typer.Option(
+        300,
+        "--timeout",
+        help="Seconds to wait for the local OAuth callback",
+    ),
+):
+    """Bootstrap FreeWheel OAuth (SH or BC) and store refresh/access tokens locally."""
+    from ...clients.freewheel_oauth import FreeWheelOAuthManager
+    from ...config import get_settings
+
+    settings = get_settings()
+    normalized_provider = provider.strip().lower()
+    if normalized_provider not in {"sh", "bc"}:
+        console.print("[red]Invalid provider. Use 'sh' or 'bc'.[/red]")
+        raise typer.Exit(1)
+    manager = FreeWheelOAuthManager.for_provider(settings, normalized_provider)
+
+    console.print(
+        Panel(
+            f"Starting FreeWheel OAuth login for {manager.config.provider_name}...",
+            title="FreeWheel",
+        )
+    )
+    console.print(f"Callback URL: [cyan]{manager.config.redirect_uri}[/cyan]")
+
+    try:
+        state = asyncio.run(
+            manager.bootstrap(open_browser=open_browser, timeout_seconds=timeout_seconds)
+        )
+    except Exception as exc:
+        console.print(f"[red]FreeWheel OAuth login failed: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    console.print(f"[green]✓ FreeWheel OAuth login complete ({manager.config.provider_name})[/green]")
+    console.print(f"Stored OAuth state in [cyan]{manager.token_path}[/cyan]")
+    if state.expires_at:
+        console.print(f"Access token expires at [cyan]{state.expires_at}[/cyan]")
+
+
 @app.command()
 def chat():
     """Start interactive chat mode for buyer interactions."""

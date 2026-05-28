@@ -1191,7 +1191,7 @@ git commit -m "docs: add natural language equivalents to ChatGPT setup guide"
 > **Implementation Status (2026-03-26):**
 > - Phase 1 (Read-Only): ✅ Complete
 > - Phase 2 (PD/PA Deal Booking): ✅ Complete (with auth stubs)
-> - Phase 3 (PG Cross-MCP): ✅ Auth implemented — SH (OAuth 2.0 ROPCG) + BC (Beeswax session cookie)
+> - Phase 3 (PG Cross-MCP): ✅ Auth implemented — SH + BC via OAuth 2.1 PKCE (`/mcp/oauth`)
 > - See PROGRESS.md for current status
 ```
 

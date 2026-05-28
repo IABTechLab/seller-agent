@@ -27,6 +27,7 @@ from .ad_server_base import (
     BookingResult,
 )
 from .freewheel_mcp_client import FreeWheelMCPClient
+from .freewheel_oauth import FreeWheelOAuthManager, build_oauth_mcp_url
 from .freewheel_normalizer import (
     micros_to_dollars,
     normalize_audience_segments,
@@ -36,59 +37,6 @@ from .freewheel_normalizer import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Auth helpers
-# =============================================================================
-
-
-def _build_sh_auth_params(settings: Any) -> dict[str, str]:
-    """Build Streaming Hub MCP login params from settings.
-
-    Auth mechanism: OAuth 2.0 Resource Owner Password Credentials Grant
-    (RFC 6749). The MCP ``streaming_hub_login`` tool wraps the token
-    exchange at ``https://api.freewheel.tv/auth/token``.  Tokens are
-    valid for 7 days; rate limit on the token endpoint is 3 req/s.
-
-    Required settings:
-        FREEWHEEL_SH_USERNAME — publisher account username
-        FREEWHEEL_SH_PASSWORD — publisher account password
-        FREEWHEEL_NETWORK_ID  — publisher network/account identifier
-    """
-    params: dict[str, str] = {}
-    if settings.freewheel_sh_username:
-        params["username"] = settings.freewheel_sh_username
-    if settings.freewheel_sh_password:
-        params["password"] = settings.freewheel_sh_password
-    if getattr(settings, "freewheel_network_id", None):
-        params["network_id"] = settings.freewheel_network_id
-    return params
-
-
-def _build_bc_auth_params(settings: Any) -> dict[str, str]:
-    """Build Buyer Cloud (Beeswax) MCP login params from settings.
-
-    Auth mechanism: Session cookie via the Buzz REST API authenticate
-    endpoint at ``https://<buzz_key>.api.beeswax.com/rest/authenticate``.
-    The MCP ``buyer_cloud_login`` tool wraps this exchange.  Sessions
-    last 100 hours by default (30 days with ``keep_logged_in``).
-
-    Required settings:
-        FREEWHEEL_BC_EMAIL    — Beeswax account email
-        FREEWHEEL_BC_PASSWORD — Beeswax account password
-        FREEWHEEL_BC_BUZZ_KEY — Buzz API key (determines API hostname)
-    """
-    params: dict[str, str] = {}
-    if settings.freewheel_bc_email:
-        params["email"] = settings.freewheel_bc_email
-    if settings.freewheel_bc_password:
-        params["password"] = settings.freewheel_bc_password
-    if settings.freewheel_bc_buzz_key:
-        params["buzz_key"] = settings.freewheel_bc_buzz_key
-    # Request extended session (30-day cookie) to reduce re-auth frequency
-    params["keep_logged_in"] = "true"
-    return params
 
 
 class FreeWheelAdServerClient(AdServerClient):
@@ -104,6 +52,8 @@ class FreeWheelAdServerClient(AdServerClient):
     def __init__(self) -> None:
         self._sh_client = FreeWheelMCPClient()
         self._bc_client: Optional[FreeWheelMCPClient] = None
+        self._sh_oauth_manager: Optional[FreeWheelOAuthManager] = None
+        self._bc_oauth_manager: Optional[FreeWheelOAuthManager] = None
         self._settings: Any = None
 
     def _get_settings(self) -> Any:
@@ -112,6 +62,20 @@ class FreeWheelAdServerClient(AdServerClient):
 
             self._settings = get_settings()
         return self._settings
+
+    def _get_sh_oauth_manager(self) -> FreeWheelOAuthManager:
+        if self._sh_oauth_manager is None:
+            self._sh_oauth_manager = FreeWheelOAuthManager.for_provider(
+                self._get_settings(), "sh"
+            )
+        return self._sh_oauth_manager
+
+    def _get_bc_oauth_manager(self) -> FreeWheelOAuthManager:
+        if self._bc_oauth_manager is None:
+            self._bc_oauth_manager = FreeWheelOAuthManager.for_provider(
+                self._get_settings(), "bc"
+            )
+        return self._bc_oauth_manager
 
     # =========================================================================
     # Lifecycle
@@ -122,15 +86,13 @@ class FreeWheelAdServerClient(AdServerClient):
 
         Authentication uses two separate credential sets:
 
-        - **Streaming Hub (SH):** OAuth 2.0 ROPCG via ``streaming_hub_login``
-          MCP tool.  Requires ``FREEWHEEL_SH_USERNAME``, ``FREEWHEEL_SH_PASSWORD``,
-          and ``FREEWHEEL_NETWORK_ID``.  Tokens are valid for 7 days.
+                - **Streaming Hub (SH):** OAuth 2.1 bearer token authentication at
+                    ``/mcp/oauth``. Token bootstrap/refresh is handled by
+                    ``FreeWheelOAuthManager``.
 
-        - **Buyer Cloud (BC):** Session cookie via ``buyer_cloud_login`` MCP
-          tool (wraps Beeswax ``/rest/authenticate``).  Requires
-          ``FREEWHEEL_BC_EMAIL``, ``FREEWHEEL_BC_PASSWORD``, and
-          ``FREEWHEEL_BC_BUZZ_KEY``.  Sessions last 100 h (30 days with
-          ``keep_logged_in``).
+                - **Buyer Cloud (BC):** OAuth 2.1 bearer token authentication at
+                    ``/mcp/oauth``. Token bootstrap/refresh is handled by
+                    ``FreeWheelOAuthManager``.
 
         A publisher configures both for PG booking (SH + BC) or just SH for
         PD/PA deals.
@@ -143,13 +105,10 @@ class FreeWheelAdServerClient(AdServerClient):
                 "FREEWHEEL_SH_MCP_URL not configured. Set it to the Streaming Hub MCP endpoint."
             )
 
-        # --- Streaming Hub auth (OAuth 2.0 ROPCG) ---
-        sh_auth = _build_sh_auth_params(settings)
-
+        access_token = await self._get_sh_oauth_manager().get_access_token()
         await self._sh_client.connect(
-            url=sh_url,
-            auth_params=sh_auth if sh_auth else None,
-            login_tool="streaming_hub_login" if sh_auth else None,
+            url=build_oauth_mcp_url(sh_url),
+            headers={"Authorization": f"Bearer {access_token}"},
         )
 
         logger.info(
@@ -157,33 +116,31 @@ class FreeWheelAdServerClient(AdServerClient):
             settings.freewheel_network_id or "default",
         )
 
-        # --- Buyer Cloud auth (Beeswax session cookie) ---
+        # --- Buyer Cloud OAuth ---
         bc_url = settings.freewheel_bc_mcp_url
         if bc_url:
             self._bc_client = FreeWheelMCPClient()
-            bc_auth = _build_bc_auth_params(settings)
-
+            bc_access_token = await self._get_bc_oauth_manager().get_access_token()
             await self._bc_client.connect(
-                url=bc_url,
-                auth_params=bc_auth if bc_auth else None,
-                login_tool="buyer_cloud_login" if bc_auth else None,
+                url=build_oauth_mcp_url(bc_url),
+                headers={"Authorization": f"Bearer {bc_access_token}"},
             )
-            logger.info("Connected to Buyer Cloud (buzz_key=%s)", settings.freewheel_bc_buzz_key or "default")
+            logger.info("Connected to Buyer Cloud via OAuth")
 
     async def disconnect(self) -> None:
         """Disconnect from FreeWheel MCP servers."""
-        await self._sh_client.disconnect(logout_tool="streaming_hub_logout")
+        await self._sh_client.disconnect(logout_tool=None)
         if self._bc_client:
-            await self._bc_client.disconnect(logout_tool="buyer_cloud_logout")
+            await self._bc_client.disconnect(logout_tool=None)
 
     async def _reconnect_sh(self) -> None:
         """Re-authenticate with Streaming Hub on session expiry."""
         settings = self._get_settings()
-        sh_auth = _build_sh_auth_params(settings)
         logger.info("Re-authenticating with Streaming Hub")
+        access_token = await self._get_sh_oauth_manager().get_access_token(force_refresh=True)
         await self._sh_client.reconnect(
-            auth_params=sh_auth if sh_auth else None,
-            login_tool="streaming_hub_login" if sh_auth else None,
+            url=build_oauth_mcp_url(settings.freewheel_sh_mcp_url),
+            headers={"Authorization": f"Bearer {access_token}"},
         )
 
     async def _reconnect_bc(self) -> None:
@@ -191,11 +148,11 @@ class FreeWheelAdServerClient(AdServerClient):
         if not self._bc_client:
             return
         settings = self._get_settings()
-        bc_auth = _build_bc_auth_params(settings)
         logger.info("Re-authenticating with Buyer Cloud")
+        bc_access_token = await self._get_bc_oauth_manager().get_access_token(force_refresh=True)
         await self._bc_client.reconnect(
-            auth_params=bc_auth if bc_auth else None,
-            login_tool="buyer_cloud_login" if bc_auth else None,
+            url=build_oauth_mcp_url(settings.freewheel_bc_mcp_url),
+            headers={"Authorization": f"Bearer {bc_access_token}"},
         )
 
     # =========================================================================

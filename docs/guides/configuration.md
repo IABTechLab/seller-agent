@@ -41,12 +41,24 @@ with case-insensitive variable names.
 | `FREEWHEEL_NETWORK_ID` | `str` | `None` | Publisher network/account ID in FreeWheel |
 | `FREEWHEEL_INVENTORY_MODE` | `str` | `"deals_only"` | `"deals_only"` (only pre-configured deals) or `"full"` (all inventory) |
 | `FREEWHEEL_SH_MCP_URL` | `str` | `None` | Streaming Hub MCP endpoint URL |
-| `FREEWHEEL_SH_USERNAME` | `str` | `None` | SH publisher account username (OAuth 2.0 ROPCG, 7-day token TTL) |
-| `FREEWHEEL_SH_PASSWORD` | `str` | `None` | SH publisher account password |
-| `FREEWHEEL_BC_MCP_URL` | `str` | `None` | Buyer Cloud MCP endpoint URL (for PG deals), e.g. `https://<buzz_key>.api.beeswax.com` |
-| `FREEWHEEL_BC_EMAIL` | `str` | `None` | Beeswax account email (session cookie auth, 100h/30-day TTL) |
-| `FREEWHEEL_BC_PASSWORD` | `str` | `None` | Beeswax account password |
-| `FREEWHEEL_BC_BUZZ_KEY` | `str` | `None` | Buzz API key (determines API hostname and cookie name) |
+| `FREEWHEEL_SH_OAUTH_CLIENT_ID` | `str` | `None` | Optional pre-registered SH OAuth client ID (auto-register if omitted) |
+| `FREEWHEEL_SH_OAUTH_CLIENT_NAME` | `str` | `"Ad Seller Agent"` | SH OAuth dynamic registration display name |
+| `FREEWHEEL_SH_OAUTH_REDIRECT_URI` | `str` | `"http://127.0.0.1:8765/callback"` | SH local OAuth callback URI |
+| `FREEWHEEL_SH_OAUTH_SCOPE` | `str` | `"api"` | SH OAuth scope |
+| `FREEWHEEL_SH_OAUTH_TOKEN_PATH` | `str` | `"~/.config/ad-seller/freewheel-sh-oauth.json"` | SH token state file |
+| `FREEWHEEL_BC_MCP_URL` | `str` | `None` | Buyer Cloud MCP endpoint URL (e.g. `https://bcmcp.freewheel.com`) |
+| `FREEWHEEL_BC_OAUTH_CLIENT_ID` | `str` | `None` | Optional pre-registered BC OAuth client ID (auto-register if omitted) |
+| `FREEWHEEL_BC_OAUTH_CLIENT_NAME` | `str` | `"Ad Seller Agent"` | BC OAuth dynamic registration display name |
+| `FREEWHEEL_BC_OAUTH_REDIRECT_URI` | `str` | `"http://127.0.0.1:8766/callback"` | BC local OAuth callback URI |
+| `FREEWHEEL_BC_OAUTH_SCOPE` | `str` | `"api"` | BC OAuth scope |
+| `FREEWHEEL_BC_OAUTH_TOKEN_PATH` | `str` | `"~/.config/ad-seller/freewheel-bc-oauth.json"` | BC token state file |
+
+Run these once to bootstrap browser-based authentication:
+
+```bash
+ad-seller freewheel-login --provider sh
+ad-seller freewheel-login --provider bc
+```
 
 ## SSP Connector Settings
 
