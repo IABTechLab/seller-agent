@@ -39,19 +39,11 @@ jobs:
           AD_BUYER_SRC_PATH: ${{ github.workspace }}/buyer-agent/src
           CREWAI_TELEMETRY_OPT_OUT: "true"
           LITELLM_TELEMETRY: "False"
-        run: |
-          set +e
-          timeout --kill-after=10s 60s pytest tests/unit/ -v --tb=short
-          code=$?
-          ([ $code -eq 124 ] || [ $code -eq 137 ]) && exit 0 || exit $code
+        run: pytest tests/unit/ -v --tb=short --timeout=30
 
       - name: Integration tests
         env:
           ANTHROPIC_API_KEY: test-key-for-ci
           CREWAI_TELEMETRY_OPT_OUT: "true"
           LITELLM_TELEMETRY: "False"
-        run: |
-          set +e
-          timeout --kill-after=10s 120s pytest tests/integration/ -v --tb=short
-          code=$?
-          ([ $code -eq 124 ] || [ $code -eq 137 ]) && exit 0 || exit $code
+        run: pytest tests/integration/ -v --tb=short --timeout=60
