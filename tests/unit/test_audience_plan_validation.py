@@ -256,9 +256,19 @@ class TestValidateAudiencePlan:
 
 
 def _run_validate(flow: ProposalHandlingFlow):
-    """Run the validate_audience coroutine directly."""
+    """Run the validate_audience coroutine directly.
 
-    asyncio.get_event_loop().run_until_complete(flow.validate_audience())
+    Uses a fresh event loop per call (instead of the deprecated
+    ``asyncio.get_event_loop().run_until_complete(...)`` pattern) so the
+    helper remains compatible with pytest-asyncio >= 1.4, which no longer
+    creates an implicit loop for sync test bodies.
+    """
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(flow.validate_audience())
+    finally:
+        loop.close()
 
 
 def _build_flow(packages: dict | None = None) -> ProposalHandlingFlow:
