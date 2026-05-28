@@ -38,14 +38,22 @@ jobs:
           ANTHROPIC_API_KEY: test-key-for-ci
           AD_BUYER_SRC_PATH: ${{ github.workspace }}/buyer-agent/src
           CREWAI_TELEMETRY_OPT_OUT: "true"
+          CREWAI_DISABLE_TELEMETRY: "true"
+          CREWAI_DISABLE_TRACKING: "true"
           LITELLM_TELEMETRY: "False"
           OTEL_SDK_DISABLED: "true"
-        run: timeout --kill-after=10s 300s pytest tests/unit/ -v --tb=short --timeout=30 --timeout-method=thread
+          ANONYMIZED_TELEMETRY: "False"
+          POSTHOG_DISABLED: "1"
+        run: timeout --kill-after=10s 600s pytest tests/unit/ -v --tb=short --timeout=30 --timeout-method=thread
 
       - name: Integration tests
         env:
           ANTHROPIC_API_KEY: test-key-for-ci
           CREWAI_TELEMETRY_OPT_OUT: "true"
+          CREWAI_DISABLE_TELEMETRY: "true"
+          CREWAI_DISABLE_TRACKING: "true"
           LITELLM_TELEMETRY: "False"
           OTEL_SDK_DISABLED: "true"
-        run: timeout --kill-after=10s 300s pytest tests/integration/ -v --tb=short --timeout=60 --timeout-method=thread
+          ANONYMIZED_TELEMETRY: "False"
+          POSTHOG_DISABLED: "1"
+        run: timeout --kill-after=10s 600s pytest tests/integration/ -v --tb=short --timeout=60 --timeout-method=thread
