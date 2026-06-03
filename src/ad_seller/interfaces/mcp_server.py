@@ -237,8 +237,9 @@ async def set_publisher_identity(name: str, domain: str = "", org_id: str = "") 
 
 
 @mcp.tool()
-async def list_products(limit: int = 50) -> str:
+async def list_products(limit: int | None = 50) -> str:
     """List products in the catalog. These are the inventory items available for deals."""
+    limit = limit or 50
     from ..flows import ProductSetupFlow
 
     flow = ProductSetupFlow()
@@ -279,8 +280,9 @@ async def get_sync_status() -> str:
 
 
 @mcp.tool()
-async def list_inventory(limit: int = 100) -> str:
+async def list_inventory(limit: int | None = 100) -> str:
     """List raw inventory from the ad server (before product mapping)."""
+    limit = limit or 100
     from ..clients.ad_server_base import get_ad_server_client
 
     client = get_ad_server_client()
@@ -656,8 +658,9 @@ async def bulk_deal_operations(operations: str) -> str:
 
 
 @mcp.tool()
-async def list_orders(limit: int = 50) -> str:
+async def list_orders(limit: int | None = 50) -> str:
     """List orders and their current states."""
+    limit = limit or 50
     import httpx
 
     settings = _get_settings()
@@ -1124,9 +1127,10 @@ from ..events.bus import get_event_bus  # noqa: E402
 
 
 @mcp.tool()
-async def get_inbound_queue(limit: int = 50) -> str:
+async def get_inbound_queue(limit: int | None = 50) -> str:
     """Get everything waiting for publisher action: pending approvals, unresolved
     proposals. Returns a unified list sorted by urgency (most urgent first)."""
+    limit = limit or 50
     from datetime import timedelta
 
     items: list[dict] = []
@@ -1199,9 +1203,11 @@ async def get_inbound_queue(limit: int = 50) -> str:
 
 
 @mcp.tool()
-async def get_buyer_activity(days: int = 7, limit: int = 50) -> str:
+async def get_buyer_activity(days: int | None = 7, limit: int | None = 50) -> str:
     """Show buyer agent engagement: who accessed inventory, initiated deals,
     or negotiated recently. Grouped by buyer identity."""
+    days = days or 7
+    limit = limit or 50
     from datetime import timedelta
 
     warnings: list[str] = []

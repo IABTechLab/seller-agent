@@ -267,20 +267,59 @@ class CreateDealTool(BaseTool):
             if not dt_enum:
                 return json.dumps({"error": f"Invalid deal type: {deal_type}. Use PG, PD, or PA."})
 
-            # Get product data from the /products endpoint (sync httpx call)
-            # This works because the FastAPI background server is already running
-            base_url = os.environ.get("SELLER_AGENT_URL", "http://localhost:8001")
+            # Get product data from the in-process chat products cache (CSV-loaded)
+            # The REST endpoints use a static catalog without CSV products.
+            # The _chat._products dict is populated from CSV adapter - may need initialization.
+            product_data = None
             try:
-                resp = httpx.get(f"{base_url}/products/{product_id}", timeout=10)
-                if resp.status_code == 200:
-                    product_data = resp.json()
-                else:
-                    return json.dumps({"error": f"Product not found: {product_id}"})
+                from ad_seller.interfaces.agentcore.http_main import _chat, _get_chat
+                # Ensure chat is initialized (loads CSV products)
+                if not _chat:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            import concurrent.futures
+                            with concurrent.futures.ThreadPoolExecutor() as pool:
+                                pool.submit(asyncio.run, _get_chat()).result(timeout=15)
+                        else:
+                            asyncio.run(_get_chat())
+                    except RuntimeError:
+                        asyncio.run(_get_chat())
+                    # Re-import after initialization
+                    from ad_seller.interfaces.agentcore.http_main import _chat
+
+                logger.info(f"create_deal_direct: _chat={_chat is not None}, has_products={hasattr(_chat, '_products') if _chat else False}, product_count={len(_chat._products) if _chat and hasattr(_chat, '_products') else 0}")
+                if _chat and hasattr(_chat, '_products') and product_id in _chat._products:
+                    p = _chat._products[product_id]
+                    product_data = {
+                        "product_id": product_id,
+                        "name": getattr(p, 'name', product_id),
+                        "base_cpm": getattr(p, 'base_cpm', 25.0),
+                        "floor_cpm": getattr(p, 'floor_cpm', 20.0),
+                        "inventory_type": getattr(p, 'inventory_type', 'display'),
+                    }
+                    logger.info(f"create_deal_direct: Found product in cache: {product_data}")
+                elif _chat and hasattr(_chat, '_products'):
+                    logger.warning(f"create_deal_direct: product_id={product_id} NOT in _chat._products. Available: {list(_chat._products.keys())[:5]}")
             except Exception as e:
-                return json.dumps({"error": f"Could not fetch product {product_id}: {e}"})
+                logger.warning(f"create_deal_direct: Failed to access _chat._products: {e}")
+
+            if not product_data:
+                # Fallback: try REST API /products/{id} (static catalog)
+                base_url = os.environ.get("SELLER_AGENT_URL", "http://localhost:8001")
+                try:
+                    resp = httpx.get(f"{base_url}/products/{product_id}", timeout=10)
+                    if resp.status_code == 200:
+                        product_data = resp.json()
+                except Exception:
+                    pass
+
+            if not product_data:
+                return json.dumps({"error": f"Product not found: {product_id}"})
 
             # Extract pricing from product data
-            floor_cpm = product_data.get("floor_price_cpm", product_data.get("base_cpm", 25.0))
+            floor_cpm = product_data.get("floor_cpm", product_data.get("floor_price_cpm", product_data.get("base_cpm", 25.0)))
             base_cpm = product_data.get("base_cpm", floor_cpm)
             product_name = product_data.get("name", product_data.get("product_name", product_id))
 
