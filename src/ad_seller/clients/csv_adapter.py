@@ -164,13 +164,36 @@ class CSVAdServerClient(AdServerClient):
         return self._data_dir / filename
 
     def _read_csv(self, filename: str) -> list[dict[str, str]]:
-        """Read a CSV file and return list of row dicts."""
+        """Read a CSV file and any overlay files matching the pattern.
+        
+        Convention: _read_csv("inventory.csv") reads inventory.csv plus
+        any inventory_*.csv files in the same directory (additive merge).
+        """
+        import glob as glob_module
+        
         path = self._csv_path(filename)
-        if not path.exists():
+        stem = path.stem  # e.g. "inventory"
+        
+        # Find base file + overlays
+        matched_files = []
+        if path.exists():
+            matched_files.append(path)
+        
+        # Glob for overlay files: inventory_*.csv
+        overlay_pattern = str(self._data_dir / f"{stem}_*.csv")
+        matched_files.extend(sorted(Path(p) for p in glob_module.glob(overlay_pattern)))
+        
+        if not matched_files:
             return []
-        with open(path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            return list(reader)
+        
+        # Merge all matched files
+        all_rows = []
+        for csv_path in matched_files:
+            with open(csv_path, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                all_rows.extend(list(reader))
+        
+        return all_rows
 
     def _write_csv(
         self,
