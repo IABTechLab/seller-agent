@@ -19,13 +19,8 @@ classifiers = [
 ]
 
 dependencies = [
-<<<<<<< HEAD
     "crewai[anthropic]>=1.14.4,<2.0.0",
     "crewai-tools>=1.14.0,<2.0.0",
-=======
-    "crewai[anthropic]>=1.14.0,<2.0.0",
-    "crewai-tools>=1.10.0",
->>>>>>> 799d99f (fix: backwards-compatible changes for AgentCore runtime support)
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "httpx>=0.27.0",

@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Ad Seller System — S3 Data Bucket for AgentCore runtime.
+  Provides an S3 bucket for inventory and audience CSV data
+  that the seller agent reads at runtime (no redeploy needed for data updates).
+
+# =============================================================================
+# Parameters
+# =============================================================================
+Parameters:
+  Environment:
+    Type: String
+    Default: staging
+    AllowedValues: [staging, production]
+  AgentName:
+    Type: String
+    Default: aamp-seller
+    Description: Agent name used in bucket naming
+  BucketName:
+    Type: String
+    Default: ""
+    Description: Explicit bucket name. If empty, auto-generates from AgentName-data-Environment-Region.
+  RuntimeRoleArn:
+    Type: String
+    Description: ARN of the AgentCore runtime execution role that needs S3 read access
+
+Conditions:
+  UseBucketNameParam: !Not [!Equals [!Ref BucketName, ""]]
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # S3 Bucket for seller data (inventory, audiences, deals)
+  # ---------------------------------------------------------------------------
+  SellerDataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If
+        - UseBucketNameParam
+        - !Ref BucketName
+        - !Sub "${AgentName}-data-${Environment}-${AWS::Region}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      Tags:
+        - Key: Project
+          Value: ad-seller-system
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: seller-agent-data
+
+  # ---------------------------------------------------------------------------
+  # IAM Policy — Grant the runtime role read access to the bucket
+  # ---------------------------------------------------------------------------
+  RuntimeS3ReadPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${AgentName}-s3-data-read"
+      Roles:
+        - !Select [1, !Split ["/", !Ref RuntimeRoleArn]]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !GetAtt SellerDataBucket.Arn
+              - !Sub "${SellerDataBucket.Arn}/*"
+
+# =============================================================================
+# Outputs
+# =============================================================================
+Outputs:
+  DataBucketName:
+    Description: S3 bucket name for seller data
+    Value: !Ref SellerDataBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-DataBucketName"
+
+  DataBucketArn:
+    Description: S3 bucket ARN
+    Value: !GetAtt SellerDataBucket.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-DataBucketArn"

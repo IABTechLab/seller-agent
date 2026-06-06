@@ -112,3 +112,7 @@ Dockerfile
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Sample files
+data/csv/samples/aws_workshop/audiences_*
+data/csv/samples/aws_workshop/inventory_*

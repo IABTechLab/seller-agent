@@ -267,13 +267,14 @@ async def _get_chat():
     logger.info("Storage backend connected: %s", storage_type)
     _chat = ChatInterface(storage=storage)
 
-    # Load products directly from CSV adapter (no MCP server needed).
-    # We wrap each item in a SimpleNamespace so the NegotiationEngine
-    # can read base_cpm / floor_cpm / inventory_type as attributes.
+    # Load products from the configured ad server adapter.
+    # AD_SERVER_TYPE env var determines which adapter is used:
+    #   csv  → local filesystem (default)
+    #   s3   → reads from S3 bucket (no redeploy for data updates)
     try:
         from types import SimpleNamespace
 
-        ad_client = get_ad_server_client(ad_server_type="csv")
+        ad_client = get_ad_server_client()  # Uses AD_SERVER_TYPE from settings
         async with ad_client:
             items = await ad_client.list_inventory()
             for item in items:
@@ -288,9 +289,9 @@ async def _get_chat():
                     raw=raw,
                 )
                 _chat._products[item.id] = wrapped
-        logger.info("Loaded %d products from CSV adapter", len(_chat._products))
+        logger.info("Loaded %d products from %s adapter", len(_chat._products), os.environ.get("AD_SERVER_TYPE", "csv"))
     except Exception as exc:
-        logger.warning("Failed to load products from CSV: %s", exc)
+        logger.warning("Failed to load products from %s: %s", os.environ.get("AD_SERVER_TYPE", "csv"), exc)
 
     _chat_initialized = True
     return _chat

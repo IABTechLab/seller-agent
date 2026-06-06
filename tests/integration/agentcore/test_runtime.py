@@ -278,7 +278,7 @@ class TestCrewCreateDeal:
         result = invoke_runtime(
             runtime_config,
             {
-                "prompt": "negotiate a deal for inv-ctv-apex-sports-nba at $40 CPM for 3M impressions as a Preferred Deal",
+                "prompt": "negotiate a deal for inv-ctv-apex-sports-nba at $30 CPM for 3M impressions as a Preferred Deal",
                 "routing_mode": "crew",
             },
         )

@@ -37,6 +37,7 @@ DO_CLEANUP=false
 PROMPT='{"prompt": "list products"}'
 DEPLOY_MODE="chat"
 STORAGE_TYPE="sqlite"
+INVENTORY_TYPE="${AD_SERVER_TYPE:-csv}"
 ENVIRONMENT="${ENVIRONMENT:-staging}"
 STACK_PREFIX="${STACK_PREFIX:-ad-seller-${ENVIRONMENT}}"
 TEMPLATE_BUCKET="${TEMPLATE_BUCKET:-}"
@@ -50,6 +51,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)       DEPLOY_MODE="$2"; shift 2 ;;
     --storage)    STORAGE_TYPE="$2"; shift 2 ;;
+    --inventory)  INVENTORY_TYPE="$2"; shift 2 ;;
     --region)     REGION="$2"; shift 2 ;;
     --name)       AGENT_NAME="$2"; shift 2 ;;
     --profile)    AWS_PROFILE="$2"; shift 2 ;;
@@ -62,15 +64,16 @@ while [[ $# -gt 0 ]]; do
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
-  --mode MODE         Deployment mode: all|mcp|http|crew|chat (default: chat)
-  --storage STORAGE   Storage backend: sqlite|postgres (default: sqlite)
-  --region REGION     AWS region (default: us-west-2)
-  --name NAME         AgentCore runtime name override
-  --profile PROFILE   AWS CLI profile
-  --test              Deploy then invoke + check CloudWatch logs
-  --test-only         Skip deploy, just invoke + check logs
-  --cleanup           Destroy deployed runtimes (and CFN stack if --storage postgres)
-  --prompt JSON       Custom invoke payload
+  --mode MODE           Deployment mode: all|mcp|http|crew|chat (default: chat)
+  --inventory SOURCE    Inventory data source: csv|s3|gam|freewheel (default: csv)
+  --storage BACKEND     Deal/order persistence: sqlite|postgres (default: sqlite)
+  --region REGION       AWS region (default: us-west-2)
+  --name NAME           AgentCore runtime name override
+  --profile PROFILE     AWS CLI profile
+  --test                Deploy then invoke + check CloudWatch logs
+  --test-only           Skip deploy, just invoke + check logs
+  --cleanup             Destroy deployed runtimes (and CFN stack if --storage postgres)
+  --prompt JSON         Custom invoke payload
 
 Modes:
   all    Deploy both MCP and HTTP runtimes
@@ -79,12 +82,20 @@ Modes:
   crew   Deploy HTTP runtime with ROUTING_MODE=crew default
   chat   Deploy HTTP runtime with ROUTING_MODE=chat default
 
-Storage:
-  sqlite    In-memory SQLite, PUBLIC network mode (default)
-  postgres  Deploy CloudFormation infra, CUSTOMER_VPC network mode
+Inventory (--inventory):
+  csv        Local CSV files in data/csv/samples/ (default, no infra needed)
+  s3         S3 bucket — reads CSVs at runtime, no redeploy for data updates
+  gam        Google Ad Manager API
+  freewheel  FreeWheel API
 
-Cleanup:
-  --cleanup                          Destroy default agent runtime
+Storage (--storage):
+  sqlite     In-memory SQLite, PUBLIC network mode (default)
+  postgres   Deploy CloudFormation infra (Aurora + Redis), VPC network mode
+
+Examples:
+  $(basename "$0") --mode http --profile genai                     # CSV + SQLite (simplest)
+  $(basename "$0") --mode http --inventory s3 --profile genai      # S3 data, no redeploy for updates
+  $(basename "$0") --mode http --inventory gam --storage postgres   # Production (GAM + Aurora)
   --cleanup --mode all               Destroy both MCP and HTTP runtimes
   --cleanup --mode all --storage postgres  Also delete CloudFormation stack
 EOF
@@ -96,6 +107,12 @@ done
 # ── Validate mode ───────────────────────────────────────────────────
 if ! echo "${VALID_MODES}" | grep -qw "${DEPLOY_MODE}"; then
   echo "ERROR: Invalid mode '${DEPLOY_MODE}'. Must be one of: ${VALID_MODES}" >&2
+  exit 1
+fi
+
+# ── Validate inventory ──────────────────────────────────────────────
+if [[ "${INVENTORY_TYPE}" != "csv" && "${INVENTORY_TYPE}" != "s3" && "${INVENTORY_TYPE}" != "gam" && "${INVENTORY_TYPE}" != "freewheel" ]]; then
+  echo "ERROR: Invalid inventory '${INVENTORY_TYPE}'. Must be: csv|s3|gam|freewheel" >&2
   exit 1
 fi
 
@@ -316,6 +333,106 @@ for o in outputs:
 }
 
 # =============================================================================
+# S3 Data Bucket provisioning (--inventory s3)
+# =============================================================================
+provision_s3_data_bucket() {
+  local bucket_name="${S3_DATA_BUCKET:-${STACK_PREFIX}-seller-data-${REGION}}"
+  local prefix="${S3_DATA_PREFIX:-seller-data/}"
+  local stack_name="${STACK_PREFIX}-s3-data"
+
+  echo "============================================="
+  echo "  Provisioning S3 Data Bucket"
+  echo "  Bucket: ${bucket_name}"
+  echo "  Prefix: ${prefix}"
+  echo "============================================="
+
+  # Get the runtime execution role ARN (needed for IAM policy in the stack)
+  local runtime_role_arn=""
+  if [[ -f "${REPO_ROOT}/.bedrock_agentcore.yaml" ]]; then
+    runtime_role_arn=$(grep "execution_role:" "${REPO_ROOT}/.bedrock_agentcore.yaml" | head -1 | awk '{print $2}')
+  fi
+
+  # Deploy CloudFormation stack
+  local template_path="${SCRIPT_DIR}/storage-s3.yaml"
+  if [[ -f "${template_path}" ]]; then
+    echo "  Deploying CloudFormation stack: ${stack_name}..."
+
+    local param_overrides="Environment=${ENVIRONMENT} AgentName=${STACK_PREFIX}"
+    if [[ -n "${runtime_role_arn}" ]]; then
+      param_overrides="${param_overrides} RuntimeRoleArn=${runtime_role_arn}"
+    fi
+    if [[ -n "${S3_DATA_BUCKET}" ]]; then
+      param_overrides="${param_overrides} BucketName=${S3_DATA_BUCKET}"
+    fi
+
+    local cfn_cmd="aws cloudformation deploy"
+    cfn_cmd="${cfn_cmd} --template-file ${template_path}"
+    cfn_cmd="${cfn_cmd} --stack-name ${stack_name}"
+    cfn_cmd="${cfn_cmd} --region ${REGION}"
+    cfn_cmd="${cfn_cmd} --parameter-overrides ${param_overrides}"
+    cfn_cmd="${cfn_cmd} --capabilities CAPABILITY_IAM"
+    cfn_cmd="${cfn_cmd} --no-fail-on-empty-changeset"
+    if [[ -n "${AWS_PROFILE}" ]]; then
+      cfn_cmd="${cfn_cmd} --profile ${AWS_PROFILE}"
+    fi
+
+    eval ${cfn_cmd}
+
+    # Get the bucket name from stack outputs
+    bucket_name=$(aws cloudformation describe-stacks \
+      --stack-name "${stack_name}" --region "${REGION}" \
+      ${AWS_PROFILE:+--profile "${AWS_PROFILE}"} \
+      --query "Stacks[0].Outputs[?OutputKey=='DataBucketName'].OutputValue" \
+      --output text 2>/dev/null || echo "${bucket_name}")
+
+    echo "  ✅ Stack deployed: ${stack_name} → bucket: ${bucket_name}"
+  else
+    # Fallback: create bucket imperatively if template not found
+    echo "  ⚠️  CloudFormation template not found, creating bucket imperatively..."
+    if aws s3api head-bucket --bucket "${bucket_name}" --region "${REGION}" \
+       ${AWS_PROFILE:+--profile "${AWS_PROFILE}"} 2>/dev/null; then
+      echo "  ✅ Bucket already exists: ${bucket_name}"
+    else
+      if [[ "${REGION}" == "us-east-1" ]]; then
+        aws s3api create-bucket --bucket "${bucket_name}" --region "${REGION}" \
+          ${AWS_PROFILE:+--profile "${AWS_PROFILE}"}
+      else
+        aws s3api create-bucket --bucket "${bucket_name}" --region "${REGION}" \
+          ${AWS_PROFILE:+--profile "${AWS_PROFILE}"} \
+          --create-bucket-configuration LocationConstraint="${REGION}"
+      fi
+      aws s3api put-public-access-block --bucket "${bucket_name}" \
+        ${AWS_PROFILE:+--profile "${AWS_PROFILE}"} \
+        --public-access-block-configuration \
+        "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+      echo "  ✅ Bucket created: ${bucket_name}"
+    fi
+  fi
+
+  # Upload local CSV data files to S3
+  local data_dir="${REPO_ROOT}/data/csv/samples/aws_workshop"
+  if [[ -d "${data_dir}" ]]; then
+    echo "  Uploading CSV data to s3://${bucket_name}/${prefix}..."
+    local count=0
+    for csv_file in "${data_dir}"/inventory*.csv "${data_dir}"/audiences*.csv "${data_dir}"/orders*.csv "${data_dir}"/deals*.csv "${data_dir}"/line_items*.csv; do
+      if [[ -f "${csv_file}" ]]; then
+        local fname=$(basename "${csv_file}")
+        aws s3 cp "${csv_file}" "s3://${bucket_name}/${prefix}${fname}" \
+          --region "${REGION}" ${AWS_PROFILE:+--profile "${AWS_PROFILE}"} --quiet
+        count=$((count + 1))
+      fi
+    done
+    echo "  ✅ Uploaded ${count} CSV file(s) to s3://${bucket_name}/${prefix}"
+  else
+    echo "  ⚠️  No local data dir found: ${data_dir}"
+  fi
+
+  # Export for use in env vars
+  export S3_DATA_BUCKET="${bucket_name}"
+  export S3_DATA_PREFIX="${prefix}"
+}
+
+# =============================================================================
 # MCP Runtime deployment
 # =============================================================================
 deploy_mcp_runtime() {
@@ -360,22 +477,33 @@ deploy_mcp_runtime() {
     --env "AGENTCORE_MODE=mcp"
     --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
-    --env "AD_SERVER_TYPE=csv"
-    --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
     --env "CREW_MEMORY_ENABLED=true"
     --env "MEMORY_LLM_MODEL=bedrock/us.amazon.nova-lite-v1:0"
   )
 
-  if [[ "${STORAGE_TYPE}" == "postgres" ]]; then
+  if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
     env_args+=(
+      --env "AD_SERVER_TYPE=s3"
+      --env "S3_DATA_BUCKET=${S3_DATA_BUCKET:-${STACK_PREFIX}-seller-data-${REGION}}"
+      --env "S3_DATA_PREFIX=${S3_DATA_PREFIX:-seller-data/}"
+      --env "STORAGE_TYPE=sqlite"
+    )
+  elif [[ "${STORAGE_TYPE}" == "postgres" ]]; then
+    env_args+=(
+      --env "AD_SERVER_TYPE=${INVENTORY_TYPE}"
+      --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
       --env "STORAGE_TYPE=hybrid"
       --env "DATABASE_URL=${DB_URL}"
       --env "REDIS_URL=${REDIS_URL}"
     )
   else
-    env_args+=( --env "STORAGE_TYPE=sqlite" )
+    env_args+=(
+      --env "AD_SERVER_TYPE=${INVENTORY_TYPE}"
+      --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
+      --env "STORAGE_TYPE=sqlite"
+    )
   fi
 
   # Deploy
@@ -433,22 +561,33 @@ deploy_http_runtime() {
     --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
     --env "ROUTING_MODE=${routing_mode}"
-    --env "AD_SERVER_TYPE=csv"
-    --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
     --env "CREW_MEMORY_ENABLED=true"
     --env "MEMORY_LLM_MODEL=bedrock/us.amazon.nova-lite-v1:0"
   )
 
-  if [[ "${STORAGE_TYPE}" == "postgres" ]]; then
+  if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
     env_args+=(
+      --env "AD_SERVER_TYPE=s3"
+      --env "S3_DATA_BUCKET=${S3_DATA_BUCKET:-${STACK_PREFIX}-seller-data-${REGION}}"
+      --env "S3_DATA_PREFIX=${S3_DATA_PREFIX:-seller-data/}"
+      --env "STORAGE_TYPE=sqlite"
+    )
+  elif [[ "${STORAGE_TYPE}" == "postgres" ]]; then
+    env_args+=(
+      --env "AD_SERVER_TYPE=${INVENTORY_TYPE}"
+      --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
       --env "STORAGE_TYPE=hybrid"
       --env "DATABASE_URL=${DB_URL}"
       --env "REDIS_URL=${REDIS_URL}"
     )
   else
-    env_args+=( --env "STORAGE_TYPE=sqlite" )
+    env_args+=(
+      --env "AD_SERVER_TYPE=${INVENTORY_TYPE}"
+      --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
+      --env "STORAGE_TYPE=sqlite"
+    )
   fi
 
   # Deploy
@@ -532,6 +671,7 @@ if [[ "${TEST_ONLY}" == "false" ]]; then
   echo "  Ad Seller Agent — AgentCore Deploy"
   echo "============================================="
   echo "  Mode       : ${DEPLOY_MODE}"
+  echo "  Inventory  : ${INVENTORY_TYPE}"
   echo "  Storage    : ${STORAGE_TYPE}"
   echo "  Region     : ${REGION}"
   echo "  LLM Model  : ${LLM_MODEL}"
@@ -541,6 +681,11 @@ if [[ "${TEST_ONLY}" == "false" ]]; then
   # Deploy infrastructure if postgres
   if [[ "${STORAGE_TYPE}" == "postgres" ]]; then
     deploy_infrastructure
+  fi
+
+  # Provision S3 data bucket if s3 inventory mode
+  if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
+    provision_s3_data_bucket
   fi
 
   # Mode dispatch

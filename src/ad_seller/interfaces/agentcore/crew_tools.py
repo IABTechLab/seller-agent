@@ -316,6 +316,44 @@ class CreateDealTool(BaseTool):
                     pass
 
             if not product_data:
+                # Last resort: query the ad server client directly (S3 or CSV)
+                try:
+                    import asyncio
+                    from ad_seller.clients.ad_server_base import get_ad_server_client
+                    client = get_ad_server_client()
+
+                    async def _lookup():
+                        async with client:
+                            items = await client.list_inventory()
+                            for item in items:
+                                if item.id == product_id:
+                                    raw = getattr(item, "raw", {}) or {}
+                                    return {
+                                        "product_id": item.id,
+                                        "name": item.name,
+                                        "base_cpm": raw.get("floor_price_cpm", 25.0),
+                                        "floor_cpm": raw.get("floor_price_cpm", 20.0) * 0.85,
+                                        "inventory_type": raw.get("inventory_type", "display"),
+                                    }
+                        return None
+
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            import concurrent.futures
+                            with concurrent.futures.ThreadPoolExecutor() as pool:
+                                product_data = pool.submit(asyncio.run, _lookup()).result(timeout=15)
+                        else:
+                            product_data = asyncio.run(_lookup())
+                    except RuntimeError:
+                        product_data = asyncio.run(_lookup())
+
+                    if product_data:
+                        logger.info(f"create_deal_direct: Found product via ad_server_client: {product_data}")
+                except Exception as e:
+                    logger.warning(f"create_deal_direct: ad_server_client lookup failed: {e}")
+
+            if not product_data:
                 return json.dumps({"error": f"Product not found: {product_id}"})
 
             # Extract pricing from product data

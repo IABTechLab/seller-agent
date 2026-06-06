@@ -65,8 +65,13 @@ class Settings(BaseSettings):
     inventory_sync_include_archived: bool = False  # Include archived ad units
 
     # Ad Server Configuration
-    ad_server_type: str = "google_ad_manager"  # google_ad_manager, freewheel, csv
+    ad_server_type: str = "google_ad_manager"  # google_ad_manager, freewheel, csv, s3
     csv_data_dir: str = "./data/csv/samples/ctv_streaming"  # Path to CSV data directory
+
+    # S3 Ad Server Configuration (AD_SERVER_TYPE=s3)
+    s3_data_bucket: str = ""  # S3 bucket for inventory data (e.g. a4a-data-omixaj)
+    s3_data_prefix: str = "seller-data/"  # S3 key prefix for CSV files
+    s3_data_region: Optional[str] = None  # Region (defaults to AWS_REGION or us-west-2)
 
     # Google Ad Manager (GAM) Configuration
     gam_enabled: bool = False  # Feature flag to enable GAM integration

@@ -26,6 +26,7 @@ class AdServerType(str, Enum):
     GOOGLE_AD_MANAGER = "google_ad_manager"
     FREEWHEEL = "freewheel"
     CSV = "csv"
+    S3 = "s3"
 
 
 class OrderStatus(str, Enum):
@@ -325,5 +326,14 @@ def get_ad_server_client(ad_server_type: Optional[str] = None) -> AdServerClient
         from .csv_adapter import CSVAdServerClient
 
         return CSVAdServerClient(data_dir=get_settings().csv_data_dir)
+    elif ad_server_type == "s3":
+        from .s3_csv_adapter import S3CsvAdServerClient
+
+        settings = get_settings()
+        return S3CsvAdServerClient(
+            bucket=settings.s3_data_bucket,
+            prefix=settings.s3_data_prefix,
+            region=settings.s3_data_region or "us-west-2",
+        )
     else:
         raise ValueError(f"Unsupported ad server type: {ad_server_type}")
