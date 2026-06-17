@@ -10,18 +10,54 @@ Provides endpoints for:
 - Deal generation
 """
 
+import asyncio
+import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Event streaming state (shared across SSE connections)
+# ---------------------------------------------------------------------------
+_event_stream_clients: set[asyncio.Queue] = set()
+_main_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _broadcast_event(payload: dict) -> None:
+    """Thread-safe broadcast to all connected /events/stream clients."""
+    if _main_loop is None:
+        return
+    for q in list(_event_stream_clients):
+        try:
+            _main_loop.call_soon_threadsafe(q.put_nowait, payload)
+        except Exception:
+            pass
+
+
+def _on_bus_event(event: Any) -> None:
+    """Layer A: bridge seller EventBus wildcard events to the SSE stream."""
+    try:
+        _broadcast_event({
+            "layer": "a2a",
+            "category": "booking_event",
+            "type": event.event_type.value,
+            "ts": event.timestamp.isoformat() if hasattr(event, "timestamp") else "",
+            "summary": event.event_type.value.replace(".", " ").title(),
+            "detail": event.model_dump(mode="json"),
+        })
+    except Exception:
+        logger.debug("_on_bus_event serialisation error", exc_info=True)
+
 
 # Dedicated logger for booking-time forensic events. Per proposal §5.1 Step 2
 # / §6 row 14b, the seller logs the `audience_plan_id` hash at the moment a
@@ -109,6 +145,18 @@ _mcp_server_ref = None
 @asynccontextmanager
 async def lifespan(application):
     """Manage app lifecycle — inventory sync + MCP session manager."""
+    global _main_loop
+    _main_loop = asyncio.get_running_loop()
+
+    # Layer A: wildcard subscription on seller EventBus
+    from ...events.bus import get_event_bus
+    bus = await get_event_bus()
+    await bus.subscribe("*", _on_bus_event)
+
+    # Layer B: CrewAI execution trace
+    from ...events.crewai_trace_listener import CrewAITraceListener
+    CrewAITraceListener(sink=_broadcast_event)
+
     from ...services.inventory_sync_scheduler import start_sync_scheduler, stop_sync_scheduler
 
     start_sync_scheduler()
@@ -1088,7 +1136,7 @@ async def list_events(
     return {"events": [e.model_dump(mode="json") for e in events]}
 
 
-@app.get("/events/{event_id}", tags=["Events"])
+# @app.get("/events/{event_id}", tags=["Events"])  # moved below /events/stream to fix route order
 async def get_event(event_id: str):
     """Get a specific event by ID."""
     from ...events.bus import get_event_bus
@@ -1098,6 +1146,47 @@ async def get_event(event_id: str):
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return event.model_dump(mode="json")
+
+
+@app.get("/events/stream", tags=["Events"])
+async def stream_events(request: Request) -> StreamingResponse:
+    """Server-Sent Events stream of all seller-agent signals.
+
+    Merges Layer A (seller EventBus: proposal.received, deal.created, …)
+    and Layer B (CrewAI execution trace: crews, agents, tasks, tools, LLM calls).
+    Each SSE message is a JSON object matching the playground unified schema.
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+    _event_stream_clients.add(queue)
+
+    async def generator():
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=25.0)
+                    yield f"data: {json.dumps(item)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            _event_stream_clients.discard(queue)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.get("/events/{event_id}", tags=["Events"])
+async def get_event_by_id(event_id: str):
+    """Get a specific event by ID."""
+    return await get_event(event_id)
 
 
 # =============================================================================
