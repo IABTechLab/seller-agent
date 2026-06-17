@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Optional
 
 from dotenv import find_dotenv
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Find .env file by searching up from current working directory
@@ -150,6 +151,14 @@ class Settings(BaseSettings):
     # API Key Authentication
     api_key_auth_enabled: bool = True
     api_key_default_expiry_days: Optional[int] = None  # None = never expires
+
+    @field_validator("api_key_default_expiry_days", mode="before")
+    @classmethod
+    def _parse_expiry_days(cls, v: object) -> object:
+        # Empty string from Cloud Run env-vars-file → treat as unset (None)
+        if v == "":
+            return None
+        return v
 
 
 @lru_cache

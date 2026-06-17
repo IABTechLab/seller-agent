@@ -154,12 +154,18 @@ async def lifespan(application):
     await bus.subscribe("*", _on_bus_event)
 
     # Layer B: CrewAI execution trace
-    from ...events.crewai_trace_listener import CrewAITraceListener
-    CrewAITraceListener(sink=_broadcast_event)
+    try:
+        from ...events.crewai_trace_listener import CrewAITraceListener
+        CrewAITraceListener(sink=_broadcast_event)
+    except Exception as e:
+        logger.warning("CrewAI trace listener not available: %s", e)
 
     from ...services.inventory_sync_scheduler import start_sync_scheduler, stop_sync_scheduler
 
-    start_sync_scheduler()
+    try:
+        start_sync_scheduler()
+    except Exception as e:
+        logger.warning("Inventory sync scheduler failed to start: %s", e)
 
     # Mount MCP server with both transports:
     # - Streamable HTTP at /mcp (current MCP standard, protocol 2025-06-18)
