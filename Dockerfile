@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
+COPY data/ ./data/
 
 # crewai>=1.10 declares lancedb>=0.29.2 but wheels above 0.25.3 are not
 # published on PyPI for any platform as of this writing. The 0.25.3 API
