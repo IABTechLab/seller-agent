@@ -7,9 +7,9 @@ Manages inventory forecasting, availability checking, and pacing
 across all inventory types.
 """
 
-from crewai import LLM, Agent
+from crewai import Agent
 
-from ...config import get_settings
+from ...llm import get_llm
 
 
 def create_availability_agent() -> Agent:
@@ -24,13 +24,8 @@ def create_availability_agent() -> Agent:
     Returns:
         Agent: Configured Availability agent
     """
-    settings = get_settings()
-
-    llm = LLM(
-        model=settings.default_llm_model,
-        temperature=0.2,  # Low temperature for accurate forecasting
-        max_tokens=settings.llm_max_tokens,
-    )
+    # Low temperature for accurate forecasting
+    llm = get_llm(temperature=0.2)
 
     return Agent(
         role="Availability & Forecasting Specialist",

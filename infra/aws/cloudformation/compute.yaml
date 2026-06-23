@@ -62,10 +62,10 @@ Parameters:
     Type: String
     Default: /ad-seller/db-password
     Description: Name of the SSM SecureString holding the DB password
-  AnthropicAPIKeySSMParamName:
+  LLMAPIKeySSMParamName:
     Type: String
-    Default: /ad-seller/anthropic-api-key
-    Description: Name of the SSM SecureString holding the Anthropic API key
+    Default: /ad-seller/llm-api-key
+    Description: Name of the SSM SecureString holding the LLM provider API key
 
 # =============================================================================
 # Resources
@@ -113,7 +113,7 @@ Resources:
                   - ssm:GetParameter
                 Resource:
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DBPasswordSSMParamName}"
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${AnthropicAPIKeySSMParamName}"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${LLMAPIKeySSMParamName}"
               - Effect: Allow
                 Action:
                   - kms:Decrypt
@@ -207,8 +207,8 @@ Resources:
           Secrets:
             - Name: DB_PASSWORD
               ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DBPasswordSSMParamName}"
-            - Name: ANTHROPIC_API_KEY
-              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${AnthropicAPIKeySSMParamName}"
+            - Name: LLM_API_KEY
+              ValueFrom: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${LLMAPIKeySSMParamName}"
           LogConfiguration:
             LogDriver: awslogs
             Options:

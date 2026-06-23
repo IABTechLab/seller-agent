@@ -7,9 +7,9 @@ Manages rate cards, dynamic pricing, floor prices, and tiered
 pricing based on buyer identity.
 """
 
-from crewai import LLM, Agent
+from crewai import Agent
 
-from ...config import get_settings
+from ...llm import get_llm
 
 
 def create_pricing_agent() -> Agent:
@@ -25,13 +25,8 @@ def create_pricing_agent() -> Agent:
     Returns:
         Agent: Configured Pricing agent
     """
-    settings = get_settings()
-
-    llm = LLM(
-        model=settings.default_llm_model,
-        temperature=0.2,  # Low temperature for consistent pricing decisions
-        max_tokens=settings.llm_max_tokens,
-    )
+    # Low temperature for consistent pricing decisions
+    llm = get_llm(temperature=0.2)
 
     return Agent(
         role="Pricing Specialist",

@@ -2,7 +2,7 @@
 
 import os
 
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-for-unit-tests")
+os.environ.setdefault("LLM_API_KEY", "test-key-for-unit-tests")
 
 from ad_seller.models.audience_capabilities import (
     AgenticCapabilities,

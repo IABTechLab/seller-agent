@@ -7,9 +7,9 @@ Identifies opportunities to expand deals, cross-sell inventory,
 and propose alternatives when rejecting proposals.
 """
 
-from crewai import LLM, Agent
+from crewai import Agent
 
-from ...config import get_settings
+from ...llm import get_llm
 
 
 def create_upsell_agent() -> Agent:
@@ -25,13 +25,8 @@ def create_upsell_agent() -> Agent:
     Returns:
         Agent: Configured Upsell agent
     """
-    settings = get_settings()
-
-    llm = LLM(
-        model=settings.default_llm_model,
-        temperature=0.6,  # Higher temperature for creative suggestions
-        max_tokens=settings.llm_max_tokens,
-    )
+    # Higher temperature for creative suggestions
+    llm = get_llm(temperature=0.6)
 
     return Agent(
         role="Upsell & Cross-Sell Specialist",

@@ -7,9 +7,9 @@ Manages Connected TV and streaming advertising inventory including
 OTT apps, FAST channels, and household-targeted inventory.
 """
 
-from crewai import LLM, Agent
+from crewai import Agent
 
-from ...config import get_settings
+from ...llm import get_llm
 
 
 def create_ctv_inventory_agent() -> Agent:
@@ -25,13 +25,7 @@ def create_ctv_inventory_agent() -> Agent:
     Returns:
         Agent: Configured CTV Inventory agent
     """
-    settings = get_settings()
-
-    llm = LLM(
-        model=settings.default_llm_model,
-        temperature=0.5,
-        max_tokens=settings.llm_max_tokens,
-    )
+    llm = get_llm(temperature=0.5)
 
     return Agent(
         role="CTV Inventory Specialist",

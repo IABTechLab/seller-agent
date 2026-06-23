@@ -11,7 +11,7 @@ with case-insensitive variable names.
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `ANTHROPIC_API_KEY` | `str` | **required*** | API key for your LLM provider (see [Supported Providers](#supported-providers)) |
+| `LLM_API_KEY` | `str` | **required*** | API key for your LLM provider — any provider (see [Switching Providers](#switching-providers)) |
 | `SELLER_ORGANIZATION_ID` | `str` | auto-generated | Your organization ID |
 | `SELLER_ORGANIZATION_NAME` | `str` | `"Default Publisher"` | Organization display name |
 | `SELLER_AGENT_NAME` | `str` | `"Ad Seller Agent"` | Agent name shown in discovery |
@@ -85,36 +85,70 @@ ad-seller freewheel-login --provider bc
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
+| `LLM_API_KEY` | `str` | `None` | Provider credential, applied to whichever provider the model selects. |
 | `DEFAULT_LLM_MODEL` | `str` | `"anthropic/claude-sonnet-4-5-20250929"` | Model for specialist agents (pricing, negotiation, etc.) |
-| `MANAGER_LLM_MODEL` | `str` | `"anthropic/claude-opus-4-20250514"` | Model for manager/orchestrator agents |
+| `MANAGER_LLM_MODEL` | `str` | `"anthropic/claude-opus-4-20250514"` | Model for the manager/orchestrator agent. Set equal to `DEFAULT_LLM_MODEL` to use one model everywhere. |
 | `LLM_TEMPERATURE` | `float` | `0.3` | LLM temperature (lower = more deterministic) |
 | `LLM_MAX_TOKENS` | `int` | `4096` | Maximum tokens per LLM response |
+| `LLM_API_BASE` | `str` | `None` | Endpoint for OpenAI-compatible providers (NVIDIA NIM, Ollama, vLLM, ...). |
+| `LLM_API_VERSION` | `str` | `None` | API version, when the provider requires one (Azure). |
 
-### Supported Providers
+### Switching Providers
 
-The seller agent uses CrewAI's native provider integrations via `provider/model-name` format. No code changes are required to switch providers. Install the matching extra (e.g., `pip install "crewai[anthropic]"` or `pip install "crewai[openai]"`).
+The agent layer is **provider-agnostic** and uses CrewAI's **native provider SDKs** — no third-party router. The provider is selected from the `provider/model` prefix; you set one `LLM_API_KEY` for the chosen provider. Switching is two settings:
 
-| Provider | Model Format | API Key Variable | Install Extra |
-|----------|-------------|-----------------|---------------|
-| **Anthropic** (default) | `anthropic/claude-sonnet-4-5-20250929` | `ANTHROPIC_API_KEY` | `crewai[anthropic]` |
-| **OpenAI** | `openai/gpt-4o` | `OPENAI_API_KEY` | `crewai[openai]` |
-| **Google Gemini** | `gemini/gemini-2.0-flash` | `GOOGLE_API_KEY` | `crewai[gemini]` |
-| **Azure OpenAI** | `azure/my-deployment` | `AZURE_API_KEY`, `AZURE_API_BASE` | `crewai[azure]` |
-| **AWS Bedrock** | `bedrock/anthropic.claude-3-sonnet` | AWS credentials | `crewai[bedrock]` |
+1. Point `DEFAULT_LLM_MODEL` / `MANAGER_LLM_MODEL` at the model.
+2. Set `LLM_API_KEY` to that provider's credential.
 
-**Example — switching to OpenAI:**
+| Provider | Model | Notes |
+|----------|-------|-------|
+| **Anthropic** (default) | `anthropic/claude-sonnet-4-5-20250929` | native |
+| **OpenAI** | `openai/gpt-4o` | native |
+| **Google Gemini** | `gemini/gemini-1.5-pro` | native (needs the Google GenAI SDK installed) |
+| **NVIDIA NIM** | any NVIDIA model | set `LLM_API_BASE` (below) |
+| **Ollama** (local) | `llama3` | set `LLM_API_BASE=http://localhost:11434/v1` |
+| **vLLM / Groq / others** | provider's model id | OpenAI-compatible → set `LLM_API_BASE` |
+
+For any **OpenAI-compatible** endpoint, set `LLM_API_BASE` and the request is sent over CrewAI's native OpenAI client pointed at that URL.
+
+**Example — OpenAI:**
 
 ```bash
-# Install: pip install "crewai[openai]"
 DEFAULT_LLM_MODEL=openai/gpt-4o
 MANAGER_LLM_MODEL=openai/gpt-4o
-OPENAI_API_KEY=sk-xxxxx
+LLM_API_KEY=sk-xxxxx
 ```
 
-!!! note "Prompt Tuning"
-    Agent prompts are tuned and tested with Claude models. Other providers work but may produce different quality results. If you switch providers, test negotiation and pricing flows to verify acceptable output quality.
+**Example — NVIDIA NIM free hosted models:**
 
-For other providers, see the [CrewAI LLM documentation](https://docs.crewai.com/en/learn/litellm-removal-guide).
+NVIDIA Build offers 80+ models free on an OpenAI-compatible endpoint. Create a free
+NVIDIA Developer account, open any model at [build.nvidia.com](https://build.nvidia.com/)
+and click **Get API Key** (`nvapi-…`; ~40 req/min). Pick a function-calling-capable
+model (e.g. Mistral Nemotron) since the agents use tools.
+
+```bash
+LLM_API_KEY=nvapi-xxxxxxxx
+LLM_API_BASE=https://integrate.api.nvidia.com/v1
+DEFAULT_LLM_MODEL=mistralai/mistral-nemotron
+MANAGER_LLM_MODEL=mistralai/mistral-nemotron
+```
+
+**Example — local Ollama (no key required):**
+
+```bash
+LLM_API_BASE=http://localhost:11434/v1
+DEFAULT_LLM_MODEL=llama3
+MANAGER_LLM_MODEL=llama3
+```
+
+!!! note "Tool-calling matters"
+    The agents rely on function/tool calling. Native OpenAI/Anthropic/Gemini and NVIDIA's
+    larger models support it well; some small local models do not, which degrades agent
+    behavior regardless of configuration. Prefer a function-calling-capable model.
+
+!!! note "Prompt Tuning"
+    Agent prompts are tuned and tested with Claude models. Other providers work but may
+    produce different quality results — test the negotiation and pricing flows after switching.
 
 ## Database & Storage
 
@@ -205,11 +239,10 @@ For other providers, see the [CrewAI LLM documentation](https://docs.crewai.com/
 
 ```bash
 # =============================================================================
-# LLM Provider (set the key for your chosen provider)
+# LLM Provider
 # =============================================================================
-ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxxxxxxxxxxx
-# OPENAI_API_KEY=sk-xxxxx                   # For OpenAI / Azure
-# COHERE_API_KEY=xxxxx                      # For Cohere
+LLM_API_KEY=your-provider-api-key
+# LLM_API_BASE=                             # For NVIDIA NIM / Ollama / vLLM
 
 # =============================================================================
 # Seller Identity

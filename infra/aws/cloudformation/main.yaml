@@ -29,10 +29,10 @@ Parameters:
     Type: String
     Default: /ad-seller/db-password
     Description: SSM SecureString parameter name holding the Aurora master password
-  AnthropicAPIKeySSMParam:
+  LLMAPIKeySSMParam:
     Type: String
-    Default: /ad-seller/anthropic-api-key
-    Description: SSM SecureString parameter name holding the Anthropic API key
+    Default: /ad-seller/llm-api-key
+    Description: SSM SecureString parameter name holding the LLM provider API key
   VpcCidr:
     Type: String
     Default: "10.20.0.0/16"
@@ -109,7 +109,7 @@ Resources:
         ACMCertificateArn: !Ref ACMCertificateArn
         DesiredCount: !Ref DesiredCount
         DBPasswordSSMParamName: !Ref DBMasterPasswordSSMParam
-        AnthropicAPIKeySSMParamName: !Ref AnthropicAPIKeySSMParam
+        LLMAPIKeySSMParamName: !Ref LLMAPIKeySSMParam
       Tags:
         - Key: Project
           Value: ad-seller-system

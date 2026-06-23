@@ -103,7 +103,7 @@ def make_settings(**overrides) -> types.SimpleNamespace:
         "pubmatic_mcp_url": "",
         "index_exchange_api_url": "",
         "magnite_api_url": "",
-        "anthropic_api_key": "sk-test-dummy",
+        "llm_api_key": "sk-test-dummy",
         "database_url": "sqlite:///:memory:",
         "redis_url": None,
         "storage_type": "sqlite",

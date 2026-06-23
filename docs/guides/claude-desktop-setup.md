@@ -44,7 +44,7 @@ For seller agents running on `localhost`:
       "command": "uvicorn",
       "args": ["ad_seller.interfaces.api.main:app", "--port", "8000"],
       "env": {
-        "ANTHROPIC_API_KEY": "your-key"
+        "LLM_API_KEY": "your-key"
       }
     }
   }

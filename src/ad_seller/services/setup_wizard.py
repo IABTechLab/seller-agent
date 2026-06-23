@@ -58,7 +58,7 @@ DEVELOPER_STEPS = [
         phase=WizardPhase.DEVELOPER,
         order=1,
         title="Deploy & Environment",
-        description="Set deployment target, ANTHROPIC_API_KEY, storage backend",
+        description="Set deployment target, LLM_API_KEY, storage backend",
         is_required=True,
     ),
     WizardStep(
@@ -183,7 +183,7 @@ class SetupWizard:
         settings = self._get_settings()
 
         # Auto-detect completed developer steps
-        if settings.anthropic_api_key:
+        if settings.llm_api_key:
             self._dev_steps["d1_environment"].status = WizardStepStatus.COMPLETED
         if settings.gam_network_code or settings.freewheel_sh_mcp_url:
             self._dev_steps["d2_ad_server"].status = WizardStepStatus.COMPLETED

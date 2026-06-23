@@ -7,9 +7,9 @@ Manages mobile application advertising inventory including iOS/Android
 SDK inventory, rewarded video, interstitials, and in-app bidding.
 """
 
-from crewai import LLM, Agent
+from crewai import Agent
 
-from ...config import get_settings
+from ...llm import get_llm
 
 
 def create_mobile_app_inventory_agent() -> Agent:
@@ -27,13 +27,7 @@ def create_mobile_app_inventory_agent() -> Agent:
     Returns:
         Agent: Configured Mobile App Inventory agent
     """
-    settings = get_settings()
-
-    llm = LLM(
-        model=settings.default_llm_model,
-        temperature=0.5,
-        max_tokens=settings.llm_max_tokens,
-    )
+    llm = get_llm(temperature=0.5)
 
     return Agent(
         role="Mobile App Inventory Specialist",

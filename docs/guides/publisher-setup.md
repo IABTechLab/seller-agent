@@ -27,7 +27,7 @@ If you prefer to configure manually (or need reference for what the wizard does)
 Before starting, ensure you have:
 
 - **Python 3.11+** installed
-- An **Anthropic API key** (`ANTHROPIC_API_KEY`) for the LLM-powered specialist agents
+- An **LLM provider API key** (`LLM_API_KEY`) for the LLM-powered specialist agents
 - (Optional) **Google Ad Manager** credentials or **FreeWheel** MCP URL for live inventory sync
 - (Optional) **SSP API keys** for PubMatic, Index Exchange, or Magnite
 - (Optional) A public URL for agent discovery if participating in the IAB AAMP ecosystem

@@ -8,7 +8,7 @@ Set up the seller agent infrastructure, connect to ad servers and SSPs, and gene
 - Docker (for deployment)
 - Ad server credentials (GAM service account JSON or FreeWheel MCP URL)
 - SSP API keys (optional: PubMatic, Index Exchange, Magnite)
-- Anthropic API key
+- An LLM provider API key (any provider — see Configuration)
 
 ## Step 1: Deploy the Seller Agent
 
@@ -29,7 +29,7 @@ Create a `.env` file:
 
 ```env
 # Required
-ANTHROPIC_API_KEY=sk-ant-...
+LLM_API_KEY=...
 
 # Seller Identity
 SELLER_ORGANIZATION_NAME=Your Publisher Name

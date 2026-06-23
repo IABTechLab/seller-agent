@@ -35,7 +35,7 @@ The app container reads from `../../.env` (project root). Key production setting
 STORAGE_TYPE=hybrid                    # Routes keys to Postgres or Redis
 DATABASE_URL=postgresql+asyncpg://seller:seller@postgres:5432/ad_seller
 REDIS_URL=redis://redis:6379/0
-ANTHROPIC_API_KEY=sk-ant-...           # Or your chosen LLM provider key
+LLM_API_KEY=...                        # Credential for your chosen LLM provider
 ```
 
 See [Configuration](configuration.md) for the full variable reference.

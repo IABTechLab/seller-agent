@@ -23,9 +23,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # API Keys
-    anthropic_api_key: str
-
     # OpenDirect Configuration
     opendirect_base_url: str = "http://localhost:3000"
     opendirect_api_key: Optional[str] = None
@@ -35,10 +32,16 @@ class Settings(BaseSettings):
     default_protocol: str = "opendirect21"  # opendirect21, a2a
 
     # LLM Configuration
+    # Provider is selected by the model prefix ("<provider>/<model>"). One
+    # llm_api_key serves whichever provider is chosen. Set llm_api_base for
+    # OpenAI-compatible endpoints (NVIDIA NIM, Ollama, vLLM, ...).
     default_llm_model: str = "anthropic/claude-sonnet-4-5-20250929"
     manager_llm_model: str = "anthropic/claude-opus-4-20250514"
     llm_temperature: float = 0.3
     llm_max_tokens: int = 4096
+    llm_api_key: Optional[str] = None
+    llm_api_base: Optional[str] = None
+    llm_api_version: Optional[str] = None
 
     # Database / Storage Configuration
     database_url: str = "sqlite:///./ad_seller.db"

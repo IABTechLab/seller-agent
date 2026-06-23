@@ -7,8 +7,8 @@ data "aws_caller_identity" "current" {}
 # -----------------------------------------------------------------------------
 # SSM Parameter data sources for secrets
 # -----------------------------------------------------------------------------
-data "aws_ssm_parameter" "anthropic_api_key" {
-  name = "/${var.name_prefix}/anthropic-api-key"
+data "aws_ssm_parameter" "llm_api_key" {
+  name = "/${var.name_prefix}/llm-api-key"
 }
 
 data "aws_ssm_parameter" "database_password" {
@@ -336,8 +336,8 @@ resource "aws_ecs_task_definition" "app" {
 
       secrets = [
         {
-          name      = "ANTHROPIC_API_KEY"
-          valueFrom = data.aws_ssm_parameter.anthropic_api_key.arn
+          name      = "LLM_API_KEY"
+          valueFrom = data.aws_ssm_parameter.llm_api_key.arn
         },
         {
           name      = "DATABASE_PASSWORD"

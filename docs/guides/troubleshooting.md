@@ -202,7 +202,7 @@ The seller agent's MCP endpoint uses Server-Sent Events. Connections must stay o
 2. For local stdio config, check the `claude_desktop_config.json` — the `command` must be on your `PATH`.
 3. Open Claude Desktop's MCP log: **Settings > Developer > View Logs**.
 4. Look for lines starting with `[seller-agent]` — they will show the startup error.
-5. Common cause: missing `ANTHROPIC_API_KEY` in the `env` block of the config.
+5. Common cause: missing `LLM_API_KEY` in the `env` block of the config.
 
 ---
 
