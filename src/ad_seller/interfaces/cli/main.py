@@ -273,7 +273,9 @@ def freewheel_login(
         console.print(f"[red]FreeWheel OAuth login failed: {exc}[/red]")
         raise typer.Exit(1) from exc
 
-    console.print(f"[green]✓ FreeWheel OAuth login complete ({manager.config.provider_name})[/green]")
+    console.print(
+        f"[green]✓ FreeWheel OAuth login complete ({manager.config.provider_name})[/green]"
+    )
     console.print(f"Stored OAuth state in [cyan]{manager.token_path}[/cyan]")
     if state.expires_at:
         console.print(f"Access token expires at [cyan]{state.expires_at}[/cyan]")

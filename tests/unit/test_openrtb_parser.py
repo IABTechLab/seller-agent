@@ -17,7 +17,6 @@ from ad_seller.services.openrtb_parser import (
     parse_openrtb_audience,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -256,23 +255,14 @@ def test_round_trip_builder_then_parser_recovers_refs() -> None:
         buyer_main = agent_range_root / "ad_buyer_system" / "src"
         worktree_name = None
         for parent, grandparent in zip(here.parents, here.parents[1:]):
-            if (
-                grandparent.name == ".worktrees"
-                and grandparent.parent.name == "ad_seller_system"
-            ):
+            if grandparent.name == ".worktrees" and grandparent.parent.name == "ad_seller_system":
                 worktree_name = parent.name
                 break
         if worktree_name is not None:
             sibling_worktree = (
-                agent_range_root
-                / "ad_buyer_system"
-                / ".worktrees"
-                / worktree_name
-                / "src"
+                agent_range_root / "ad_buyer_system" / ".worktrees" / worktree_name / "src"
             )
-            buyer_src = str(
-                sibling_worktree if sibling_worktree.is_dir() else buyer_main
-            )
+            buyer_src = str(sibling_worktree if sibling_worktree.is_dir() else buyer_main)
         else:
             buyer_src = str(buyer_main)
     sys.path.insert(0, buyer_src)
@@ -282,7 +272,11 @@ def test_round_trip_builder_then_parser_recovers_refs() -> None:
         )
         from ad_buyer.models.audience_plan import (  # type: ignore[import-not-found]
             AudiencePlan,
+        )
+        from ad_buyer.models.audience_plan import (
             AudienceRef as BuyerAudienceRef,
+        )
+        from ad_buyer.models.audience_plan import (
             ComplianceContext as BuyerComplianceContext,
         )
     finally:
@@ -290,20 +284,27 @@ def test_round_trip_builder_then_parser_recovers_refs() -> None:
 
     plan = AudiencePlan(
         primary=BuyerAudienceRef(
-            type="standard", identifier="3-7", taxonomy="iab-audience",
-            version="1.1", source="explicit",
+            type="standard",
+            identifier="3-7",
+            taxonomy="iab-audience",
+            version="1.1",
+            source="explicit",
         ),
         constraints=[
             BuyerAudienceRef(
-                type="contextual", identifier="IAB1-2",
-                taxonomy="iab-content", version="3.1", source="explicit",
+                type="contextual",
+                identifier="IAB1-2",
+                taxonomy="iab-content",
+                version="3.1",
+                source="explicit",
             )
         ],
         extensions=[
             BuyerAudienceRef(
                 type="agentic",
                 identifier="emb://buyer.example.com/q1-converters",
-                taxonomy="agentic-audiences", version="draft-2026-01",
+                taxonomy="agentic-audiences",
+                version="draft-2026-01",
                 source="explicit",
                 compliance_context=BuyerComplianceContext(
                     jurisdiction="US",

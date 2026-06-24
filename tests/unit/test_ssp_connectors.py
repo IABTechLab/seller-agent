@@ -252,7 +252,9 @@ class _MockSSPClient(SSPClient):
         pass
 
     async def create_deal(self, request):
-        deal = SSPDeal(deal_id=f"deal-{self.ssp_name}", ssp_type=self.ssp_type, ssp_name=self.ssp_name)
+        deal = SSPDeal(
+            deal_id=f"deal-{self.ssp_name}", ssp_type=self.ssp_type, ssp_name=self.ssp_name
+        )
         self.deals_created.append(deal)
         return deal
 

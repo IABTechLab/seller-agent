@@ -153,33 +153,23 @@ class TestAudienceFilterPredicate:
 
     def test_standard_id_match(self):
         f = AudienceFilter(audience_type="standard", audience_id="3-7")
-        pkg_match = Package(
-            **_make_package(package_id="p1", standard_segment_ids=["3-7"])
-        )
-        pkg_no_match = Package(
-            **_make_package(package_id="p2", standard_segment_ids=["3-12"])
-        )
+        pkg_match = Package(**_make_package(package_id="p1", standard_segment_ids=["3-7"]))
+        pkg_no_match = Package(**_make_package(package_id="p2", standard_segment_ids=["3-12"]))
         assert f.matches(pkg_match) is True
         assert f.matches(pkg_no_match) is False
 
     def test_standard_type_only_requires_any_segment(self):
         """Type-only filter passes any package with non-empty standard list."""
         f = AudienceFilter(audience_type="standard")
-        pkg_with = Package(
-            **_make_package(package_id="p1", standard_segment_ids=["3-7"])
-        )
+        pkg_with = Package(**_make_package(package_id="p1", standard_segment_ids=["3-7"]))
         pkg_without = Package(**_make_package(package_id="p2"))
         assert f.matches(pkg_with) is True
         assert f.matches(pkg_without) is False
 
     def test_contextual_id_match(self):
         f = AudienceFilter(audience_type="contextual", audience_id="IAB1-2")
-        pkg_match = Package(
-            **_make_package(package_id="p1", contextual_segment_ids=["IAB1-2"])
-        )
-        pkg_no_match = Package(
-            **_make_package(package_id="p2", contextual_segment_ids=["IAB2-3"])
-        )
+        pkg_match = Package(**_make_package(package_id="p1", contextual_segment_ids=["IAB1-2"]))
+        pkg_no_match = Package(**_make_package(package_id="p2", contextual_segment_ids=["IAB2-3"]))
         assert f.matches(pkg_match) is True
         assert f.matches(pkg_no_match) is False
 
@@ -189,9 +179,7 @@ class TestAudienceFilterPredicate:
         pkg_with = Package(
             **_make_package(
                 package_id="p1",
-                agentic_capabilities=AgenticCapabilities(
-                    supported_signal_types=["identity"]
-                ),
+                agentic_capabilities=AgenticCapabilities(supported_signal_types=["identity"]),
             )
         )
         pkg_without = Package(**_make_package(package_id="p2"))
@@ -200,9 +188,7 @@ class TestAudienceFilterPredicate:
 
     def test_agentic_with_id_still_supported_predicate(self):
         """Per ar-2wxa: agentic per-segment matching is §11; type-only gate."""
-        f = AudienceFilter(
-            audience_type="agentic", audience_id="emb://example.com/x"
-        )
+        f = AudienceFilter(audience_type="agentic", audience_id="emb://example.com/x")
         pkg_with = Package(
             **_make_package(
                 package_id="p1",
@@ -250,9 +236,7 @@ class TestListPackagesAudienceFilter:
     """Exercise the service path that the endpoints call."""
 
     @pytest.mark.asyncio
-    async def test_filter_by_standard_id(
-        self, service, mock_storage, mixed_packages
-    ):
+    async def test_filter_by_standard_id(self, service, mock_storage, mixed_packages):
         mock_storage.list_packages.return_value = mixed_packages
         filt = AudienceFilter(audience_type="standard", audience_id="3-7")
         results = await service.list_packages_public(audience_filter=filt)
@@ -260,9 +244,7 @@ class TestListPackagesAudienceFilter:
         assert ids == ["pkg-std"]
 
     @pytest.mark.asyncio
-    async def test_filter_by_contextual_id(
-        self, service, mock_storage, mixed_packages
-    ):
+    async def test_filter_by_contextual_id(self, service, mock_storage, mixed_packages):
         mock_storage.list_packages.return_value = mixed_packages
         filt = AudienceFilter(audience_type="contextual", audience_id="IAB1-2")
         results = await service.list_packages_public(audience_filter=filt)
@@ -270,9 +252,7 @@ class TestListPackagesAudienceFilter:
         assert ids == ["pkg-ctx"]
 
     @pytest.mark.asyncio
-    async def test_filter_by_agentic_type_only(
-        self, service, mock_storage, mixed_packages
-    ):
+    async def test_filter_by_agentic_type_only(self, service, mock_storage, mixed_packages):
         mock_storage.list_packages.return_value = mixed_packages
         filt = AudienceFilter(audience_type="agentic")
         results = await service.list_packages_public(audience_filter=filt)
@@ -284,9 +264,7 @@ class TestListPackagesAudienceFilter:
         self, service, mock_storage, mixed_packages
     ):
         mock_storage.list_packages.return_value = mixed_packages
-        filt = AudienceFilter(
-            audience_type="standard", audience_id="never-exists"
-        )
+        filt = AudienceFilter(audience_type="standard", audience_id="never-exists")
         results = await service.list_packages_public(audience_filter=filt)
         assert results == []
 
@@ -305,9 +283,7 @@ class TestListPackagesAudienceFilter:
         }
 
     @pytest.mark.asyncio
-    async def test_filter_combined_with_layer(
-        self, service, mock_storage, mixed_packages
-    ):
+    async def test_filter_combined_with_layer(self, service, mock_storage, mixed_packages):
         """Audience filter composes with the existing layer filter."""
         mock_storage.list_packages.return_value = mixed_packages
         filt = AudienceFilter(audience_type="standard")
@@ -317,9 +293,7 @@ class TestListPackagesAudienceFilter:
         assert [r.package_id for r in results] == ["pkg-std"]
 
     @pytest.mark.asyncio
-    async def test_authenticated_view_respects_filter(
-        self, service, mock_storage, mixed_packages
-    ):
+    async def test_authenticated_view_respects_filter(self, service, mock_storage, mixed_packages):
         from ad_seller.models.buyer_identity import (
             BuyerContext,
             BuyerIdentity,
@@ -331,9 +305,7 @@ class TestListPackagesAudienceFilter:
             is_authenticated=True,
         )
         filt = AudienceFilter(audience_type="contextual", audience_id="IAB1-2")
-        results = await service.list_packages_authenticated(
-            ctx, audience_filter=filt
-        )
+        results = await service.list_packages_authenticated(ctx, audience_filter=filt)
         assert [r.package_id for r in results] == ["pkg-ctx"]
 
 
@@ -346,9 +318,7 @@ class TestSearchAudienceCorpus:
     """The audience corpus is part of `_score_package`'s text bag."""
 
     @pytest.mark.asyncio
-    async def test_search_ranks_audience_match_higher(
-        self, service, mock_storage
-    ):
+    async def test_search_ranks_audience_match_higher(self, service, mock_storage):
         """A query mentioning a segment ID prefers packages declaring that ID."""
         # pkg-with declares "3-7" in its standard segments; pkg-without doesn't.
         # Both share the keyword "premium" so neither scores zero.
@@ -374,9 +344,7 @@ class TestSearchAudienceCorpus:
         assert "pkg-without" in ids
 
     @pytest.mark.asyncio
-    async def test_search_finds_by_contextual_segment_id(
-        self, service, mock_storage
-    ):
+    async def test_search_finds_by_contextual_segment_id(self, service, mock_storage):
         """A query that's ONLY a contextual ID still matches a package that declares it."""
         mock_storage.list_packages.return_value = [
             _make_package(
@@ -415,9 +383,7 @@ class TestSearchAudienceCorpus:
         assert ids == ["pkg-sports"]
 
     @pytest.mark.asyncio
-    async def test_audience_filter_restricts_search_results(
-        self, service, mock_storage
-    ):
+    async def test_audience_filter_restricts_search_results(self, service, mock_storage):
         """Optional audience_filter narrows search even if keyword would match."""
         mock_storage.list_packages.return_value = [
             _make_package(

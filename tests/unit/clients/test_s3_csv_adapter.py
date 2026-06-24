@@ -13,7 +13,6 @@ import pytest
 
 from ad_seller.clients.s3_csv_adapter import S3CsvAdServerClient
 
-
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -107,14 +106,29 @@ class TestReadCsv:
         """Should merge rows from base + overlay files."""
         # Setup: 2 inventory files
         base_rows = [
-            {"id": "inv-1", "name": "Product 1", "status": "ACTIVE",
-             "inventory_type": "ctv", "floor_price_cpm": "45.00"},
-            {"id": "inv-2", "name": "Product 2", "status": "ACTIVE",
-             "inventory_type": "video", "floor_price_cpm": "20.00"},
+            {
+                "id": "inv-1",
+                "name": "Product 1",
+                "status": "ACTIVE",
+                "inventory_type": "ctv",
+                "floor_price_cpm": "45.00",
+            },
+            {
+                "id": "inv-2",
+                "name": "Product 2",
+                "status": "ACTIVE",
+                "inventory_type": "video",
+                "floor_price_cpm": "20.00",
+            },
         ]
         overlay_rows = [
-            {"id": "inv-au-1", "name": "AU Product", "status": "ACTIVE",
-             "inventory_type": "ctv", "floor_price_cpm": "38.00"},
+            {
+                "id": "inv-au-1",
+                "name": "AU Product",
+                "status": "ACTIVE",
+                "inventory_type": "ctv",
+                "floor_price_cpm": "38.00",
+            },
         ]
 
         mock_s3_client.get_paginator.return_value.paginate.return_value = [

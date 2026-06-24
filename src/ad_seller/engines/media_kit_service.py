@@ -194,9 +194,7 @@ class MediaKitService:
         audience_filter: Optional[AudienceFilter] = None,
     ) -> list[PublicPackageView]:
         """List active packages as public views (price ranges, no placements)."""
-        packages = await self._load_active_packages(
-            layer=layer, audience_filter=audience_filter
-        )
+        packages = await self._load_active_packages(layer=layer, audience_filter=audience_filter)
         if featured_only:
             packages = [p for p in packages if p.is_featured]
         return [self._to_public_view(p) for p in packages]
@@ -208,9 +206,7 @@ class MediaKitService:
         audience_filter: Optional[AudienceFilter] = None,
     ) -> list[AuthenticatedPackageView]:
         """List active packages as authenticated views (exact pricing)."""
-        packages = await self._load_active_packages(
-            layer=layer, audience_filter=audience_filter
-        )
+        packages = await self._load_active_packages(layer=layer, audience_filter=audience_filter)
         return [self._to_authenticated_view(p, buyer_context) for p in packages]
 
     async def get_package_public(self, package_id: str) -> Optional[PublicPackageView]:
@@ -453,9 +449,7 @@ class MediaKitService:
             cattax=package.cattax,
             # Capability metadata only -- versions + supports flags. Segment
             # lists stay behind the authenticated tier per proposal §5.7.
-            audience_capabilities=_public_summary_from_capabilities(
-                package.audience_capabilities
-            ),
+            audience_capabilities=_public_summary_from_capabilities(package.audience_capabilities),
             geo_targets=package.geo_targets,
             tags=package.tags,
             price_range=price_range,

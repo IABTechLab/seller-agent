@@ -17,7 +17,8 @@ import json
 from pathlib import Path
 
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -26,8 +27,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DATA_DIR = REPO_ROOT / "data" / "csv" / "samples" / "aws_workshop"
 
 EXPECTED_CHANNELS = {"ctv", "linear", "digital_video", "display", "audio"}
-EXPECTED_BASE_RATES = {"ctv": 45.0, "linear": 25.0, "digital_video": 18.0, "display": 12.0, "audio": 8.0}
-EXPECTED_TIERS = {"public": 0, "registered_buyer": 5, "preferred_agency": 12, "strategic_advertiser": 15}
+EXPECTED_BASE_RATES = {
+    "ctv": 45.0,
+    "linear": 25.0,
+    "digital_video": 18.0,
+    "display": 12.0,
+    "audio": 8.0,
+}
+EXPECTED_TIERS = {
+    "public": 0,
+    "registered_buyer": 5,
+    "preferred_agency": 12,
+    "strategic_advertiser": 15,
+}
 
 
 # ===================================================================
@@ -112,8 +124,10 @@ class TestWorkshopRateCard:
             assert self.rate_card["tiers"][tier]["discount_pct"] == expected_pct
 
     def test_discounts_are_ascending(self):
-        discounts = [self.rate_card["tiers"][t]["discount_pct"] for t in
-                     ["public", "registered_buyer", "preferred_agency", "strategic_advertiser"]]
+        discounts = [
+            self.rate_card["tiers"][t]["discount_pct"]
+            for t in ["public", "registered_buyer", "preferred_agency", "strategic_advertiser"]
+        ]
         assert discounts == sorted(discounts)
 
 
@@ -213,10 +227,7 @@ class TestTieredPricingProperty:
     def test_strategic_advertiser_always_cheapest(self, channel):
         base = self.rate_card["base_rates"][channel]
         tiers = self.rate_card["tiers"]
-        prices = {
-            tier: base * (1 - tiers[tier]["discount_pct"] / 100)
-            for tier in tiers
-        }
+        prices = {tier: base * (1 - tiers[tier]["discount_pct"] / 100) for tier in tiers}
         assert prices["strategic_advertiser"] <= prices["preferred_agency"]
         assert prices["preferred_agency"] <= prices["registered_buyer"]
         assert prices["registered_buyer"] <= prices["public"]

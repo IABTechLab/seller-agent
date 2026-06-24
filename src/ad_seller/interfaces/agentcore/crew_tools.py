@@ -44,16 +44,19 @@ _BASE_URL = os.environ.get("SELLER_AGENT_URL", "http://localhost:8001")
 
 class EmptyInput(BaseModel):
     """No input required."""
+
     pass
 
 
 class ProductIdInput(BaseModel):
     """Input requiring a product ID."""
+
     product_id: str = Field(description="The product ID to look up")
 
 
 class PricingInput(BaseModel):
     """Input for pricing calculation."""
+
     product_id: str = Field(description="The product ID to price")
     buyer_tier: str = Field(
         default="public",
@@ -67,6 +70,7 @@ class PricingInput(BaseModel):
 
 class DiscoveryInput(BaseModel):
     """Input for inventory discovery."""
+
     query: str = Field(
         default="",
         description="Natural language description of what the buyer is looking for",
@@ -75,6 +79,7 @@ class DiscoveryInput(BaseModel):
 
 class CreateDealInput(BaseModel):
     """Input for deal creation."""
+
     product_id: str = Field(description="The product to create a deal for")
     deal_type: str = Field(
         default="PD",
@@ -273,13 +278,16 @@ class CreateDealTool(BaseTool):
             product_data = None
             try:
                 from ad_seller.interfaces.agentcore.http_main import _chat, _get_chat
+
                 # Ensure chat is initialized (loads CSV products)
                 if not _chat:
                     import asyncio
+
                     try:
                         loop = asyncio.get_event_loop()
                         if loop.is_running():
                             import concurrent.futures
+
                             with concurrent.futures.ThreadPoolExecutor() as pool:
                                 pool.submit(asyncio.run, _get_chat()).result(timeout=15)
                         else:
@@ -289,19 +297,23 @@ class CreateDealTool(BaseTool):
                     # Re-import after initialization
                     from ad_seller.interfaces.agentcore.http_main import _chat
 
-                logger.info(f"create_deal_direct: _chat={_chat is not None}, has_products={hasattr(_chat, '_products') if _chat else False}, product_count={len(_chat._products) if _chat and hasattr(_chat, '_products') else 0}")
-                if _chat and hasattr(_chat, '_products') and product_id in _chat._products:
+                logger.info(
+                    f"create_deal_direct: _chat={_chat is not None}, has_products={hasattr(_chat, '_products') if _chat else False}, product_count={len(_chat._products) if _chat and hasattr(_chat, '_products') else 0}"
+                )
+                if _chat and hasattr(_chat, "_products") and product_id in _chat._products:
                     p = _chat._products[product_id]
                     product_data = {
                         "product_id": product_id,
-                        "name": getattr(p, 'name', product_id),
-                        "base_cpm": getattr(p, 'base_cpm', 25.0),
-                        "floor_cpm": getattr(p, 'floor_cpm', 20.0),
-                        "inventory_type": getattr(p, 'inventory_type', 'display'),
+                        "name": getattr(p, "name", product_id),
+                        "base_cpm": getattr(p, "base_cpm", 25.0),
+                        "floor_cpm": getattr(p, "floor_cpm", 20.0),
+                        "inventory_type": getattr(p, "inventory_type", "display"),
                     }
                     logger.info(f"create_deal_direct: Found product in cache: {product_data}")
-                elif _chat and hasattr(_chat, '_products'):
-                    logger.warning(f"create_deal_direct: product_id={product_id} NOT in _chat._products. Available: {list(_chat._products.keys())[:5]}")
+                elif _chat and hasattr(_chat, "_products"):
+                    logger.warning(
+                        f"create_deal_direct: product_id={product_id} NOT in _chat._products. Available: {list(_chat._products.keys())[:5]}"
+                    )
             except Exception as e:
                 logger.warning(f"create_deal_direct: Failed to access _chat._products: {e}")
 
@@ -319,7 +331,9 @@ class CreateDealTool(BaseTool):
                 # Last resort: query the ad server client directly (S3 or CSV)
                 try:
                     import asyncio
+
                     from ad_seller.clients.ad_server_base import get_ad_server_client
+
                     client = get_ad_server_client()
 
                     async def _lookup():
@@ -341,15 +355,20 @@ class CreateDealTool(BaseTool):
                         loop = asyncio.get_event_loop()
                         if loop.is_running():
                             import concurrent.futures
+
                             with concurrent.futures.ThreadPoolExecutor() as pool:
-                                product_data = pool.submit(asyncio.run, _lookup()).result(timeout=15)
+                                product_data = pool.submit(asyncio.run, _lookup()).result(
+                                    timeout=15
+                                )
                         else:
                             product_data = asyncio.run(_lookup())
                     except RuntimeError:
                         product_data = asyncio.run(_lookup())
 
                     if product_data:
-                        logger.info(f"create_deal_direct: Found product via ad_server_client: {product_data}")
+                        logger.info(
+                            f"create_deal_direct: Found product via ad_server_client: {product_data}"
+                        )
                 except Exception as e:
                     logger.warning(f"create_deal_direct: ad_server_client lookup failed: {e}")
 
@@ -357,20 +376,24 @@ class CreateDealTool(BaseTool):
                 return json.dumps({"error": f"Product not found: {product_id}"})
 
             # Extract pricing from product data
-            floor_cpm = product_data.get("floor_cpm", product_data.get("floor_price_cpm", product_data.get("base_cpm", 25.0)))
+            floor_cpm = product_data.get(
+                "floor_cpm", product_data.get("floor_price_cpm", product_data.get("base_cpm", 25.0))
+            )
             base_cpm = product_data.get("base_cpm", floor_cpm)
             product_name = product_data.get("name", product_data.get("product_name", product_id))
 
             # Validate max_cpm against floor
             if max_cpm and max_cpm < floor_cpm * 0.85:
-                return json.dumps({
-                    "error": "price_below_floor",
-                    "message": f"Offered ${max_cpm:.2f} CPM is below seller minimum ${floor_cpm * 0.85:.2f} CPM",
-                    "seller_minimum_cpm": round(floor_cpm * 0.85, 2),
-                    "buyer_max_cpm": max_cpm,
-                    "product_id": product_id,
-                    "deal_type": dt_str,
-                })
+                return json.dumps(
+                    {
+                        "error": "price_below_floor",
+                        "message": f"Offered ${max_cpm:.2f} CPM is below seller minimum ${floor_cpm * 0.85:.2f} CPM",
+                        "seller_minimum_cpm": round(floor_cpm * 0.85, 2),
+                        "buyer_max_cpm": max_cpm,
+                        "product_id": product_id,
+                        "deal_type": dt_str,
+                    }
+                )
 
             # Create deal
             deal_id = f"DEAL-{uuid.uuid4().hex[:8].upper()}"
@@ -405,8 +428,12 @@ class CreateDealTool(BaseTool):
                 },
             }
 
-            logger.info("Deal created directly (bypassed REST auth): %s for %s at $%.2f CPM",
-                        deal_id, product_id, final_cpm)
+            logger.info(
+                "Deal created directly (bypassed REST auth): %s for %s at $%.2f CPM",
+                deal_id,
+                product_id,
+                final_cpm,
+            )
             return json.dumps(deal, indent=2)
 
         except Exception as e:
@@ -429,11 +456,7 @@ class GetRateCardTool(BaseTool):
             products = resp.json()
 
             rate_card = {}
-            items = (
-                products
-                if isinstance(products, list)
-                else products.get("products", [])
-            )
+            items = products if isinstance(products, list) else products.get("products", [])
             for p in items:
                 inv_type = p.get("inventory_type", p.get("channel", "unknown"))
                 cpm = p.get("base_cpm", p.get("avg_cpm_usd", 0))

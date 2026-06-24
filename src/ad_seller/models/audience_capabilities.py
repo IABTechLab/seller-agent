@@ -332,9 +332,7 @@ def load_taxonomy_lock_hashes(
     )
 
 
-def _versions_from_lock(
-    section: str, lock_path: Path | None = None
-) -> list[str]:
+def _versions_from_lock(section: str, lock_path: Path | None = None) -> list[str]:
     """Read a single taxonomy version from the lock file, return as list.
 
     The lock file pins a single version per taxonomy (e.g., audience 1.1).

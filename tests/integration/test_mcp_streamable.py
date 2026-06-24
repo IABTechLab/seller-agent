@@ -29,13 +29,17 @@ import pytest
 # Optional MCP SDK imports
 # ---------------------------------------------------------------------------
 try:
-    from mcp.client.streamable_http import streamable_http_client
     from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+
     MCP_HTTP_AVAILABLE = True
 except ImportError:
     try:
-        from mcp.client.streamable_http import streamablehttp_client as streamable_http_client  # type: ignore[no-redef]
         from mcp import ClientSession
+        from mcp.client.streamable_http import (
+            streamablehttp_client as streamable_http_client,  # type: ignore[no-redef]
+        )
+
         MCP_HTTP_AVAILABLE = True
     except ImportError:
         MCP_HTTP_AVAILABLE = False
@@ -52,6 +56,7 @@ pytestmark = [
 # ---------------------------------------------------------------------------
 # Session helper
 # ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def _mcp_session():
@@ -91,6 +96,7 @@ async def _call(session: "ClientSession", name: str, args: dict | None = None):
 # Connection
 # ---------------------------------------------------------------------------
 
+
 async def test_streamable_http_connection():
     """/mcp must accept a session and initialize successfully."""
     async with _mcp_session() as session:
@@ -111,6 +117,7 @@ async def test_streamable_http_tool_list():
 # ---------------------------------------------------------------------------
 # Foundation tools
 # ---------------------------------------------------------------------------
+
 
 async def test_health_check():
     async with _mcp_session() as session:
@@ -141,6 +148,7 @@ async def test_get_config():
 # ---------------------------------------------------------------------------
 # Inventory & Products
 # ---------------------------------------------------------------------------
+
 
 async def test_list_products():
     async with _mcp_session() as session:
@@ -176,6 +184,7 @@ async def test_get_sync_status():
 # Orders & Approvals
 # ---------------------------------------------------------------------------
 
+
 async def test_list_orders():
     async with _mcp_session() as session:
         err, data = await _call(session, "list_orders")
@@ -199,6 +208,7 @@ async def test_get_inbound_queue():
 # ---------------------------------------------------------------------------
 # Buyer agents & SSPs
 # ---------------------------------------------------------------------------
+
 
 async def test_list_buyer_agents():
     async with _mcp_session() as session:
@@ -224,13 +234,18 @@ async def test_list_agents():
 # API keys
 # ---------------------------------------------------------------------------
 
+
 async def test_api_key_lifecycle():
     """Full create → list → revoke lifecycle over /mcp."""
     async with _mcp_session() as session:
-        err, created = await _call(session, "create_api_key", {
-            "name": "smoke-test-key",
-            "label": "mcp-streamable-smoke",
-        })
+        err, created = await _call(
+            session,
+            "create_api_key",
+            {
+                "name": "smoke-test-key",
+                "label": "mcp-streamable-smoke",
+            },
+        )
         assert not err, f"create_api_key failed: {created}"
         key_id = created.get("key_id")
         assert key_id, "Response must include key_id"

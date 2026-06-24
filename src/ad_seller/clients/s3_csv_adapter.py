@@ -21,12 +21,11 @@ on the configured bucket/prefix. This is already the case for a4a-data-omixaj.
 import csv
 import io
 import logging
-import os
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import datetime
+from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -84,7 +83,9 @@ class S3CsvAdServerClient(AdServerClient):
         self._line_items: list[dict[str, str]] = []
         logger.info(
             "S3CsvAdServerClient initialized: s3://%s/%s (cache TTL: %ds)",
-            bucket, self._prefix, cache_ttl,
+            bucket,
+            self._prefix,
+            cache_ttl,
         )
 
     # -- S3 Helpers -----------------------------------------------------------
@@ -97,7 +98,7 @@ class S3CsvAdServerClient(AdServerClient):
             for page in paginator.paginate(Bucket=self._bucket, Prefix=self._prefix):
                 for obj in page.get("Contents", []):
                     key = obj["Key"]
-                    filename = key[len(self._prefix):]
+                    filename = key[len(self._prefix) :]
                     # Match: inventory.csv, inventory_nineseven.csv, inventory_prosiebensat1.csv
                     if filename.startswith(stem) and filename.endswith(".csv"):
                         keys.append(key)
@@ -262,8 +263,15 @@ class S3CsvAdServerClient(AdServerClient):
             floor_price_micros=floor_price_micros,
             buyer_seat_ids=buyer_seat_ids or [],
         )
-        self._deals.append({"id": deal_id, "name": name, "order_id": order_id,
-                           "deal_type": deal_type, "status": "active"})
+        self._deals.append(
+            {
+                "id": deal_id,
+                "name": name,
+                "order_id": order_id,
+                "deal_type": deal_type,
+                "status": "active",
+            }
+        )
         return deal
 
     async def update_deal(
@@ -279,8 +287,11 @@ class S3CsvAdServerClient(AdServerClient):
                 if status:
                     d["status"] = status
                 return AdServerDeal(
-                    id=deal_id, name=d["name"], order_id=d["order_id"],
-                    deal_type=d["deal_type"], status=DealStatus(status or d["status"]),
+                    id=deal_id,
+                    name=d["name"],
+                    order_id=d["order_id"],
+                    deal_type=d["deal_type"],
+                    status=DealStatus(status or d["status"]),
                 )
         raise ValueError(f"Deal not found: {deal_id}")
 
@@ -298,7 +309,9 @@ class S3CsvAdServerClient(AdServerClient):
         """Create an order (in-memory)."""
         order_id = f"ORD-{uuid.uuid4().hex[:8].upper()}"
         order = AdServerOrder(
-            id=order_id, name=name, advertiser_id=advertiser_id,
+            id=order_id,
+            name=name,
+            advertiser_id=advertiser_id,
             status=OrderStatus.DRAFT,
         )
         self._orders.append({"id": order_id, "name": name, "status": "draft"})
@@ -308,8 +321,9 @@ class S3CsvAdServerClient(AdServerClient):
         """Get an order."""
         for o in self._orders:
             if o["id"] == order_id:
-                return AdServerOrder(id=order_id, name=o["name"],
-                                    advertiser_id="", status=OrderStatus(o["status"]))
+                return AdServerOrder(
+                    id=order_id, name=o["name"], advertiser_id="", status=OrderStatus(o["status"])
+                )
         raise ValueError(f"Order not found: {order_id}")
 
     async def approve_order(self, order_id: str) -> AdServerOrder:
@@ -317,8 +331,9 @@ class S3CsvAdServerClient(AdServerClient):
         for o in self._orders:
             if o["id"] == order_id:
                 o["status"] = "approved"
-                return AdServerOrder(id=order_id, name=o["name"],
-                                    advertiser_id="", status=OrderStatus.APPROVED)
+                return AdServerOrder(
+                    id=order_id, name=o["name"], advertiser_id="", status=OrderStatus.APPROVED
+                )
         raise ValueError(f"Order not found: {order_id}")
 
     # -- Line Item Operations (in-memory) ------------------------------------
@@ -337,7 +352,9 @@ class S3CsvAdServerClient(AdServerClient):
         """Create a line item (in-memory)."""
         li_id = f"LI-{uuid.uuid4().hex[:8].upper()}"
         return AdServerLineItem(
-            id=li_id, name=name, order_id=order_id,
+            id=li_id,
+            name=name,
+            order_id=order_id,
             status=LineItemStatus.DRAFT,
         )
 
@@ -350,7 +367,9 @@ class S3CsvAdServerClient(AdServerClient):
     ) -> AdServerLineItem:
         """Update a line item."""
         return AdServerLineItem(
-            id=line_item_id, name="", order_id="",
+            id=line_item_id,
+            name="",
+            order_id="",
             status=LineItemStatus(status) if status else LineItemStatus.DRAFT,
         )
 

@@ -153,8 +153,6 @@ def validate_audience_plan(
                 continue
             ok, reason = _ref_taxonomy_supported(ref, capabilities)
             if not ok:
-                unsupported.append(
-                    {"path": f"{role}[{idx}].taxonomy", "reason": reason or ""}
-                )
+                unsupported.append({"path": f"{role}[{idx}].taxonomy", "reason": reason or ""})
 
     return unsupported

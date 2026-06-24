@@ -22,7 +22,7 @@ _mock_agentcore.BedrockAgentCoreApp.return_value = _mock_app
 sys.modules.setdefault("bedrock_agentcore", MagicMock())
 sys.modules.setdefault("bedrock_agentcore.runtime", _mock_agentcore)
 
-from ad_seller.interfaces.agentcore.http_main import (
+from ad_seller.interfaces.agentcore.http_main import (  # noqa: E402
     _INTERNAL_PORT,
     _start_fastapi_background,
 )
@@ -62,10 +62,9 @@ class TestStartFastapiBackground:
 
         mock_thread = MagicMock()
 
-        with patch(
-            "ad_seller.interfaces.agentcore.http_main.asyncio"
-        ) as mock_asyncio, patch.dict(
-            "os.environ", {"INTERNAL_API_PORT": "18001"}
+        with (
+            patch("ad_seller.interfaces.agentcore.http_main.asyncio"),
+            patch.dict("os.environ", {"INTERNAL_API_PORT": "18001"}),
         ):
             # Patch the imports inside _start_fastapi_background
             import builtins
@@ -100,9 +99,7 @@ class TestStartFastapiBackground:
 
         mock_thread = MagicMock()
 
-        with patch(
-            "ad_seller.interfaces.agentcore.http_main.sys"
-        ) as mock_sys:
+        with patch("ad_seller.interfaces.agentcore.http_main.sys") as mock_sys:
             import builtins
 
             original_import = builtins.__import__

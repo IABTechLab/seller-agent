@@ -151,6 +151,7 @@ class TestApprovalGate:
     @pytest.fixture
     def gate(self, storage):
         from ad_seller.events.approval import ApprovalGate
+
         return ApprovalGate(storage)
 
     @pytest.mark.asyncio
@@ -180,12 +181,18 @@ class TestApprovalGate:
         bus = InMemoryEventBus()
         with patch("ad_seller.events.bus.get_event_bus", new_callable=AsyncMock, return_value=bus):
             req1 = await gate.request_approval(
-                flow_id="f1", flow_type="test", gate_name="g1",
-                context={}, flow_state_snapshot={},
+                flow_id="f1",
+                flow_type="test",
+                gate_name="g1",
+                context={},
+                flow_state_snapshot={},
             )
             req2 = await gate.request_approval(
-                flow_id="f2", flow_type="test", gate_name="g2",
-                context={}, flow_state_snapshot={},
+                flow_id="f2",
+                flow_type="test",
+                gate_name="g2",
+                context={},
+                flow_state_snapshot={},
             )
 
         # Approve one
@@ -201,8 +208,11 @@ class TestApprovalGate:
         bus = InMemoryEventBus()
         with patch("ad_seller.events.bus.get_event_bus", new_callable=AsyncMock, return_value=bus):
             req = await gate.request_approval(
-                flow_id="f1", flow_type="test", gate_name="g1",
-                context={}, flow_state_snapshot={},
+                flow_id="f1",
+                flow_type="test",
+                gate_name="g1",
+                context={},
+                flow_state_snapshot={},
             )
             response = await gate.submit_decision(
                 req.approval_id, "approve", decided_by="human:ops", reason="Looks good"
@@ -219,8 +229,11 @@ class TestApprovalGate:
         bus = InMemoryEventBus()
         with patch("ad_seller.events.bus.get_event_bus", new_callable=AsyncMock, return_value=bus):
             req = await gate.request_approval(
-                flow_id="f1", flow_type="test", gate_name="g1",
-                context={}, flow_state_snapshot={},
+                flow_id="f1",
+                flow_type="test",
+                gate_name="g1",
+                context={},
+                flow_state_snapshot={},
             )
             response = await gate.submit_decision(
                 req.approval_id, "reject", decided_by="human:ops", reason="Too risky"
@@ -236,8 +249,11 @@ class TestApprovalGate:
         bus = InMemoryEventBus()
         with patch("ad_seller.events.bus.get_event_bus", new_callable=AsyncMock, return_value=bus):
             req = await gate.request_approval(
-                flow_id="f1", flow_type="test", gate_name="g1",
-                context={}, flow_state_snapshot={},
+                flow_id="f1",
+                flow_type="test",
+                gate_name="g1",
+                context={},
+                flow_state_snapshot={},
             )
             await gate.submit_decision(req.approval_id, "approve")
 

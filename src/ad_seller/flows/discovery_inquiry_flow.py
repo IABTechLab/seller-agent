@@ -249,12 +249,14 @@ class DiscoveryInquiryFlow(Flow[DiscoveryState]):
 
         self.state.response_data["targeting"] = targeting_info
 
-    @listen(or_(
-        prepare_catalog_response,
-        prepare_pricing_response,
-        prepare_availability_response,
-        prepare_targeting_response,
-    ))
+    @listen(
+        or_(
+            prepare_catalog_response,
+            prepare_pricing_response,
+            prepare_availability_response,
+            prepare_targeting_response,
+        )
+    )
     async def finalize_response(self) -> None:
         """Finalize the discovery response."""
         self.state.status = ExecutionStatus.COMPLETED

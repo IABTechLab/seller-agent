@@ -454,6 +454,7 @@ class TestAuditLogDetails:
             assert t.timestamp is not None
             # Timestamps should be datetime objects
             from datetime import datetime
+
             assert isinstance(t.timestamp, datetime)
 
     def test_each_transition_has_actor(self):

@@ -136,9 +136,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         # Runs whether or not legacy `audience_targeting` is also present.
         audience_plan = self.state.proposal_data.get("audience_plan")
         if audience_plan:
-            hard_reject_reason = self._check_audience_plan_hard_rejects(
-                audience_plan
-            )
+            hard_reject_reason = self._check_audience_plan_hard_rejects(audience_plan)
             if hard_reject_reason:
                 self.state.errors.append(hard_reject_reason)
                 self.state.status = ExecutionStatus.FAILED
@@ -255,9 +253,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                 ctx.update(ctx_ids)
         return std, ctx
 
-    def _check_audience_plan_hard_rejects(
-        self, audience_plan: dict
-    ) -> Optional[str]:
+    def _check_audience_plan_hard_rejects(self, audience_plan: dict) -> Optional[str]:
         """Hard-reject when buyer's standard/contextual refs have zero overlap.
 
         Returns a human-readable rejection reason when zero overlap exists on

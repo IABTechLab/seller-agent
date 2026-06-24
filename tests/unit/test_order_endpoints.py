@@ -37,7 +37,7 @@ def mock_storage():
     storage = AsyncMock()
     storage.get = AsyncMock(side_effect=lambda k: store.get(k))
     storage.set = AsyncMock(side_effect=lambda k, v, ttl=None: store.__setitem__(k, v))
-    storage.delete = AsyncMock(side_effect=lambda k: (store.pop(k, None) is not None))
+    storage.delete = AsyncMock(side_effect=lambda k: store.pop(k, None) is not None)
     storage.keys = AsyncMock(
         side_effect=lambda pattern="*": [k for k in store if k.startswith(pattern.rstrip("*"))]
     )

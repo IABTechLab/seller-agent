@@ -54,9 +54,11 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "not-used-with-bedrock")
 os.environ.setdefault("STORAGE_TYPE", "sqlite")
 os.environ.setdefault("AD_SERVER_TYPE", "csv")
 os.environ.setdefault("CSV_DATA_DIR", "./data/csv/samples/aws_workshop")
-os.environ.setdefault("SELLER_AGENT_URL", f"http://localhost:{os.environ.get('INTERNAL_API_PORT', '8001')}")
+os.environ.setdefault(
+    "SELLER_AGENT_URL", f"http://localhost:{os.environ.get('INTERNAL_API_PORT', '8001')}"
+)
 
-from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from bedrock_agentcore.runtime import BedrockAgentCoreApp  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -114,9 +116,7 @@ def _start_fastapi_background():
         try:
             import httpx
 
-            resp = httpx.get(
-                f"http://localhost:{_INTERNAL_PORT}/health", timeout=1.0
-            )
+            resp = httpx.get(f"http://localhost:{_INTERNAL_PORT}/health", timeout=1.0)
             if resp.status_code == 200:
                 logger.info(
                     "FastAPI+MCP background server ready on port %d",
@@ -131,9 +131,7 @@ def _start_fastapi_background():
         except Exception:
             time.sleep(0.5)
 
-    logger.error(
-        "FastAPI+MCP failed to start on port %d within 15s", _INTERNAL_PORT
-    )
+    logger.error("FastAPI+MCP failed to start on port %d within 15s", _INTERNAL_PORT)
     # Don't sys.exit — let the crew invocation fail gracefully
     raise RuntimeError(f"FastAPI background server failed to start on port {_INTERNAL_PORT}")
 
@@ -174,10 +172,11 @@ def _create_internal_api_key():
             else:
                 logger.warning("API key response missing key field: %s", data)
         else:
-            logger.warning("Failed to create internal API key: %d %s", resp.status_code, resp.text[:200])
+            logger.warning(
+                "Failed to create internal API key: %d %s", resp.status_code, resp.text[:200]
+            )
     except Exception as e:
         logger.warning("Could not create internal API key (non-fatal): %s", e)
-
 
 
 # Lazy-initialized shared ChatInterface with storage backend.
@@ -225,10 +224,7 @@ def _get_routing_mode(payload: dict) -> str:
     Priority: payload["routing_mode"] > ROUTING_MODE env var > default ("chat").
     Invalid values fall back to "chat" for backward compatibility.
     """
-    mode = (
-        payload.get("routing_mode")
-        or os.environ.get("ROUTING_MODE", _DEFAULT_ROUTING_MODE)
-    )
+    mode = payload.get("routing_mode") or os.environ.get("ROUTING_MODE", _DEFAULT_ROUTING_MODE)
     mode = str(mode).strip().lower()
     if mode not in _VALID_ROUTING_MODES:
         logger.warning("Invalid routing mode %r, falling back to 'chat'", mode)
@@ -247,9 +243,9 @@ async def _get_chat():
     if _chat is not None and _chat_initialized:
         return _chat
 
+    from ad_seller.clients.ad_server_base import get_ad_server_client
     from ad_seller.interfaces.chat.main import ChatInterface
     from ad_seller.storage.factory import get_storage_backend
-    from ad_seller.clients.ad_server_base import get_ad_server_client
 
     # Use the storage backend configured via env vars.
     # --storage sqlite  → STORAGE_TYPE=sqlite (in-memory, default)
@@ -289,9 +285,15 @@ async def _get_chat():
                     raw=raw,
                 )
                 _chat._products[item.id] = wrapped
-        logger.info("Loaded %d products from %s adapter", len(_chat._products), os.environ.get("AD_SERVER_TYPE", "csv"))
+        logger.info(
+            "Loaded %d products from %s adapter",
+            len(_chat._products),
+            os.environ.get("AD_SERVER_TYPE", "csv"),
+        )
     except Exception as exc:
-        logger.warning("Failed to load products from %s: %s", os.environ.get("AD_SERVER_TYPE", "csv"), exc)
+        logger.warning(
+            "Failed to load products from %s: %s", os.environ.get("AD_SERVER_TYPE", "csv"), exc
+        )
 
     _chat_initialized = True
     return _chat
@@ -386,10 +388,7 @@ def _format_crew_output(crew_output) -> dict:
     response_text = raw_text
     if viz_data:
         viz_json = json.dumps(viz_data, default=str)
-        response_text = (
-            f"{raw_text}\n\n"
-            f"<visualization-data>{viz_json}</visualization-data>"
-        )
+        response_text = f"{raw_text}\n\n<visualization-data>{viz_json}</visualization-data>"
 
     return {
         "response": response_text,
@@ -401,6 +400,7 @@ def _format_crew_output(crew_output) -> dict:
 # CrewAI routing path — full PublisherCrew with native Bedrock Converse
 # ---------------------------------------------------------------------------
 
+
 def _is_deal_request(prompt: str) -> bool:
     """Lightweight check: does the prompt ask for deal creation/booking?
 
@@ -410,10 +410,20 @@ def _is_deal_request(prompt: str) -> bool:
     """
     lower = prompt.lower()
     deal_signals = [
-        "create a deal", "create deal", "create two", "create both",
-        "book a deal", "book the deal", "book deal", "book deals",
-        "approve and book", "generate deal id", "generate deal",
-        "preferred deal", "private auction", "programmatic guaranteed",
+        "create a deal",
+        "create deal",
+        "create two",
+        "create both",
+        "book a deal",
+        "book the deal",
+        "book deal",
+        "book deals",
+        "approve and book",
+        "generate deal id",
+        "generate deal",
+        "preferred deal",
+        "private auction",
+        "programmatic guaranteed",
     ]
     has_product = bool(re.search(r"inv-\w+-\w+", lower))
     has_deal_keyword = any(kw in lower for kw in deal_signals)
@@ -431,12 +441,14 @@ async def _run_crew_with_crewai(prompt: str, payload: dict) -> dict:
     authorization and a deal-specific task description when the prompt
     asks for deals. No deterministic Python fallback.
     """
-    from crewai import Crew, Process, Task, LLM
+    from crewai import LLM, Crew, Process, Task
+
     from ad_seller.crews.publisher_crew import PublisherCrew
 
     # Apply Bedrock Converse compatibility patches
     try:
         from patches.crewai_bedrock_fix import apply_patches
+
         apply_patches()
     except ImportError:
         logger.warning("patches.crewai_bedrock_fix not available — skipping")
@@ -445,6 +457,7 @@ async def _run_crew_with_crewai(prompt: str, payload: dict) -> dict:
     if os.environ.get("CREW_MEMORY_ENABLED", "false").lower() == "true":
         try:
             from patches.crewai_agentcore_memory import apply_patches as apply_memory_patches
+
             _session = payload.get("session_id", payload.get("runtimeSessionId", ""))
             apply_memory_patches(session_id=_session or None, actor_id="seller-agent")
         except ImportError:
@@ -478,6 +491,7 @@ async def _run_crew_with_crewai(prompt: str, payload: dict) -> dict:
     tool_names = [t for t in tool_names if t != "create_deal_from_template"]
 
     from crewai_tools import MCPServerAdapter
+
     mcp_adapter = MCPServerAdapter(
         {"url": f"http://localhost:{_INTERNAL_PORT}/mcp-sse/sse", "transport": "sse"},
         *tool_names,
@@ -486,11 +500,13 @@ async def _run_crew_with_crewai(prompt: str, payload: dict) -> dict:
 
     # Combine MCP read tools + BaseTool CreateDealTool
     from .crew_tools import CreateDealTool
+
     all_tools = list(mcp_adapter.tools) + [CreateDealTool()]
     publisher_crew.inventory_manager.tools = all_tools
     logger.info(
         "Loaded %d MCP tools + CreateDealTool from localhost:%d",
-        len(mcp_adapter.tools), _INTERNAL_PORT,
+        len(mcp_adapter.tools),
+        _INTERNAL_PORT,
     )
 
     # ── Agent backstory: authorize ALL operations including deal creation ──
@@ -578,15 +594,18 @@ Format as markdown with headers and tables where appropriate."""
         publisher_crew.inventory_manager.max_iter = max_iter
 
     import concurrent.futures
+
     loop = asyncio.get_event_loop()
 
     try:
-        from crewai.tasks.task_output import TaskOutput
-        from crewai.crews.crew_output import CrewOutput
         from typing import Union
+
+        from crewai.crews.crew_output import CrewOutput
+        from crewai.tasks.task_output import TaskOutput
+
         for cls in [TaskOutput, CrewOutput]:
-            if not getattr(cls, '_bedrock_raw_patched', False):
-                cls.model_fields['raw'].annotation = Union[str, list]
+            if not getattr(cls, "_bedrock_raw_patched", False):
+                cls.model_fields["raw"].annotation = Union[str, list]
                 cls.model_rebuild(force=True)
                 cls._bedrock_raw_patched = True
     except Exception as patch_err:
@@ -595,19 +614,19 @@ Format as markdown with headers and tables where appropriate."""
     with concurrent.futures.ThreadPoolExecutor() as pool:
         crew_output = await loop.run_in_executor(pool, crew.kickoff)
 
-    if hasattr(crew_output, 'raw') and isinstance(crew_output.raw, list):
+    if hasattr(crew_output, "raw") and isinstance(crew_output.raw, list):
         texts = []
         for block in crew_output.raw:
             if isinstance(block, dict):
-                if 'text' in block:
-                    texts.append(block['text'])
-                elif 'toolUse' in block:
+                if "text" in block:
+                    texts.append(block["text"])
+                elif "toolUse" in block:
                     texts.append(f"[Tool: {block['toolUse'].get('name', '?')}]")
                 else:
                     texts.append(json.dumps(block))
             else:
                 texts.append(str(block))
-        crew_output.raw = '\n'.join(texts)
+        crew_output.raw = "\n".join(texts)
 
     return _format_crew_output(crew_output)
 
@@ -616,6 +635,7 @@ Format as markdown with headers and tables where appropriate."""
 # Main invocation handler
 # ---------------------------------------------------------------------------
 
+
 async def _handle_invocation(payload: dict):
     """Async handler — routes to ChatInterface or CrewAI based on routing mode."""
     routing_mode = _get_routing_mode(payload)
@@ -623,18 +643,18 @@ async def _handle_invocation(payload: dict):
     # UI sends payloads with agent_name/memory_id but no routing_mode.
     # Default to crew for UI calls so they get real data from MCP tools.
     if routing_mode == "chat" and not payload.get("routing_mode"):
-        if payload.get("agent_name") or payload.get("memory_id") or payload.get("direct_mention_target"):
+        if (
+            payload.get("agent_name")
+            or payload.get("memory_id")
+            or payload.get("direct_mention_target")
+        ):
             routing_mode = "crew"
             logger.info("Auto-routing to crew mode (UI payload detected)")
 
     # CrewAI path — full PublisherCrew with Bedrock Converse patches
     if routing_mode == "crew":
         _start_fastapi_background()
-        prompt = (
-            payload.get("prompt")
-            or payload.get("message")
-            or payload.get("input", "")
-        )
+        prompt = payload.get("prompt") or payload.get("message") or payload.get("input", "")
         if not prompt:
             return {"error": "Missing 'prompt', 'message', or 'input' field"}
 
@@ -644,11 +664,7 @@ async def _handle_invocation(payload: dict):
         return result
 
     # Chat path (default) — keyword-based ChatInterface
-    prompt = (
-        payload.get("prompt")
-        or payload.get("message")
-        or payload.get("input", "")
-    )
+    prompt = payload.get("prompt") or payload.get("message") or payload.get("input", "")
     if not prompt:
         return {"error": "Missing 'prompt', 'message', or 'input' field"}
 
@@ -703,6 +719,7 @@ def invoke(payload, context):
         # If an event loop is already running (e.g. nested async),
         # create a new loop in a thread.
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor() as pool:
             future = pool.submit(asyncio.run, _handle_invocation(payload))
             return future.result(timeout=120)

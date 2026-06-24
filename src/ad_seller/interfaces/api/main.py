@@ -38,9 +38,7 @@ booking_logger = logging.getLogger("ad_seller.audience.booking")
 # coverage of the dual-name acceptance contract.
 _UCP_CONTENT_TYPE = "application/vnd.ucp.embedding+json; v=1"
 _AGENTIC_AUDIENCES_CONTENT_TYPE = "application/vnd.iab.agentic-audiences+json; v=1"
-_AUDIENCE_PLAN_CONTENT_TYPES = frozenset(
-    {_UCP_CONTENT_TYPE, _AGENTIC_AUDIENCES_CONTENT_TYPE}
-)
+_AUDIENCE_PLAN_CONTENT_TYPES = frozenset({_UCP_CONTENT_TYPE, _AGENTIC_AUDIENCES_CONTENT_TYPE})
 
 app = FastAPI(
     title="Ad Seller System API",
@@ -1472,11 +1470,7 @@ def _build_audience_filter(
 
     from ...engines.media_kit_service import AudienceFilter
 
-    if (
-        audience_type is None
-        and audience_id is None
-        and audience_taxonomy_version is None
-    ):
+    if audience_type is None and audience_id is None and audience_taxonomy_version is None:
         return None
 
     if audience_type is not None and audience_type not in _VALID_AUDIENCE_TYPES:
@@ -1543,9 +1537,7 @@ async def list_media_kit_packages(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid layer: {layer}")
 
-    audience_filter = _build_audience_filter(
-        audience_type, audience_id, audience_taxonomy_version
-    )
+    audience_filter = _build_audience_filter(audience_type, audience_id, audience_taxonomy_version)
 
     service = await _get_media_kit_service()
     packages = await service.list_packages_public(
@@ -1645,9 +1637,7 @@ async def list_packages(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid layer: {layer}")
 
-    audience_filter = _build_audience_filter(
-        audience_type, audience_id, audience_taxonomy_version
-    )
+    audience_filter = _build_audience_filter(audience_type, audience_id, audience_taxonomy_version)
 
     service = await _get_media_kit_service()
 
@@ -2515,9 +2505,7 @@ async def book_deal(
     if request.audience_plan:
         plan_snapshot = dict(request.audience_plan)
         deal_data["audience_plan_snapshot"] = plan_snapshot
-        deal_data["audience_match_summary"] = _build_audience_match_summary(
-            plan_snapshot
-        )
+        deal_data["audience_match_summary"] = _build_audience_match_summary(plan_snapshot)
 
         # Forensic anchor hash log (proposal §5.1 Step 2 / bead 14b). Buyer
         # logs the same hash on its side via `ad_buyer.audience.booking`.
@@ -2623,15 +2611,9 @@ def _build_audience_match_summary(plan: dict[str, Any]) -> dict[str, Any]:
 
     summary: dict[str, Any] = {
         "primary": _match_entry_for_ref(plan.get("primary") or {}),
-        "constraints": [
-            _match_entry_for_ref(r) for r in (plan.get("constraints") or [])
-        ],
-        "extensions": [
-            _match_entry_for_ref(r) for r in (plan.get("extensions") or [])
-        ],
-        "exclusions": [
-            _match_entry_for_ref(r) for r in (plan.get("exclusions") or [])
-        ],
+        "constraints": [_match_entry_for_ref(r) for r in (plan.get("constraints") or [])],
+        "extensions": [_match_entry_for_ref(r) for r in (plan.get("extensions") or [])],
+        "exclusions": [_match_entry_for_ref(r) for r in (plan.get("exclusions") or [])],
     }
     return summary
 

@@ -12,13 +12,11 @@ Validates that _sanitize_tool_blocks correctly handles:
 import sys
 from unittest.mock import MagicMock
 
-import pytest
-
 # Mock bedrock_agentcore before any imports
 sys.modules.setdefault("bedrock_agentcore", MagicMock())
 sys.modules.setdefault("bedrock_agentcore.runtime", MagicMock())
 
-from patches.crewai_bedrock_fix import _sanitize_tool_blocks
+from patches.crewai_bedrock_fix import _sanitize_tool_blocks  # noqa: E402
 
 
 class TestSanitizeToolBlocks:
@@ -116,8 +114,20 @@ class TestSanitizeToolBlocks:
             {
                 "role": "assistant",
                 "content": [
-                    {"toolUse": {"toolUseId": "tu-1", "name": "get_pricing", "input": {"product_id": "p1"}}},
-                    {"toolUse": {"toolUseId": "tu-2", "name": "get_pricing", "input": {"product_id": "p2"}}},
+                    {
+                        "toolUse": {
+                            "toolUseId": "tu-1",
+                            "name": "get_pricing",
+                            "input": {"product_id": "p1"},
+                        }
+                    },
+                    {
+                        "toolUse": {
+                            "toolUseId": "tu-2",
+                            "name": "get_pricing",
+                            "input": {"product_id": "p2"},
+                        }
+                    },
                 ],
             },
             {
@@ -174,10 +184,10 @@ class TestApplyPatches:
 
     def test_apply_patches_idempotent(self):
         from patches.crewai_bedrock_fix import apply_patches
+
         # Should not raise on repeated calls
         apply_patches()
         apply_patches()
-
 
 
 class TestParseNativeToolCallPatch:
@@ -186,6 +196,7 @@ class TestParseNativeToolCallPatch:
     def test_bedrock_tool_use_dict_args_preserved(self):
         """Bedrock toolUse dict should have input args extracted correctly."""
         from patches.crewai_bedrock_fix import _patch_parse_native_tool_call
+
         _patch_parse_native_tool_call()
 
         from crewai.agents.crew_agent_executor import CrewAgentExecutor
@@ -196,7 +207,11 @@ class TestParseNativeToolCallPatch:
         tool_call = {
             "toolUseId": "tooluse_abc123",
             "name": "get_pricing",
-            "input": {"product_id": "inv-ctv-apex-sports-nba", "buyer_tier": "preferred", "volume": 5000000},
+            "input": {
+                "product_id": "inv-ctv-apex-sports-nba",
+                "buyer_tier": "preferred",
+                "volume": 5000000,
+            },
         }
 
         result = executor._parse_native_tool_call(tool_call)
@@ -204,14 +219,20 @@ class TestParseNativeToolCallPatch:
         call_id, func_name, func_args = result
         assert call_id == "tooluse_abc123"
         assert func_name == "get_pricing"
-        assert func_args == {"product_id": "inv-ctv-apex-sports-nba", "buyer_tier": "preferred", "volume": 5000000}
+        assert func_args == {
+            "product_id": "inv-ctv-apex-sports-nba",
+            "buyer_tier": "preferred",
+            "volume": 5000000,
+        }
 
     def test_bedrock_tool_use_empty_input_returns_empty_dict(self):
         """Bedrock toolUse with empty input should return {} not '{}'."""
         from patches.crewai_bedrock_fix import _patch_parse_native_tool_call
+
         _patch_parse_native_tool_call()
 
         from crewai.agents.crew_agent_executor import CrewAgentExecutor
+
         executor = CrewAgentExecutor.__new__(CrewAgentExecutor)
 
         tool_call = {
@@ -229,9 +250,11 @@ class TestParseNativeToolCallPatch:
     def test_openai_format_still_works(self):
         """OpenAI-format tool calls should still be handled by original parser."""
         from patches.crewai_bedrock_fix import _patch_parse_native_tool_call
+
         _patch_parse_native_tool_call()
 
         from crewai.agents.crew_agent_executor import CrewAgentExecutor
+
         executor = CrewAgentExecutor.__new__(CrewAgentExecutor)
 
         # OpenAI format — no toolUseId, has function.name

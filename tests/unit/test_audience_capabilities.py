@@ -41,7 +41,6 @@ from ad_seller.models.media_kit import (
 )
 from ad_seller.models.pricing_tiers import TieredPricingConfig
 
-
 # =============================================================================
 # AudienceCapabilities / AgenticCapabilities construction
 # =============================================================================
@@ -187,9 +186,7 @@ class TestLegacyMigrationShim:
     def test_legacy_input_migrates(self, caplog):
         """Legacy flat field rewrites to capabilities, AT 1.1, INFO log."""
         with caplog.at_level(logging.INFO, logger="ad_seller.audience.migration"):
-            pkg = Package(
-                **_basic_package_kwargs(audience_segment_ids=["3", "4"])
-            )
+            pkg = Package(**_basic_package_kwargs(audience_segment_ids=["3", "4"]))
 
         assert isinstance(pkg.audience_capabilities, AudienceCapabilities)
         assert pkg.audience_capabilities.standard_segment_ids == ["3", "4"]
@@ -197,10 +194,7 @@ class TestLegacyMigrationShim:
         # Legacy field is gone -- no shadow attribute survives migration.
         assert not hasattr(pkg, "audience_segment_ids")
         # Migration was logged at INFO on the migration logger.
-        assert any(
-            "Migrated legacy audience_segment_ids" in r.message
-            for r in caplog.records
-        )
+        assert any("Migrated legacy audience_segment_ids" in r.message for r in caplog.records)
 
     def test_legacy_empty_list_migrates(self):
         """Empty legacy list still migrates -- preserves emptiness."""
@@ -213,18 +207,13 @@ class TestLegacyMigrationShim:
         caps = AudienceCapabilities(
             standard_segment_ids=["5", "6"],
             contextual_segment_ids=["IAB19"],
-            agentic_capabilities=AgenticCapabilities(
-                supported_signal_types=["identity"]
-            ),
+            agentic_capabilities=AgenticCapabilities(supported_signal_types=["identity"]),
         )
         pkg = Package(**_basic_package_kwargs(audience_capabilities=caps))
         assert pkg.audience_capabilities.standard_segment_ids == ["5", "6"]
         assert pkg.audience_capabilities.contextual_segment_ids == ["IAB19"]
         assert pkg.audience_capabilities.agentic_capabilities is not None
-        assert (
-            pkg.audience_capabilities.agentic_capabilities.supported_signal_types
-            == ["identity"]
-        )
+        assert pkg.audience_capabilities.agentic_capabilities.supported_signal_types == ["identity"]
 
     def test_both_fields_caps_wins(self, caplog):
         """If caller sends both, audience_capabilities wins; legacy dropped."""
@@ -271,9 +260,7 @@ class TestRoundTrip:
 
     def test_roundtrip_legacy_then_dump(self):
         """Legacy in -> typed out -> dump -> reconstruct -> still typed."""
-        pkg = Package(
-            **_basic_package_kwargs(audience_segment_ids=["3", "4"])
-        )
+        pkg = Package(**_basic_package_kwargs(audience_segment_ids=["3", "4"]))
         data = pkg.model_dump(mode="json")
         # Dumped form is the new typed shape, not the legacy field.
         assert "audience_capabilities" in data
@@ -336,9 +323,7 @@ class TestPublicViewExcludesSegmentLists:
         caps = AudienceCapabilities(
             standard_segment_ids=["3", "4"],
             contextual_segment_ids=["IAB19"],
-            agentic_capabilities=AgenticCapabilities(
-                supported_signal_types=["identity"]
-            ),
+            agentic_capabilities=AgenticCapabilities(supported_signal_types=["identity"]),
         )
         pkg = Package(
             **_basic_package_kwargs(
@@ -361,9 +346,7 @@ class TestPublicViewExcludesSegmentLists:
         assert dumped["audience_capabilities"]["supports_agentic"] is True
         assert dumped["audience_capabilities"]["standard_taxonomy_version"] == "1.1"
         assert dumped["audience_capabilities"]["contextual_taxonomy_version"] == "3.1"
-        assert (
-            dumped["audience_capabilities"]["agentic_spec_version"] == "draft-2026-01"
-        )
+        assert dumped["audience_capabilities"]["agentic_spec_version"] == "draft-2026-01"
 
     def test_public_view_empty_capabilities(self, service):
         """A package with no audience config still produces a clean summary."""
@@ -382,9 +365,7 @@ class TestAuthenticatedViewIncludesCapabilities:
         caps = AudienceCapabilities(
             standard_segment_ids=["3", "4", "5"],
             contextual_segment_ids=["IAB1-2"],
-            agentic_capabilities=AgenticCapabilities(
-                supported_signal_types=["identity"]
-            ),
+            agentic_capabilities=AgenticCapabilities(supported_signal_types=["identity"]),
         )
         pkg = Package(
             **_basic_package_kwargs(

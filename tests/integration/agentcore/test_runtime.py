@@ -62,6 +62,7 @@ def runtime_config(request) -> RuntimeConfig:
         if yaml_path.exists():
             try:
                 import yaml
+
                 with open(yaml_path) as f:
                     cfg = yaml.safe_load(f)
                 agents = cfg.get("agents", {})
@@ -119,19 +120,31 @@ def invoke_runtime(
             output = result.stdout + result.stderr
 
             # Check for cold start timeout (retryable)
-            if re.search(r"initialization time exceeded|32010|RuntimeClientError", output, re.IGNORECASE):
+            if re.search(
+                r"initialization time exceeded|32010|RuntimeClientError", output, re.IGNORECASE
+            ):
                 if attempt < max_retries:
                     logger.warning("Cold start timeout (attempt %d/%d)", attempt, max_retries)
                     time.sleep(retry_wait)
                     continue
-                return {"response": "", "raw": output, "success": False, "error": "Cold start timeout"}
+                return {
+                    "response": "",
+                    "raw": output,
+                    "success": False,
+                    "error": "Cold start timeout",
+                }
 
             # Extract response text
             response_text = _extract_response(output)
 
             # Check for errors in response
             if re.search(r'"error":|"exception":|Invocation failed', output, re.IGNORECASE):
-                return {"response": response_text, "raw": output, "success": False, "error": response_text}
+                return {
+                    "response": response_text,
+                    "raw": output,
+                    "success": False,
+                    "error": response_text,
+                }
 
             return {"response": response_text, "raw": output, "success": True, "error": ""}
 
@@ -175,9 +188,9 @@ class TestChatMode:
         assert result["success"], f"Invoke failed: {result['error']}"
         # Should mention products or inventory
         response = result["response"].lower()
-        assert any(
-            kw in response for kw in ["product", "inventory", "ctv", "video", "display"]
-        ), f"Response doesn't mention products: {result['response'][:200]}"
+        assert any(kw in response for kw in ["product", "inventory", "ctv", "video", "display"]), (
+            f"Response doesn't mention products: {result['response'][:200]}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -198,8 +211,7 @@ class TestCrewListProducts:
         response = result["response"]
         # Should contain real Meridian Media Group product IDs
         assert any(
-            pid in response
-            for pid in ["inv-ctv-", "inv-dig-", "inv-lin-", "inv-vid-", "inv-aud-"]
+            pid in response for pid in ["inv-ctv-", "inv-dig-", "inv-lin-", "inv-vid-", "inv-aud-"]
         ), f"No real product IDs in response: {response[:300]}"
 
 
@@ -234,9 +246,9 @@ class TestCrewGetRateCard:
         assert result["success"], f"Invoke failed: {result['error']}"
         response = result["response"].lower()
         # Should have inventory type groupings
-        assert any(
-            kw in response for kw in ["display", "video", "linear", "ctv", "audio"]
-        ), f"No inventory types in response: {result['response'][:300]}"
+        assert any(kw in response for kw in ["display", "video", "linear", "ctv", "audio"]), (
+            f"No inventory types in response: {result['response'][:300]}"
+        )
 
 
 @pytest.mark.agentcore
@@ -250,9 +262,9 @@ class TestCrewDiscoverInventory:
         )
         assert result["success"], f"Invoke failed: {result['error']}"
         response = result["response"].lower()
-        assert any(
-            kw in response for kw in ["ctv", "sports", "apex", "inv-"]
-        ), f"No CTV sports results: {result['response'][:300]}"
+        assert any(kw in response for kw in ["ctv", "sports", "apex", "inv-"]), (
+            f"No CTV sports results: {result['response'][:300]}"
+        )
 
 
 @pytest.mark.agentcore
@@ -286,9 +298,9 @@ class TestCrewCreateDeal:
         response = result["response"].lower()
         # Should mention floor price or price below floor — NOT 401 auth error
         assert "401" not in response, f"Got 401 auth error: {result['response'][:300]}"
-        assert any(
-            kw in response for kw in ["floor", "below", "minimum", "price"]
-        ), f"No pricing rejection in response: {result['response'][:300]}"
+        assert any(kw in response for kw in ["floor", "below", "minimum", "price"]), (
+            f"No pricing rejection in response: {result['response'][:300]}"
+        )
 
     def test_deal_above_floor_succeeds(self, runtime_config):
         """Offer above floor price creates a deal with Deal ID."""
@@ -302,9 +314,7 @@ class TestCrewCreateDeal:
         assert result["success"], f"Invoke failed: {result['error']}"
         response = result["response"]
         # Should contain a DEAL ID
-        assert re.search(r"DEAL-[A-Z0-9]+", response), (
-            f"No Deal ID in response: {response[:300]}"
-        )
+        assert re.search(r"DEAL-[A-Z0-9]+", response), f"No Deal ID in response: {response[:300]}"
         assert "401" not in response.lower() or "deal-" in response.lower()
 
 
@@ -328,6 +338,6 @@ class TestCrewComplexScenario:
         assert result["success"], f"Invoke failed: {result['error']}"
         response = result["response"].lower()
         # Should contain real inventory data with pricing
-        assert any(
-            kw in response for kw in ["inv-ctv", "cpm", "$", "apex", "sports"]
-        ), f"No inventory/pricing data: {result['response'][:300]}"
+        assert any(kw in response for kw in ["inv-ctv", "cpm", "$", "apex", "sports"]), (
+            f"No inventory/pricing data: {result['response'][:300]}"
+        )

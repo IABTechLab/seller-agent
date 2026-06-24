@@ -458,8 +458,11 @@ class ChatInterface:
             else:
                 # Pick the first CTV product if available, otherwise first product
                 ctv_id = next(
-                    (pid for pid, p in self._products.items()
-                     if getattr(p, "inventory_type", "") == "ctv"),
+                    (
+                        pid
+                        for pid, p in self._products.items()
+                        if getattr(p, "inventory_type", "") == "ctv"
+                    ),
                     None,
                 )
                 product_id = ctv_id or next(iter(self._products), "display")

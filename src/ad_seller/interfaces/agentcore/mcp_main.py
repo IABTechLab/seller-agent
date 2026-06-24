@@ -89,8 +89,9 @@ def main():
     _start_fastapi_background()
 
     # Import and run the MCP server — this blocks on port 8000
-    from ad_seller.interfaces.mcp_server import mcp as mcp_server
     from mcp.server.transport_security import TransportSecuritySettings
+
+    from ad_seller.interfaces.mcp_server import mcp as mcp_server
 
     # Ensure stateless_http is set for AgentCore compatibility
     mcp_server.settings.stateless_http = True

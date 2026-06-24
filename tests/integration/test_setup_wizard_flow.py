@@ -31,12 +31,13 @@ class TestSetupWizardFlow:
         )
         storage = AsyncMock()
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock,
-            return_value=storage,
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
         ):
             result = json.loads(await get_setup_status())
 
@@ -218,15 +219,17 @@ class TestSetupWizardFlow:
         fake_module = MagicMock()
         fake_module.MediaKitService.return_value = mock_service
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock,
-            return_value=storage,
-        ), patch.dict(
-            "sys.modules",
-            {"ad_seller.engines.media_kit_service": fake_module},
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+            patch.dict(
+                "sys.modules",
+                {"ad_seller.engines.media_kit_service": fake_module},
+            ),
         ):
             result = json.loads(await get_setup_status())
 
@@ -258,15 +261,17 @@ class TestSetupWizardFlow:
         fake_module = MagicMock()
         fake_module.MediaKitService.return_value = mock_service
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock,
-            return_value=storage,
-        ), patch.dict(
-            "sys.modules",
-            {"ad_seller.engines.media_kit_service": fake_module},
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+            patch.dict(
+                "sys.modules",
+                {"ad_seller.engines.media_kit_service": fake_module},
+            ),
         ):
             result = json.loads(await get_setup_status())
 
@@ -289,9 +294,7 @@ class TestSetPublisherIdentityEdgeCases:
             env_updates[key] = value
 
         with patch("ad_seller.interfaces.mcp_server._update_env", side_effect=mock_update_env):
-            result = json.loads(
-                await set_publisher_identity(name="Just A Name")
-            )
+            result = json.loads(await set_publisher_identity(name="Just A Name"))
 
         assert result["status"] == "updated"
         assert result["name"] == "Just A Name"

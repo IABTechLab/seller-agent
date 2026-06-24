@@ -42,9 +42,7 @@ _broken_flows = [
 for _mod_name in _broken_flows:
     if _mod_name not in sys.modules:
         _stub = ModuleType(_mod_name)
-        _cls_name = (
-            _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
-        )
+        _cls_name = _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
         setattr(_stub, _cls_name, type(_cls_name, (), {}))
         sys.modules[_mod_name] = _stub
 
@@ -65,7 +63,6 @@ from ad_seller.models.audience_capabilities import (  # noqa: E402
     load_taxonomy_lock_hashes,
 )
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -76,12 +73,7 @@ def real_lock_path() -> Path:
     """Absolute path to the vendored taxonomy lock file."""
 
     # tests/unit/test_capability_audience_block.py -> project root
-    return (
-        Path(__file__).resolve().parents[2]
-        / "data"
-        / "taxonomies"
-        / "taxonomies.lock.json"
-    )
+    return Path(__file__).resolve().parents[2] / "data" / "taxonomies" / "taxonomies.lock.json"
 
 
 @pytest.fixture
@@ -188,17 +180,11 @@ class TestCapabilityAudienceBlockDefaults:
         assert block.max_refs_per_role.extensions == 0
         assert block.max_refs_per_role.exclusions == 0
 
-    def test_taxonomy_versions_from_lock_file(
-        self, real_lock_path, real_lock_data
-    ):
+    def test_taxonomy_versions_from_lock_file(self, real_lock_path, real_lock_data):
         """Taxonomy versions in the block match the lock file -- not hard-coded."""
         block = build_capability_audience_block(lock_path=real_lock_path)
-        assert block.standard_taxonomy_versions == [
-            real_lock_data["audience"]["version"]
-        ]
-        assert block.contextual_taxonomy_versions == [
-            real_lock_data["content"]["version"]
-        ]
+        assert block.standard_taxonomy_versions == [real_lock_data["audience"]["version"]]
+        assert block.contextual_taxonomy_versions == [real_lock_data["content"]["version"]]
 
 
 # =============================================================================
@@ -270,26 +256,15 @@ class TestCapabilityAudienceBlockRoundTrip:
         dumped = block.model_dump()
         rehydrated = CapabilityAudienceBlock.model_validate(dumped)
         assert rehydrated.schema_version == block.schema_version
-        assert (
-            rehydrated.standard_taxonomy_versions == block.standard_taxonomy_versions
-        )
-        assert (
-            rehydrated.contextual_taxonomy_versions
-            == block.contextual_taxonomy_versions
-        )
+        assert rehydrated.standard_taxonomy_versions == block.standard_taxonomy_versions
+        assert rehydrated.contextual_taxonomy_versions == block.contextual_taxonomy_versions
         assert rehydrated.agentic.supported == block.agentic.supported
         assert rehydrated.supports_constraints == block.supports_constraints
         assert rehydrated.supports_extensions == block.supports_extensions
         assert rehydrated.supports_exclusions == block.supports_exclusions
         assert rehydrated.max_refs_per_role == block.max_refs_per_role
-        assert (
-            rehydrated.taxonomy_lock_hashes.audience
-            == block.taxonomy_lock_hashes.audience
-        )
-        assert (
-            rehydrated.taxonomy_lock_hashes.content
-            == block.taxonomy_lock_hashes.content
-        )
+        assert rehydrated.taxonomy_lock_hashes.audience == block.taxonomy_lock_hashes.audience
+        assert rehydrated.taxonomy_lock_hashes.content == block.taxonomy_lock_hashes.content
 
     def test_block_validates_from_wire_shape(self, real_lock_path, real_lock_data):
         """Construct from the JSON wire shape -- proves wire-format conformance."""
@@ -401,20 +376,11 @@ class TestAgentCardEndpointEmitsBlock:
         from pathlib import Path as _Path
 
         lock_path = (
-            _Path(__file__).resolve().parents[2]
-            / "data"
-            / "taxonomies"
-            / "taxonomies.lock.json"
+            _Path(__file__).resolve().parents[2] / "data" / "taxonomies" / "taxonomies.lock.json"
         )
         lock = json.loads(lock_path.read_text())
-        assert (
-            ac["taxonomy_lock_hashes"]["audience"]
-            == f"sha256:{lock['audience']['sha256']}"
-        )
-        assert (
-            ac["taxonomy_lock_hashes"]["content"]
-            == f"sha256:{lock['content']['sha256']}"
-        )
+        assert ac["taxonomy_lock_hashes"]["audience"] == f"sha256:{lock['audience']['sha256']}"
+        assert ac["taxonomy_lock_hashes"]["content"] == f"sha256:{lock['content']['sha256']}"
 
     async def test_endpoint_response_validates_as_agent_card(self, client):
         """The full response still validates as an AgentCard -- no breakage."""

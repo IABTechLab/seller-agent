@@ -28,9 +28,7 @@ _broken_flows = [
 for _mod_name in _broken_flows:
     if _mod_name not in sys.modules:
         _stub = ModuleType(_mod_name)
-        _cls_name = (
-            _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
-        )
+        _cls_name = _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
         setattr(_stub, _cls_name, type(_cls_name, (), {}))
         sys.modules[_mod_name] = _stub
 
@@ -49,7 +47,6 @@ from ad_seller.models.audience_capabilities import (  # noqa: E402
     MaxRefsPerRole,
     TaxonomyLockHashes,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -163,9 +160,7 @@ class TestAgenticMatchEndpoint:
     """End-to-end behavior of the new endpoint."""
 
     @pytest.mark.asyncio
-    async def test_happy_path_agentic_supported(
-        self, client, agentic_supported_seller
-    ):
+    async def test_happy_path_agentic_supported(self, client, agentic_supported_seller):
         body = {
             "audience_ref": {
                 "type": "agentic",
@@ -191,9 +186,7 @@ class TestAgenticMatchEndpoint:
         assert "rationale" in data and isinstance(data["rationale"], str)
 
     @pytest.mark.asyncio
-    async def test_deterministic_response_per_identifier(
-        self, client, agentic_supported_seller
-    ):
+    async def test_deterministic_response_per_identifier(self, client, agentic_supported_seller):
         body = {
             "audience_ref": {
                 "type": "agentic",
@@ -239,9 +232,7 @@ class TestAgenticMatchEndpoint:
         assert data["matched_capabilities"] == []
 
     @pytest.mark.asyncio
-    async def test_non_agentic_ref_rejected_with_400(
-        self, client, agentic_supported_seller
-    ):
+    async def test_non_agentic_ref_rejected_with_400(self, client, agentic_supported_seller):
         body = {
             "audience_ref": {
                 "type": "standard",
@@ -260,9 +251,7 @@ class TestAgenticMatchEndpoint:
         assert body_json["detail"]["error"] == "invalid_audience_ref"
 
     @pytest.mark.asyncio
-    async def test_missing_identifier_returns_400(
-        self, client, agentic_supported_seller
-    ):
+    async def test_missing_identifier_returns_400(self, client, agentic_supported_seller):
         body = {
             "audience_ref": {
                 "type": "agentic",

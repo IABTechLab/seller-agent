@@ -248,8 +248,6 @@ class AuthenticatedPackageView(PublicPackageView):
     floor_price: float
     currency: str = "USD"
     placements: list[PackagePlacement] = Field(default_factory=list)
-    audience_capabilities: AudienceCapabilities = Field(
-        default_factory=AudienceCapabilities
-    )
+    audience_capabilities: AudienceCapabilities = Field(default_factory=AudienceCapabilities)
     negotiation_enabled: bool = False
     volume_discounts_available: bool = False

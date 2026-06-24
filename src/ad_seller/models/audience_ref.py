@@ -53,9 +53,9 @@ class ComplianceContext(BaseModel):
         default=None,
         description="Hash or signature carrying any required attestation",
     )
-    embedding_provenance: Literal[
-        "local_buyer", "advertiser_supplied", "hosted_external", "mock"
-    ] | None = Field(
+    embedding_provenance: (
+        Literal["local_buyer", "advertiser_supplied", "hosted_external", "mock"] | None
+    ) = Field(
         default=None,
         description=(
             "Provenance of the embedding bytes (E2-7 Gap 6). Mirrors the "
@@ -118,9 +118,7 @@ class AudienceRef(BaseModel):
         """Agentic refs MUST carry a compliance_context."""
 
         if self.type == "agentic" and self.compliance_context is None:
-            raise ValueError(
-                "AudienceRef.compliance_context is required when type='agentic'"
-            )
+            raise ValueError("AudienceRef.compliance_context is required when type='agentic'")
         return self
 
     @model_validator(mode="after")
@@ -128,7 +126,5 @@ class AudienceRef(BaseModel):
         """Explicit refs should not carry a confidence score."""
 
         if self.source == "explicit" and self.confidence is not None:
-            raise ValueError(
-                "AudienceRef.confidence must be None when source='explicit'"
-            )
+            raise ValueError("AudienceRef.confidence must be None when source='explicit'")
         return self

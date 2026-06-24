@@ -30,9 +30,11 @@ def main():
 
     if mode == "mcp":
         from ad_seller.interfaces.agentcore.mcp_main import main as mcp_main
+
         mcp_main()
     elif mode == "http":
         from ad_seller.interfaces.agentcore.http_main import app
+
         app.run()
     else:
         print(f"ERROR: Unknown AGENTCORE_MODE={mode!r}. Must be 'mcp' or 'http'.", file=sys.stderr)

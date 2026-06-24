@@ -79,28 +79,20 @@ def _parse_standard_data_entries(
             continue
 
         ext = data_entry.get("ext") or {}
-        version = (
-            ext.get("taxonomy_version") if isinstance(ext, dict) else None
-        ) or "1.1"
+        version = (ext.get("taxonomy_version") if isinstance(ext, dict) else None) or "1.1"
 
         segments = data_entry.get("segment") or []
         if not isinstance(segments, list):
-            warnings.append(
-                f"user.data[{i}].segment is not an array; skipped"
-            )
+            warnings.append(f"user.data[{i}].segment is not an array; skipped")
             continue
 
         for j, seg in enumerate(segments):
             if not isinstance(seg, dict):
-                warnings.append(
-                    f"user.data[{i}].segment[{j}] is not an object; skipped"
-                )
+                warnings.append(f"user.data[{i}].segment[{j}] is not an object; skipped")
                 continue
             seg_id = seg.get("id")
             if not seg_id or not isinstance(seg_id, str):
-                warnings.append(
-                    f"user.data[{i}].segment[{j}] missing 'id'; skipped"
-                )
+                warnings.append(f"user.data[{i}].segment[{j}] missing 'id'; skipped")
                 continue
             try:
                 refs.append(
@@ -113,9 +105,7 @@ def _parse_standard_data_entries(
                     )
                 )
             except Exception as exc:  # noqa: BLE001 - validation already strict
-                warnings.append(
-                    f"user.data[{i}].segment[{j}] failed validation: {exc}"
-                )
+                warnings.append(f"user.data[{i}].segment[{j}] failed validation: {exc}")
     return refs
 
 
@@ -194,23 +184,17 @@ def _parse_agentic_ext(
     if agentic_block is None:
         return refs
     if not isinstance(agentic_block, dict):
-        warnings.append(
-            f"user.ext.{AGENTIC_USER_EXT_KEY} is not an object; skipped"
-        )
+        warnings.append(f"user.ext.{AGENTIC_USER_EXT_KEY} is not an object; skipped")
         return refs
 
     entries = agentic_block.get("refs") or []
     if not isinstance(entries, list):
-        warnings.append(
-            f"user.ext.{AGENTIC_USER_EXT_KEY}.refs is not an array; skipped"
-        )
+        warnings.append(f"user.ext.{AGENTIC_USER_EXT_KEY}.refs is not an array; skipped")
         return refs
 
     for i, entry in enumerate(entries):
         if not isinstance(entry, dict):
-            warnings.append(
-                f"user.ext.{AGENTIC_USER_EXT_KEY}.refs[{i}] is not an object; skipped"
-            )
+            warnings.append(f"user.ext.{AGENTIC_USER_EXT_KEY}.refs[{i}] is not an object; skipped")
             continue
         identifier = entry.get("identifier")
         version = entry.get("version")
@@ -223,9 +207,7 @@ def _parse_agentic_ext(
             )
             continue
         if not version or not isinstance(version, str):
-            warnings.append(
-                f"user.ext.{AGENTIC_USER_EXT_KEY}.refs[{i}] missing 'version'; skipped"
-            )
+            warnings.append(f"user.ext.{AGENTIC_USER_EXT_KEY}.refs[{i}] missing 'version'; skipped")
             continue
 
         if cc_payload is None:
@@ -256,9 +238,7 @@ def _parse_agentic_ext(
                 )
             )
         except Exception as exc:  # noqa: BLE001
-            warnings.append(
-                f"user.ext.{AGENTIC_USER_EXT_KEY}.refs[{i}] failed validation: {exc}"
-            )
+            warnings.append(f"user.ext.{AGENTIC_USER_EXT_KEY}.refs[{i}] failed validation: {exc}")
     return refs
 
 

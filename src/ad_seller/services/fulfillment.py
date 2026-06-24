@@ -69,9 +69,7 @@ def _capabilities_have_degraded(
             return False
         if isinstance(refs, dict):
             refs = [refs]
-        return any(
-            isinstance(r, dict) and r.get("type") == "agentic" for r in refs
-        )
+        return any(isinstance(r, dict) and r.get("type") == "agentic" for r in refs)
 
     has_agentic_in_snapshot = (
         _has_agentic(snapshot_plan.get("primary"))
@@ -80,9 +78,7 @@ def _capabilities_have_degraded(
         or _has_agentic(snapshot_plan.get("exclusions"))
     )
     if has_agentic_in_snapshot and not current_capabilities.agentic.supported:
-        degradations.append(
-            "snapshot includes agentic refs but seller no longer supports agentic"
-        )
+        degradations.append("snapshot includes agentic refs but seller no longer supports agentic")
 
     return degradations
 

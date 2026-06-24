@@ -26,12 +26,13 @@ class TestGetSetupStatusIntegration:
         settings = make_settings(seller_organization_name="Default Publisher")
         storage = AsyncMock()
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock,
-            return_value=storage,
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
         ):
             result = json.loads(await get_setup_status())
 
@@ -49,12 +50,13 @@ class TestGetSetupStatusIntegration:
         )
         storage = AsyncMock()
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock,
-            return_value=storage,
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
         ):
             result = json.loads(await get_setup_status())
 
@@ -77,15 +79,17 @@ class TestGetSetupStatusIntegration:
         fake_module = MagicMock()
         fake_module.MediaKitService.return_value = mock_service
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock,
-            return_value=storage,
-        ), patch.dict(
-            "sys.modules",
-            {"ad_seller.engines.media_kit_service": fake_module},
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+            patch.dict(
+                "sys.modules",
+                {"ad_seller.engines.media_kit_service": fake_module},
+            ),
         ):
             result = json.loads(await get_setup_status())
 
@@ -115,9 +119,7 @@ class TestListProductsIntegration:
                 base_cpm=p["base_cpm"],
                 floor_cpm=p["floor_cpm"],
                 supported_deal_types=[DealType(dt) for dt in p["supported_deal_types"]],
-                supported_pricing_models=[
-                    PricingModel(pm) for pm in p["supported_pricing_models"]
-                ],
+                supported_pricing_models=[PricingModel(pm) for pm in p["supported_pricing_models"]],
             )
             products[pd.product_id] = pd
 
@@ -132,6 +134,7 @@ class TestListProductsIntegration:
         mock_flow_cls = MagicMock(return_value=mock_flow_instance)
 
         with patch("ad_seller.interfaces.mcp_server.ProductSetupFlow", mock_flow_cls, create=True):
+
             async def patched_list_products(limit=50):
                 flow = mock_flow_instance
                 await flow.kickoff()
@@ -189,9 +192,10 @@ class TestCreateDealFromTemplateIntegration:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch("httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch("httpx.AsyncClient", return_value=mock_client),
+        ):
             result = await create_deal_from_template(
                 deal_type="PG",
                 product_id="fw-ctv-premium-001",
@@ -235,9 +239,10 @@ class TestListOrdersIntegration:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch("httpx.AsyncClient", return_value=mock_client):
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch("httpx.AsyncClient", return_value=mock_client),
+        ):
             result = await list_orders(limit=50)
 
         parsed = json.loads(result)
@@ -290,12 +295,13 @@ class TestHealthCheckIntegration:
         settings = make_settings()
         storage = AsyncMock()
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock,
-            return_value=storage,
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
         ):
             result = json.loads(await health_check())
 

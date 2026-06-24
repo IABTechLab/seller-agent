@@ -39,21 +39,27 @@ class TestDeployScriptBasics:
     def test_help_exits_zero(self):
         result = subprocess.run(
             ["bash", str(DEPLOY_SCRIPT), "--help"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode == 0
 
     def test_help_shows_usage(self):
         result = subprocess.run(
             ["bash", str(DEPLOY_SCRIPT), "--help"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert "Usage:" in result.stdout
 
     def test_help_shows_mode_options(self):
         result = subprocess.run(
             ["bash", str(DEPLOY_SCRIPT), "--help"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert "--mode" in result.stdout
         for mode in VALID_MODES:
@@ -62,7 +68,9 @@ class TestDeployScriptBasics:
     def test_help_shows_storage_options(self):
         result = subprocess.run(
             ["bash", str(DEPLOY_SCRIPT), "--help"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert "--storage" in result.stdout
         assert "sqlite" in result.stdout
@@ -71,7 +79,9 @@ class TestDeployScriptBasics:
     def test_help_shows_cleanup_option(self):
         result = subprocess.run(
             ["bash", str(DEPLOY_SCRIPT), "--help"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert "--cleanup" in result.stdout
 
@@ -99,7 +109,9 @@ class TestValidModes:
         """Each valid mode appears in --help output."""
         result = subprocess.run(
             ["bash", str(DEPLOY_SCRIPT), "--help"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert mode in result.stdout
 
@@ -114,10 +126,16 @@ class TestValidModes:
         The script will fail later (no agentcore CLI) but NOT at mode validation.
         """
         result = subprocess.run(
-            ["bash", "-c", f"""
+            [
+                "bash",
+                "-c",
+                f"""
                 source {DEPLOY_SCRIPT} --mode {mode} --test-only 2>&1 || true
-            """],
-            capture_output=True, text=True, timeout=10,
+            """,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
             env={"PATH": "/usr/bin:/bin:/usr/local/bin", "HOME": str(Path.home())},
         )
         # Should NOT contain the mode validation error
@@ -167,14 +185,19 @@ class TestInvalidModes:
         """Known invalid modes are rejected with non-zero exit."""
         result = subprocess.run(
             ["bash", str(DEPLOY_SCRIPT), "--mode", bad_mode],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode != 0
 
-    @given(mode=st.text(
-        alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd")),
-        min_size=1, max_size=20,
-    ).filter(lambda m: m not in VALID_MODES))
+    @given(
+        mode=st.text(
+            alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd")),
+            min_size=1,
+            max_size=20,
+        ).filter(lambda m: m not in VALID_MODES)
+    )
     @settings(max_examples=20)
     def test_arbitrary_invalid_mode_rejected(self, mode):
         """**Validates: Requirements 3.2**
@@ -184,7 +207,9 @@ class TestInvalidModes:
         """
         result = subprocess.run(
             ["bash", str(DEPLOY_SCRIPT), "--mode", mode],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode != 0, f"Mode '{mode}' should have been rejected"
         assert "Invalid mode" in result.stderr or "ERROR" in result.stderr
@@ -201,7 +226,9 @@ class TestStorageFlag:
     def test_invalid_storage_rejected(self):
         result = subprocess.run(
             ["bash", str(DEPLOY_SCRIPT), "--storage", "mysql"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode != 0
 

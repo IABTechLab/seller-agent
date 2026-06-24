@@ -40,9 +40,7 @@ _broken_flows = [
 for _mod_name in _broken_flows:
     if _mod_name not in sys.modules:
         _stub = ModuleType(_mod_name)
-        _cls_name = (
-            _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
-        )
+        _cls_name = _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
         setattr(_stub, _cls_name, type(_cls_name, (), {}))
         sys.modules[_mod_name] = _stub
 
@@ -65,7 +63,6 @@ from ad_seller.models.media_kit import (  # noqa: E402
     PackageLayer,
     PackageStatus,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -203,9 +200,7 @@ class TestPackagesAudienceFilter:
     @pytest.mark.asyncio
     async def test_filter_agentic_type_only(self, client):
         async with client as c:
-            resp = await c.get(
-                "/packages", params={"audience_type": "agentic"}
-            )
+            resp = await c.get("/packages", params={"audience_type": "agentic"})
         assert resp.status_code == 200
         ids = [p["package_id"] for p in resp.json()["packages"]]
         assert ids == ["pkg-agt"]
@@ -234,18 +229,14 @@ class TestPackagesAudienceFilter:
     @pytest.mark.asyncio
     async def test_invalid_audience_type_returns_400(self, client):
         async with client as c:
-            resp = await c.get(
-                "/packages", params={"audience_type": "bogus"}
-            )
+            resp = await c.get("/packages", params={"audience_type": "bogus"})
         assert resp.status_code == 400
         assert "audience_type" in resp.json()["detail"]
 
     @pytest.mark.asyncio
     async def test_audience_id_without_type_returns_400(self, client):
         async with client as c:
-            resp = await c.get(
-                "/packages", params={"audience_id": "3-7"}
-            )
+            resp = await c.get("/packages", params={"audience_id": "3-7"})
         assert resp.status_code == 400
         assert "audience_type" in resp.json()["detail"]
 
@@ -294,9 +285,7 @@ class TestSearchAudienceCorpus:
     """Search now scores against audience capability segment IDs."""
 
     @pytest.mark.asyncio
-    async def test_query_with_segment_id_ranks_matching_first(
-        self, client, patched_get_storage
-    ):
+    async def test_query_with_segment_id_ranks_matching_first(self, client, patched_get_storage):
         # Override seed: two packages share keyword "premium"; only one declares "3-7"
         patched_get_storage.list_packages.return_value = [
             _make_package_dict(
@@ -312,9 +301,7 @@ class TestSearchAudienceCorpus:
             ),
         ]
         async with client as c:
-            resp = await c.post(
-                "/media-kit/search", json={"query": "premium 3-7"}
-            )
+            resp = await c.post("/media-kit/search", json={"query": "premium 3-7"})
         assert resp.status_code == 200
         ids = [p["package_id"] for p in resp.json()["results"]]
         # pkg-with hits both tokens; pkg-without hits only "premium".
@@ -322,9 +309,7 @@ class TestSearchAudienceCorpus:
         assert "pkg-without" in ids
 
     @pytest.mark.asyncio
-    async def test_keyword_only_search_backward_compat(
-        self, client, patched_get_storage
-    ):
+    async def test_keyword_only_search_backward_compat(self, client, patched_get_storage):
         patched_get_storage.list_packages.return_value = [
             _make_package_dict(
                 package_id="pkg-sports",
@@ -349,9 +334,7 @@ class TestSearchAudienceCorpus:
     ):
         """Existing buyer code that doesn't ship `audience_filter` keeps working."""
         patched_get_storage.list_packages.return_value = [
-            _make_package_dict(
-                package_id="pkg-a", name="Alpha Bundle", tags=["alpha"]
-            ),
+            _make_package_dict(package_id="pkg-a", name="Alpha Bundle", tags=["alpha"]),
         ]
         async with client as c:
             resp = await c.post(
@@ -362,9 +345,7 @@ class TestSearchAudienceCorpus:
         assert [p["package_id"] for p in resp.json()["results"]] == ["pkg-a"]
 
     @pytest.mark.asyncio
-    async def test_search_with_audience_filter_restricts_results(
-        self, client, patched_get_storage
-    ):
+    async def test_search_with_audience_filter_restricts_results(self, client, patched_get_storage):
         patched_get_storage.list_packages.return_value = [
             _make_package_dict(
                 package_id="pkg-std",
@@ -381,9 +362,7 @@ class TestSearchAudienceCorpus:
         ]
         async with client as c:
             # Without filter: both match "premium"
-            resp_all = await c.post(
-                "/media-kit/search", json={"query": "premium"}
-            )
+            resp_all = await c.post("/media-kit/search", json={"query": "premium"})
             assert {p["package_id"] for p in resp_all.json()["results"]} == {
                 "pkg-std",
                 "pkg-ctx",
@@ -402,9 +381,7 @@ class TestSearchAudienceCorpus:
             assert ids == ["pkg-ctx"]
 
     @pytest.mark.asyncio
-    async def test_search_invalid_audience_filter_type_returns_400(
-        self, client
-    ):
+    async def test_search_invalid_audience_filter_type_returns_400(self, client):
         async with client as c:
             resp = await c.post(
                 "/media-kit/search",

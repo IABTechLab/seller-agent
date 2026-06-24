@@ -11,13 +11,13 @@ Verifies that:
 import asyncio
 import os
 import re
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 # We need to mock bedrock_agentcore before importing the entrypoint,
 # since it's imported at module level.
 import sys
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 _mock_agentcore = MagicMock()
 _mock_app = MagicMock()
@@ -27,18 +27,14 @@ _mock_agentcore.BedrockAgentCoreApp.return_value = _mock_app
 sys.modules["bedrock_agentcore"] = MagicMock()
 sys.modules["bedrock_agentcore.runtime"] = _mock_agentcore
 
-from ad_seller.interfaces.agentcore.http_main import (
+from ad_seller.interfaces.agentcore.http_main import (  # noqa: E402
     _DEFAULT_ROUTING_MODE,
-    _INTERNAL_PORT,
     _VALID_ROUTING_MODES,
     _format_crew_output,
     _get_routing_mode,
     _handle_invocation,
     _is_deal_request,
-    _run_crew_with_crewai,
-    _start_fastapi_background,
 )
-
 
 # ---------------------------------------------------------------------------
 # _get_routing_mode tests
@@ -134,12 +130,15 @@ class TestHandleInvocationRouting:
     async def test_crew_mode_uses_publisher_crew(self):
         """ROUTING_MODE=crew should route through CrewAI crew."""
         with patch.dict(os.environ, {"ROUTING_MODE": "crew"}):
-            with patch(
-                "ad_seller.interfaces.agentcore.http_main._start_fastapi_background",
-            ), patch(
-                "ad_seller.interfaces.agentcore.http_main._run_crew_with_crewai",
-                new_callable=AsyncMock,
-            ) as mock_crew:
+            with (
+                patch(
+                    "ad_seller.interfaces.agentcore.http_main._start_fastapi_background",
+                ),
+                patch(
+                    "ad_seller.interfaces.agentcore.http_main._run_crew_with_crewai",
+                    new_callable=AsyncMock,
+                ) as mock_crew,
+            ):
                 mock_crew.return_value = {
                     "response": "crew response",
                     "metadata": {"routing_mode": "crew"},
@@ -172,20 +171,21 @@ class TestHandleInvocationRouting:
     async def test_payload_routing_mode_overrides_env(self):
         """Payload routing_mode=crew should override ROUTING_MODE=chat env var."""
         with patch.dict(os.environ, {"ROUTING_MODE": "chat"}):
-            with patch(
-                "ad_seller.interfaces.agentcore.http_main._start_fastapi_background",
-            ), patch(
-                "ad_seller.interfaces.agentcore.http_main._run_crew_with_crewai",
-                new_callable=AsyncMock,
-            ) as mock_crew:
+            with (
+                patch(
+                    "ad_seller.interfaces.agentcore.http_main._start_fastapi_background",
+                ),
+                patch(
+                    "ad_seller.interfaces.agentcore.http_main._run_crew_with_crewai",
+                    new_callable=AsyncMock,
+                ) as mock_crew,
+            ):
                 mock_crew.return_value = {
                     "response": "crew via payload",
                     "metadata": {"routing_mode": "crew"},
                 }
 
-                result = await _handle_invocation(
-                    {"prompt": "list products", "routing_mode": "crew"}
-                )
+                await _handle_invocation({"prompt": "list products", "routing_mode": "crew"})
 
                 mock_crew.assert_awaited_once()
 
@@ -236,9 +236,7 @@ class TestFormatCrewOutput:
         import json
         import re
 
-        viz_match = re.search(
-            r"<visualization-data>(.*?)</visualization-data>", result["response"]
-        )
+        viz_match = re.search(r"<visualization-data>(.*?)</visualization-data>", result["response"])
         assert viz_match is not None
         viz_data = json.loads(viz_match.group(1))
         assert 45.0 in viz_data["cpm_values"]
@@ -292,12 +290,15 @@ class TestCrewPath:
     async def test_crew_mode_routes_to_crewai(self):
         """Crew mode should route through _run_crew_with_crewai."""
         with patch.dict(os.environ, {"ROUTING_MODE": "crew"}):
-            with patch(
-                "ad_seller.interfaces.agentcore.http_main._start_fastapi_background",
-            ), patch(
-                "ad_seller.interfaces.agentcore.http_main._run_crew_with_crewai",
-                new_callable=AsyncMock,
-            ) as mock_crew:
+            with (
+                patch(
+                    "ad_seller.interfaces.agentcore.http_main._start_fastapi_background",
+                ),
+                patch(
+                    "ad_seller.interfaces.agentcore.http_main._run_crew_with_crewai",
+                    new_callable=AsyncMock,
+                ) as mock_crew,
+            ):
                 mock_crew.return_value = {
                     "response": "crew response",
                     "metadata": {"routing_mode": "crew"},
@@ -343,9 +344,7 @@ class TestIsDealRequest:
     """Tests for the _is_deal_request function (deal intent detection)."""
 
     def test_create_deal_with_product_id(self):
-        assert _is_deal_request(
-            "Create a deal for inv-ctv-apex-sports-nba at $55 CPM"
-        )
+        assert _is_deal_request("Create a deal for inv-ctv-apex-sports-nba at $55 CPM")
 
     def test_book_deal_with_product_id(self):
         assert _is_deal_request(
@@ -353,9 +352,7 @@ class TestIsDealRequest:
         )
 
     def test_preferred_deal_with_product_id(self):
-        assert _is_deal_request(
-            "Create a preferred deal for inv-ctv-apex-sports-nba"
-        )
+        assert _is_deal_request("Create a preferred deal for inv-ctv-apex-sports-nba")
 
     def test_multiple_deals(self):
         assert _is_deal_request(
@@ -364,38 +361,31 @@ class TestIsDealRequest:
         )
 
     def test_generate_deal_id(self):
-        assert _is_deal_request(
-            "Generate deal ID for inv-digital-gnn-news at $30 CPM"
-        )
+        assert _is_deal_request("Generate deal ID for inv-digital-gnn-news at $30 CPM")
 
     def test_no_product_id_returns_false(self):
         assert not _is_deal_request("Create a deal for NBA basketball")
 
     def test_no_deal_keyword_returns_false(self):
-        assert not _is_deal_request(
-            "Show me pricing for inv-ctv-apex-sports-nba"
-        )
+        assert not _is_deal_request("Show me pricing for inv-ctv-apex-sports-nba")
 
     def test_inventory_query_returns_false(self):
-        assert not _is_deal_request(
-            "Show me available CTV inventory with pricing"
-        )
+        assert not _is_deal_request("Show me available CTV inventory with pricing")
 
     def test_empty_prompt_returns_false(self):
         assert not _is_deal_request("")
 
     def test_case_insensitive(self):
-        assert _is_deal_request(
-            "CREATE A DEAL for INV-CTV-APEX-SPORTS-NBA at $55 CPM"
-        )
+        assert _is_deal_request("CREATE A DEAL for INV-CTV-APEX-SPORTS-NBA at $55 CPM")
 
 
 # ---------------------------------------------------------------------------
 # Property-based tests (hypothesis)
 # ---------------------------------------------------------------------------
 
-from hypothesis import given, settings as hyp_settings
-from hypothesis import strategies as st
+from hypothesis import given  # noqa: E402
+from hypothesis import settings as hyp_settings  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
 
 
 class TestGetRoutingModeProperty:
@@ -489,17 +479,17 @@ class TestFormatCrewOutputErrorProperty:
     @hyp_settings(max_examples=100)
     def test_crew_invocation_error_propagates(self, error_message):
         """Crew invocation errors propagate as RuntimeError."""
-        with patch(
-            "ad_seller.interfaces.agentcore.http_main._start_fastapi_background"
-        ), patch(
-            "ad_seller.interfaces.agentcore.http_main._run_crew_with_crewai",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError(error_message),
+        with (
+            patch("ad_seller.interfaces.agentcore.http_main._start_fastapi_background"),
+            patch(
+                "ad_seller.interfaces.agentcore.http_main._run_crew_with_crewai",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError(error_message),
+            ),
         ):
             with pytest.raises(RuntimeError, match=re.escape(error_message)):
-                asyncio.run(_handle_invocation(
-                    {"prompt": "test", "routing_mode": "crew"}
-                ))
+                asyncio.run(_handle_invocation({"prompt": "test", "routing_mode": "crew"}))
+
     @given(
         raw_text=st.text(min_size=0, max_size=500),
     )

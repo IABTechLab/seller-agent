@@ -37,9 +37,7 @@ _broken_flows = [
 for _mod_name in _broken_flows:
     if _mod_name not in sys.modules:
         _stub = ModuleType(_mod_name)
-        _cls_name = (
-            _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
-        )
+        _cls_name = _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
         setattr(_stub, _cls_name, type(_cls_name, (), {}))
         sys.modules[_mod_name] = _stub
 
@@ -145,9 +143,7 @@ def mock_storage():
     storage = AsyncMock()
     storage.get_quote = AsyncMock(side_effect=lambda qid: store.get(f"quote:{qid}"))
     storage.set_quote = AsyncMock(
-        side_effect=lambda qid, data, ttl=86400: store.__setitem__(
-            f"quote:{qid}", data
-        )
+        side_effect=lambda qid, data, ttl=86400: store.__setitem__(f"quote:{qid}", data)
     )
     storage.get_deal = AsyncMock(side_effect=lambda did: store.get(f"deal:{did}"))
     storage.set_deal = AsyncMock(
@@ -178,9 +174,7 @@ class TestDualContentTypeAcceptance:
         quote = _make_available_quote(quote_id="qt-ucp")
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=mock_storage
-        ):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
                 json={
@@ -197,9 +191,7 @@ class TestDualContentTypeAcceptance:
         quote = _make_available_quote(quote_id="qt-agentic")
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=mock_storage
-        ):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
                 json={
@@ -221,16 +213,12 @@ class TestDualContentTypeAcceptance:
 class TestSnapshotResponseShape:
     """Successful audience-bearing booking returns the §6.5 shape."""
 
-    async def test_response_contains_audience_plan_snapshot(
-        self, client, mock_storage
-    ):
+    async def test_response_contains_audience_plan_snapshot(self, client, mock_storage):
         quote = _make_available_quote(quote_id="qt-snap-2")
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
         plan = _make_audience_plan()
 
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=mock_storage
-        ):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
                 json={"quote_id": quote["quote_id"], "audience_plan": plan},
@@ -242,19 +230,13 @@ class TestSnapshotResponseShape:
         # Snapshot is the buyer-supplied plan verbatim (proposal §5.1 Step 2).
         assert body["audience_plan_snapshot"] == plan
         # Hash echoed back so the buyer can verify cross-side parity.
-        assert body["audience_plan_snapshot"]["audience_plan_id"] == plan[
-            "audience_plan_id"
-        ]
+        assert body["audience_plan_snapshot"]["audience_plan_id"] == plan["audience_plan_id"]
 
-    async def test_response_contains_audience_match_summary(
-        self, client, mock_storage
-    ):
+    async def test_response_contains_audience_match_summary(self, client, mock_storage):
         quote = _make_available_quote(quote_id="qt-snap-3")
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=mock_storage
-        ):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
                 json={
@@ -287,17 +269,13 @@ class TestSnapshotResponseShape:
         assert summary["extensions"] == []
         assert summary["exclusions"] == []
 
-    async def test_no_audience_plan_keeps_legacy_response_shape(
-        self, client, mock_storage
-    ):
+    async def test_no_audience_plan_keeps_legacy_response_shape(self, client, mock_storage):
         """Bookings without an audience_plan still parse, no snapshot fields."""
 
         quote = _make_available_quote(quote_id="qt-no-audience")
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=mock_storage
-        ):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
                 json={"quote_id": quote["quote_id"]},
@@ -324,21 +302,15 @@ class TestPlanIdLogging:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
         plan = _make_audience_plan(plan_id="sha256:test-fixture-hash-abc")
 
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=mock_storage
-        ):
-            with caplog.at_level(
-                logging.INFO, logger="ad_seller.audience.booking"
-            ):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            with caplog.at_level(logging.INFO, logger="ad_seller.audience.booking"):
                 resp = await client.post(
                     "/api/v1/deals",
                     json={"quote_id": quote["quote_id"], "audience_plan": plan},
                 )
 
         assert resp.status_code == 200
-        records = [
-            r for r in caplog.records if r.name == "ad_seller.audience.booking"
-        ]
+        records = [r for r in caplog.records if r.name == "ad_seller.audience.booking"]
         assert len(records) == 1
         msg = records[0].getMessage()
         # Plan id, deal id, and quote id all surface for end-to-end correlation.
@@ -346,25 +318,15 @@ class TestPlanIdLogging:
         assert resp.json()["deal_id"] in msg
         assert quote["quote_id"] in msg
 
-    async def test_no_audience_plan_does_not_log(
-        self, client, mock_storage, caplog
-    ):
+    async def test_no_audience_plan_does_not_log(self, client, mock_storage, caplog):
         quote = _make_available_quote(quote_id="qt-log-2")
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=mock_storage
-        ):
-            with caplog.at_level(
-                logging.INFO, logger="ad_seller.audience.booking"
-            ):
-                await client.post(
-                    "/api/v1/deals", json={"quote_id": quote["quote_id"]}
-                )
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            with caplog.at_level(logging.INFO, logger="ad_seller.audience.booking"):
+                await client.post("/api/v1/deals", json={"quote_id": quote["quote_id"]})
 
-        assert [
-            r for r in caplog.records if r.name == "ad_seller.audience.booking"
-        ] == []
+        assert [r for r in caplog.records if r.name == "ad_seller.audience.booking"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -375,9 +337,7 @@ class TestPlanIdLogging:
 class TestSnapshotPersistence:
     """The minted deal_id must point to a deal record carrying the snapshot."""
 
-    async def test_minted_deal_record_carries_snapshot(
-        self, client, mock_storage
-    ):
+    async def test_minted_deal_record_carries_snapshot(self, client, mock_storage):
         """Snapshot lands on the persisted deal record so
         `honor_audience_plan_snapshot()` can read it post-booking."""
 
@@ -385,9 +345,7 @@ class TestSnapshotPersistence:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
         plan = _make_audience_plan()
 
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=mock_storage
-        ):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
                 json={"quote_id": quote["quote_id"], "audience_plan": plan},

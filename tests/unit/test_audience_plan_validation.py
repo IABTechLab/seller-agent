@@ -30,9 +30,7 @@ _broken_flows = [
 for _mod_name in _broken_flows:
     if _mod_name not in sys.modules:
         _stub = ModuleType(_mod_name)
-        _cls_name = (
-            _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
-        )
+        _cls_name = _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
         setattr(_stub, _cls_name, type(_cls_name, (), {}))
         sys.modules[_mod_name] = _stub
 
@@ -48,7 +46,6 @@ from ad_seller.interfaces.api.main import (  # noqa: E402
     app,
 )
 from ad_seller.models.audience_capabilities import (  # noqa: E402
-    AgenticCapabilities,
     AgenticCapabilityFlag,
     AudienceCapabilities,
     CapabilityAudienceBlock,
@@ -67,7 +64,6 @@ from ad_seller.services.audience_plan_validator import (  # noqa: E402
 from ad_seller.services.fulfillment import (  # noqa: E402
     honor_audience_plan_snapshot,
 )
-
 
 # =============================================================================
 # Helpers
@@ -186,8 +182,7 @@ class TestValidateAudiencePlan:
         caps = _caps_block(supports_extensions=False)
         result = validate_audience_plan(plan, caps)
         assert any(
-            r["path"] == "extensions[0]"
-            and "extensions not supported" in r["reason"]
+            r["path"] == "extensions[0]" and "extensions not supported" in r["reason"]
             for r in result
         )
 
@@ -204,23 +199,15 @@ class TestValidateAudiencePlan:
             "primary": _ref("standard", "3-7"),
             "constraints": [_ref("contextual", "IAB1-2", version="2.0")],
         }
-        caps = _caps_block(
-            supports_constraints=True, contextual_versions=["3.1"]
-        )
+        caps = _caps_block(supports_constraints=True, contextual_versions=["3.1"])
         result = validate_audience_plan(plan, caps)
-        assert any(
-            r["path"] == "constraints[0].taxonomy" for r in result
-        )
+        assert any(r["path"] == "constraints[0].taxonomy" for r in result)
 
     def test_agentic_in_primary_when_unsupported(self):
         plan = {"primary": _ref("agentic", "emb://x")}
         caps = _caps_block(agentic_supported=False)
         result = validate_audience_plan(plan, caps)
-        assert any(
-            r["path"] == "primary.taxonomy"
-            and "agentic" in r["reason"]
-            for r in result
-        )
+        assert any(r["path"] == "primary.taxonomy" and "agentic" in r["reason"] for r in result)
 
     def test_empty_plan_is_supported(self):
         assert validate_audience_plan(None, _caps_block()) == []
@@ -239,15 +226,11 @@ class TestValidateAudiencePlan:
         # Default max_refs_per_role.constraints = 3
         plan = {
             "primary": _ref("standard", "3-7"),
-            "constraints": [
-                _ref("contextual", f"IAB1-{i}") for i in range(5)
-            ],
+            "constraints": [_ref("contextual", f"IAB1-{i}") for i in range(5)],
         }
         caps = _caps_block(supports_constraints=True)
         result = validate_audience_plan(plan, caps)
-        assert any(
-            "exceeds max_refs_per_role" in r["reason"] for r in result
-        )
+        assert any("exceeds max_refs_per_role" in r["reason"] for r in result)
 
 
 # =============================================================================
@@ -326,9 +309,7 @@ class TestValidateAudienceHardRejects:
         }
         _run_validate(flow)
         assert flow.state.status == ExecutionStatus.FAILED
-        assert any(
-            "zero overlap" in e and "standard" in e for e in flow.state.errors
-        )
+        assert any("zero overlap" in e and "standard" in e for e in flow.state.errors)
 
     def test_contextual_zero_overlap_hard_rejects(self, flow_with_pkgs):
         flow = flow_with_pkgs
@@ -341,9 +322,7 @@ class TestValidateAudienceHardRejects:
         }
         _run_validate(flow)
         assert flow.state.status == ExecutionStatus.FAILED
-        assert any(
-            "zero overlap" in e and "contextual" in e for e in flow.state.errors
-        )
+        assert any("zero overlap" in e and "contextual" in e for e in flow.state.errors)
 
     def test_standard_overlap_does_not_hard_reject(self, flow_with_pkgs):
         flow = flow_with_pkgs
@@ -400,12 +379,8 @@ class TestHonorAudienceSnapshot:
         }
         deal_record = {"audience_plan_snapshot": snapshot}
         # Current caps are weaker (no extensions, no agentic).
-        current = _caps_block(
-            agentic_supported=False, supports_extensions=False
-        )
-        result = honor_audience_plan_snapshot(
-            "DEAL-X", deal_record, current
-        )
+        current = _caps_block(agentic_supported=False, supports_extensions=False)
+        result = honor_audience_plan_snapshot("DEAL-X", deal_record, current)
         # Snapshot returned exactly -- not rewritten.
         assert result == snapshot
 
@@ -416,16 +391,13 @@ class TestHonorAudienceSnapshot:
             "extensions": [_ref("agentic", "emb://x")],
         }
         deal_record = {"audience_plan_snapshot": snapshot}
-        current = _caps_block(
-            agentic_supported=False, supports_extensions=False
-        )
+        current = _caps_block(agentic_supported=False, supports_extensions=False)
 
         with caplog.at_level(logging.WARNING, logger="ad_seller.services.fulfillment"):
             honor_audience_plan_snapshot("DEAL-Y", deal_record, current)
 
         assert any(
-            "capabilities degraded" in record.message
-            and "DEAL-Y" in record.message
+            "capabilities degraded" in record.message and "DEAL-Y" in record.message
             for record in caplog.records
         )
 
@@ -440,21 +412,14 @@ class TestHonorAudienceSnapshot:
         with caplog.at_level(logging.WARNING, logger="ad_seller.services.fulfillment"):
             honor_audience_plan_snapshot("DEAL-Z", deal_record, current)
 
-        assert not any(
-            "capabilities degraded" in record.message for record in caplog.records
-        )
+        assert not any("capabilities degraded" in record.message for record in caplog.records)
 
     def test_returns_none_when_no_snapshot(self):
-        result = honor_audience_plan_snapshot(
-            "DEAL-NONE", {"other": "data"}, _caps_block()
-        )
+        result = honor_audience_plan_snapshot("DEAL-NONE", {"other": "data"}, _caps_block())
         assert result is None
 
     def test_returns_none_when_no_deal_record(self):
-        assert (
-            honor_audience_plan_snapshot("DEAL-MISSING", None, _caps_block())
-            is None
-        )
+        assert honor_audience_plan_snapshot("DEAL-MISSING", None, _caps_block()) is None
 
 
 # =============================================================================
@@ -477,18 +442,12 @@ def http_client():
         "_FakeStorage",
         (),
         {
-            "get_quote": staticmethod(
-                lambda qid: _async_return(store.get(f"quote:{qid}"))
-            ),
+            "get_quote": staticmethod(lambda qid: _async_return(store.get(f"quote:{qid}"))),
             "set_quote": staticmethod(
                 lambda qid, data, ttl=None: _async_set(store, f"quote:{qid}", data)
             ),
-            "get_deal": staticmethod(
-                lambda did: _async_return(store.get(f"deal:{did}"))
-            ),
-            "set_deal": staticmethod(
-                lambda did, data: _async_set(store, f"deal:{did}", data)
-            ),
+            "get_deal": staticmethod(lambda did: _async_return(store.get(f"deal:{did}"))),
+            "set_deal": staticmethod(lambda did, data: _async_set(store, f"deal:{did}", data)),
             "_store": store,
         },
     )()
@@ -545,15 +504,11 @@ class TestBookDealAudiencePlanRejection:
     """Endpoint-level: POST /api/v1/deals with unsupported audience_plan."""
 
     @pytest.mark.asyncio
-    async def test_extensions_unsupported_returns_structured_400(
-        self, http_client
-    ):
+    async def test_extensions_unsupported_returns_structured_400(self, http_client):
         from unittest.mock import patch
 
         client, storage, quote_id = http_client
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=storage
-        ):
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
             async with client as c:
                 resp = await c.post(
                     "/api/v1/deals",
@@ -568,18 +523,14 @@ class TestBookDealAudiencePlanRejection:
         assert resp.status_code == 400
         body = resp.json()
         assert body["detail"]["error"] == "audience_plan_unsupported"
-        assert any(
-            r["path"] == "extensions[0]" for r in body["detail"]["unsupported"]
-        )
+        assert any(r["path"] == "extensions[0]" for r in body["detail"]["unsupported"])
 
     @pytest.mark.asyncio
     async def test_supported_plan_books_successfully(self, http_client):
         from unittest.mock import patch
 
         client, storage, quote_id = http_client
-        with patch(
-            "ad_seller.storage.factory.get_storage", return_value=storage
-        ):
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
             async with client as c:
                 resp = await c.post(
                     "/api/v1/deals",

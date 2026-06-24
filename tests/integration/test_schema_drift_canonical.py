@@ -24,7 +24,6 @@ import pytest
 
 from ad_seller.models.audience_ref import AudienceRef, ComplianceContext
 
-
 CANONICAL_SCHEMA_PATH = Path(
     "/Users/aidancardella/dev/agent_range/.worktrees/audience-extension/docs/api/audience_plan_schemas.json"
 )
@@ -46,9 +45,7 @@ def _shape(schema: dict) -> dict:
             reduced[name] = {"enum": sorted(p["enum"])}
         elif "anyOf" in p:
             # Capture the type names + required flag, ignore description
-            types = sorted(
-                a.get("type", a.get("$ref", "ref")) for a in p.get("anyOf", [])
-            )
+            types = sorted(a.get("type", a.get("$ref", "ref")) for a in p.get("anyOf", []))
             reduced[name] = {"anyOf_types": types}
         elif "type" in p:
             reduced[name] = {"type": p["type"]}

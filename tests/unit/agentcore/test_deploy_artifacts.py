@@ -139,7 +139,9 @@ class TestDeployScript:
     def test_help_flag(self):
         result = __import__("subprocess").run(
             ["bash", str(AGENTCORE_DIR / "deploy.sh"), "--help"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode == 0
         assert "Usage:" in result.stdout
@@ -157,6 +159,7 @@ class TestMainTemplateECSOnly:
     def load_template(self):
         def _cfn_loader():
             loader = yaml.SafeLoader
+
             def _multi_constructor(loader, tag_suffix, node):
                 if isinstance(node, yaml.ScalarNode):
                     return loader.construct_scalar(node)
@@ -164,6 +167,7 @@ class TestMainTemplateECSOnly:
                     return loader.construct_sequence(node)
                 elif isinstance(node, yaml.MappingNode):
                     return loader.construct_mapping(node)
+
             loader.add_multi_constructor("!", _multi_constructor)
             return loader
 
@@ -174,7 +178,9 @@ class TestMainTemplateECSOnly:
 
     def test_no_deployment_mode_parameter(self):
         params = self.template.get("Parameters", {})
-        assert "DeploymentMode" not in params, "main.yaml should not have DeploymentMode (reverted to ECS-only)"
+        assert "DeploymentMode" not in params, (
+            "main.yaml should not have DeploymentMode (reverted to ECS-only)"
+        )
 
     def test_no_agentcore_conditions(self):
         conditions = self.template.get("Conditions", {})

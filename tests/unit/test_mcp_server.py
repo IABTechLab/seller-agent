@@ -58,10 +58,13 @@ class TestGetSetupStatus:
         settings = _make_settings(seller_organization_name="Default Publisher")
         storage = AsyncMock()
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage", new_callable=AsyncMock, return_value=storage
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
         ):
             result = json.loads(await get_setup_status())
 
@@ -89,13 +92,17 @@ class TestGetSetupStatus:
         fake_module = MagicMock()
         fake_module.MediaKitService.return_value = mock_service
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage", new_callable=AsyncMock, return_value=storage
-        ), patch.dict(
-            "sys.modules",
-            {"ad_seller.engines.media_kit_service": fake_module},
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+            patch.dict(
+                "sys.modules",
+                {"ad_seller.engines.media_kit_service": fake_module},
+            ),
         ):
             result = json.loads(await get_setup_status())
 
@@ -116,10 +123,13 @@ class TestHealthCheck:
         settings = _make_settings()
         storage = AsyncMock()
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage", new_callable=AsyncMock, return_value=storage
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
         ):
             result = json.loads(await health_check())
 
@@ -132,12 +142,13 @@ class TestHealthCheck:
 
         settings = _make_settings()
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ), patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock,
-            side_effect=Exception("Storage unavailable"),
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                side_effect=Exception("Storage unavailable"),
+            ),
         ):
             result = json.loads(await health_check())
 
@@ -159,9 +170,7 @@ class TestGetConfig:
             default_price_floor_cpm=2.0,
         )
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings
-        ):
+        with patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings):
             result = json.loads(await get_config())
 
         assert result["publisher"]["name"] == "My Publisher"
@@ -190,8 +199,15 @@ class TestPromptRegistration:
         for p in mcp._prompt_manager.list_prompts():
             prompt_names.add(p.name)
         expected = {
-            "setup", "status", "inventory", "deals", "queue",
-            "new-deal", "configure", "buyers", "help",
+            "setup",
+            "status",
+            "inventory",
+            "deals",
+            "queue",
+            "new-deal",
+            "configure",
+            "buyers",
+            "help",
         }
         assert expected.issubset(prompt_names), f"Missing: {expected - prompt_names}"
 
@@ -253,14 +269,20 @@ class TestGetInboundQueue:
 
         mock_bus.list_events = AsyncMock(side_effect=mock_list_events)
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock, return_value=mock_storage,
-        ), patch(
-            "ad_seller.interfaces.mcp_server.ApprovalGate",
-        ) as MockGate, patch(
-            "ad_seller.interfaces.mcp_server.get_event_bus",
-            new_callable=AsyncMock, return_value=mock_bus,
+        with (
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=mock_storage,
+            ),
+            patch(
+                "ad_seller.interfaces.mcp_server.ApprovalGate",
+            ) as MockGate,
+            patch(
+                "ad_seller.interfaces.mcp_server.get_event_bus",
+                new_callable=AsyncMock,
+                return_value=mock_bus,
+            ),
         ):
             MockGate.return_value.list_pending = mock_gate_list
             result = json.loads(await get_inbound_queue())
@@ -283,14 +305,20 @@ class TestGetInboundQueue:
         # ApprovalGate works fine but returns empty list
         mock_gate_list = AsyncMock(return_value=[])
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_storage",
-            new_callable=AsyncMock, return_value=mock_storage,
-        ), patch(
-            "ad_seller.interfaces.mcp_server.ApprovalGate",
-        ) as MockGate, patch(
-            "ad_seller.interfaces.mcp_server.get_event_bus",
-            new_callable=AsyncMock, return_value=mock_bus,
+        with (
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=mock_storage,
+            ),
+            patch(
+                "ad_seller.interfaces.mcp_server.ApprovalGate",
+            ) as MockGate,
+            patch(
+                "ad_seller.interfaces.mcp_server.get_event_bus",
+                new_callable=AsyncMock,
+                return_value=mock_bus,
+            ),
         ):
             MockGate.return_value.list_pending = mock_gate_list
             result = json.loads(await get_inbound_queue())
@@ -340,7 +368,8 @@ class TestGetBuyerActivity:
 
         with patch(
             "ad_seller.interfaces.mcp_server.get_event_bus",
-            new_callable=AsyncMock, return_value=mock_bus,
+            new_callable=AsyncMock,
+            return_value=mock_bus,
         ):
             result = json.loads(await get_buyer_activity(days=7))
 
@@ -360,7 +389,8 @@ class TestGetBuyerActivity:
 
         with patch(
             "ad_seller.interfaces.mcp_server.get_event_bus",
-            new_callable=AsyncMock, return_value=mock_bus,
+            new_callable=AsyncMock,
+            return_value=mock_bus,
         ):
             result = json.loads(await get_buyer_activity(days=3))
 
@@ -376,7 +406,8 @@ class TestGetBuyerActivity:
 
         with patch(
             "ad_seller.interfaces.mcp_server.get_event_bus",
-            new_callable=AsyncMock, return_value=mock_bus,
+            new_callable=AsyncMock,
+            return_value=mock_bus,
         ):
             result = json.loads(await get_buyer_activity())
 
@@ -405,11 +436,16 @@ class TestListConfigurableFlows:
         mock_bus = AsyncMock()
         mock_bus._subscribers = {"proposal.received": [lambda e: None]}
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings,
-        ), patch(
-            "ad_seller.interfaces.mcp_server.get_event_bus",
-            new_callable=AsyncMock, return_value=mock_bus,
+        with (
+            patch(
+                "ad_seller.interfaces.mcp_server._get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "ad_seller.interfaces.mcp_server.get_event_bus",
+                new_callable=AsyncMock,
+                return_value=mock_bus,
+            ),
         ):
             result = json.loads(await list_configurable_flows())
 
@@ -428,11 +464,16 @@ class TestListConfigurableFlows:
         mock_bus = AsyncMock()
         mock_bus._subscribers = {}
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings,
-        ), patch(
-            "ad_seller.interfaces.mcp_server.get_event_bus",
-            new_callable=AsyncMock, return_value=mock_bus,
+        with (
+            patch(
+                "ad_seller.interfaces.mcp_server._get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "ad_seller.interfaces.mcp_server.get_event_bus",
+                new_callable=AsyncMock,
+                return_value=mock_bus,
+            ),
         ):
             result = json.loads(await list_configurable_flows())
 
@@ -454,11 +495,16 @@ class TestListConfigurableFlows:
         mock_bus = AsyncMock()
         mock_bus._subscribers = {}
 
-        with patch(
-            "ad_seller.interfaces.mcp_server._get_settings", return_value=settings,
-        ), patch(
-            "ad_seller.interfaces.mcp_server.get_event_bus",
-            new_callable=AsyncMock, return_value=mock_bus,
+        with (
+            patch(
+                "ad_seller.interfaces.mcp_server._get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "ad_seller.interfaces.mcp_server.get_event_bus",
+                new_callable=AsyncMock,
+                return_value=mock_bus,
+            ),
         ):
             result = json.loads(await list_configurable_flows())
 

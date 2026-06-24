@@ -88,8 +88,13 @@ class TestAgentCoreNetworkTemplate:
     def test_has_required_parameters(self):
         params = self.template["Parameters"]
         required = [
-            "Environment", "VpcId", "PrivateSubnet1Id", "PrivateSubnet2Id",
-            "PrivateRouteTableId", "DatabaseSecurityGroupId", "RedisSecurityGroupId",
+            "Environment",
+            "VpcId",
+            "PrivateSubnet1Id",
+            "PrivateSubnet2Id",
+            "PrivateRouteTableId",
+            "DatabaseSecurityGroupId",
+            "RedisSecurityGroupId",
         ]
         for param in required:
             assert param in params, f"Missing parameter: {param}"
@@ -188,7 +193,8 @@ class TestMainAgentCoreTemplate:
         params = self.template["Parameters"]
         required = [
             "Environment",
-            "DBMasterPasswordSSMParam", "VpcCidr",
+            "DBMasterPasswordSSMParam",
+            "VpcCidr",
         ]
         for param in required:
             assert param in params, f"Missing parameter: {param}"
@@ -218,8 +224,13 @@ class TestMainAgentCoreTemplate:
     def test_has_required_outputs(self):
         outputs = self.template["Outputs"]
         required = [
-            "AuroraEndpoint", "AuroraPort", "RedisEndpoint", "RedisPort",
-            "AgentCoreSecurityGroupId", "PrivateSubnet1Id", "PrivateSubnet2Id",
+            "AuroraEndpoint",
+            "AuroraPort",
+            "RedisEndpoint",
+            "RedisPort",
+            "AgentCoreSecurityGroupId",
+            "PrivateSubnet1Id",
+            "PrivateSubnet2Id",
             "VpcId",
         ]
         for output in required:
@@ -254,7 +265,9 @@ class TestExistingFilesUntouched:
         """Existing CloudFormation files must have zero git diff."""
         result = subprocess.run(
             ["git", "diff", "--stat", "infra/aws/cloudformation/"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
             cwd=str(REPO_ROOT),
         )
         assert result.stdout.strip() == "", (

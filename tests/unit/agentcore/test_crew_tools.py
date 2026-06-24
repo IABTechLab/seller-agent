@@ -14,11 +14,9 @@ correct abstraction: CSV → ProductSetupFlow → FastAPI → tools.
 import json
 import os
 import sys
-from typing import Type
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 from crewai.tools import BaseTool
 from pydantic import BaseModel
 
@@ -30,7 +28,7 @@ _mock_agentcore.BedrockAgentCoreApp.return_value = _mock_app
 sys.modules.setdefault("bedrock_agentcore", MagicMock())
 sys.modules.setdefault("bedrock_agentcore.runtime", _mock_agentcore)
 
-from ad_seller.interfaces.agentcore.crew_tools import (
+from ad_seller.interfaces.agentcore.crew_tools import (  # noqa: E402
     AGENTCORE_SELLER_TOOLS,
     CreateDealInput,
     CreateDealTool,
@@ -45,7 +43,6 @@ from ad_seller.interfaces.agentcore.crew_tools import (
     ProductIdInput,
 )
 
-
 # ---------------------------------------------------------------------------
 # Tool instantiation and schema tests
 # ---------------------------------------------------------------------------
@@ -57,9 +54,7 @@ class TestToolInstantiation:
     def test_all_tools_are_base_tool_instances(self):
         assert len(AGENTCORE_SELLER_TOOLS) == 6
         for tool in AGENTCORE_SELLER_TOOLS:
-            assert isinstance(tool, BaseTool), (
-                f"{tool.name} is {type(tool).__name__}, not BaseTool"
-            )
+            assert isinstance(tool, BaseTool), f"{tool.name} is {type(tool).__name__}, not BaseTool"
 
     def test_tool_names_are_unique(self):
         names = [t.name for t in AGENTCORE_SELLER_TOOLS]
@@ -128,7 +123,7 @@ class TestCrewAIInjection:
     """Verify tools can be injected into CrewAI agents."""
 
     def test_inject_into_agent(self):
-        from crewai import Agent, LLM
+        from crewai import LLM, Agent
 
         agent = Agent(
             role="Test Inventory Manager",
@@ -145,7 +140,7 @@ class TestCrewAIInjection:
         assert "get_pricing" in tool_names
 
     def test_inject_replaces_empty_tools(self):
-        from crewai import Agent, LLM
+        from crewai import LLM, Agent
 
         agent = Agent(
             role="Inventory Manager",
@@ -170,11 +165,15 @@ class TestListProductsTool:
     def test_success(self):
         mock_response = httpx.Response(
             200,
-            json={"products": [{"product_id": "prod_001", "name": "CTV Premium", "base_cpm": 42.5}]},
+            json={
+                "products": [{"product_id": "prod_001", "name": "CTV Premium", "base_cpm": 42.5}]
+            },
             request=httpx.Request("GET", "http://localhost:8001/products"),
         )
         tool = ListProductsTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response):
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response
+        ):
             result = tool._run()
         data = json.loads(result)
         assert "products" in data
@@ -191,11 +190,14 @@ class TestListProductsTool:
 
     def test_http_500_error(self):
         mock_response = httpx.Response(
-            500, text="Internal Server Error",
+            500,
+            text="Internal Server Error",
             request=httpx.Request("GET", "http://localhost:8001/products"),
         )
         tool = ListProductsTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response):
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response
+        ):
             result = tool._run()
         assert "Error listing products" in result
 
@@ -204,11 +206,18 @@ class TestGetProductDetailsTool:
     def test_success(self):
         mock_response = httpx.Response(
             200,
-            json={"product_id": "prod_001", "name": "CTV Premium", "base_cpm": 42.5, "inventory_type": "ctv"},
+            json={
+                "product_id": "prod_001",
+                "name": "CTV Premium",
+                "base_cpm": 42.5,
+                "inventory_type": "ctv",
+            },
             request=httpx.Request("GET", "http://localhost:8001/products/prod_001"),
         )
         tool = GetProductDetailsTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response):
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response
+        ):
             result = tool._run(product_id="prod_001")
         data = json.loads(result)
         assert data["product_id"] == "prod_001"
@@ -216,11 +225,14 @@ class TestGetProductDetailsTool:
 
     def test_not_found(self):
         mock_response = httpx.Response(
-            404, json={"detail": "Product not found"},
+            404,
+            json={"detail": "Product not found"},
             request=httpx.Request("GET", "http://localhost:8001/products/nonexistent"),
         )
         tool = GetProductDetailsTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response):
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response
+        ):
             result = tool._run(product_id="nonexistent")
         assert "Error getting product" in result
 
@@ -229,11 +241,21 @@ class TestGetPricingTool:
     def test_success_public_tier(self):
         mock_response = httpx.Response(
             200,
-            json={"product_id": "prod_001", "base_price": 42.5, "final_price": 42.5, "currency": "USD", "tier_discount": 0.0, "volume_discount": 0.0, "rationale": "Public tier"},
+            json={
+                "product_id": "prod_001",
+                "base_price": 42.5,
+                "final_price": 42.5,
+                "currency": "USD",
+                "tier_discount": 0.0,
+                "volume_discount": 0.0,
+                "rationale": "Public tier",
+            },
             request=httpx.Request("POST", "http://localhost:8001/pricing"),
         )
         tool = GetPricingTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response):
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response
+        ):
             result = tool._run(product_id="prod_001")
         data = json.loads(result)
         assert data["base_price"] == 42.5
@@ -241,11 +263,21 @@ class TestGetPricingTool:
     def test_volume_passed_in_body(self):
         mock_response = httpx.Response(
             200,
-            json={"product_id": "p1", "base_price": 42.5, "final_price": 38.25, "currency": "USD", "tier_discount": 0.0, "volume_discount": 0.1, "rationale": "Volume discount"},
+            json={
+                "product_id": "p1",
+                "base_price": 42.5,
+                "final_price": 38.25,
+                "currency": "USD",
+                "tier_discount": 0.0,
+                "volume_discount": 0.1,
+                "rationale": "Volume discount",
+            },
             request=httpx.Request("POST", "http://localhost:8001/pricing"),
         )
         tool = GetPricingTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response) as mock_post:
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response
+        ) as mock_post:
             tool._run(product_id="p1", buyer_tier="preferred", volume=5_000_000)
         body = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
         assert body["volume"] == 5_000_000
@@ -254,11 +286,21 @@ class TestGetPricingTool:
     def test_zero_volume_not_sent(self):
         mock_response = httpx.Response(
             200,
-            json={"product_id": "p1", "base_price": 10, "final_price": 10, "currency": "USD", "tier_discount": 0, "volume_discount": 0, "rationale": "ok"},
+            json={
+                "product_id": "p1",
+                "base_price": 10,
+                "final_price": 10,
+                "currency": "USD",
+                "tier_discount": 0,
+                "volume_discount": 0,
+                "rationale": "ok",
+            },
             request=httpx.Request("POST", "http://localhost:8001/pricing"),
         )
         tool = GetPricingTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response) as mock_post:
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response
+        ) as mock_post:
             tool._run(product_id="p1")
         body = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
         assert "volume" not in body
@@ -272,7 +314,9 @@ class TestDiscoverInventoryTool:
             request=httpx.Request("POST", "http://localhost:8001/discovery"),
         )
         tool = DiscoverInventoryTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response) as mock_post:
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response
+        ) as mock_post:
             result = tool._run(query="CTV inventory for sports")
         data = json.loads(result)
         assert "results" in data
@@ -281,11 +325,14 @@ class TestDiscoverInventoryTool:
 
     def test_empty_query_sends_empty_string(self):
         mock_response = httpx.Response(
-            200, json={"results": []},
+            200,
+            json={"results": []},
             request=httpx.Request("POST", "http://localhost:8001/discovery"),
         )
         tool = DiscoverInventoryTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response) as mock_post:
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response
+        ) as mock_post:
             tool._run(query="")
         body = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
         assert body == {"query": ""}
@@ -296,25 +343,45 @@ class TestCreateDealTool:
         """REST API path succeeds when INTERNAL_API_KEY is set."""
         mock_response = httpx.Response(
             200,
-            json={"deal_id": "DEAL-2026-001", "deal_type": "preferred_deal", "price": 38.0, "pricing_model": "cpm", "openrtb_params": {"bidfloor": 38.0}, "activation_instructions": {"dsp": "Use deal ID"}},
+            json={
+                "deal_id": "DEAL-2026-001",
+                "deal_type": "preferred_deal",
+                "price": 38.0,
+                "pricing_model": "cpm",
+                "openrtb_params": {"bidfloor": 38.0},
+                "activation_instructions": {"dsp": "Use deal ID"},
+            },
             request=httpx.Request("POST", "http://localhost:8001/api/v1/deals/from-template"),
         )
         tool = CreateDealTool()
         with patch.dict(os.environ, {"INTERNAL_API_KEY": "test-key-123"}):
-            with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response):
-                result = tool._run(product_id="prod_001", deal_type="PD", max_cpm=40.0, impressions=1_000_000)
+            with patch(
+                "ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response
+            ):
+                result = tool._run(
+                    product_id="prod_001", deal_type="PD", max_cpm=40.0, impressions=1_000_000
+                )
         data = json.loads(result)
         assert data["deal_id"] == "DEAL-2026-001"
 
     def test_minimal_params_no_optional_fields(self):
         mock_response = httpx.Response(
             200,
-            json={"deal_id": "DEAL-002", "deal_type": "preferred_deal", "price": 15.0, "pricing_model": "cpm", "openrtb_params": {}, "activation_instructions": {}},
+            json={
+                "deal_id": "DEAL-002",
+                "deal_type": "preferred_deal",
+                "price": 15.0,
+                "pricing_model": "cpm",
+                "openrtb_params": {},
+                "activation_instructions": {},
+            },
             request=httpx.Request("POST", "http://localhost:8001/api/v1/deals/from-template"),
         )
         tool = CreateDealTool()
         with patch.dict(os.environ, {"INTERNAL_API_KEY": "test-key-123"}):
-            with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response) as mock_post:
+            with patch(
+                "ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response
+            ) as mock_post:
                 tool._run(product_id="prod_001")
         body = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
         assert body["product_id"] == "prod_001"
@@ -329,7 +396,8 @@ class TestCreateDealTool:
             # Remove INTERNAL_API_KEY if present
             os.environ.pop("INTERNAL_API_KEY", None)
             with patch.object(
-                CreateDealTool, "_create_deal_direct",
+                CreateDealTool,
+                "_create_deal_direct",
                 return_value=json.dumps({"deal_id": "DEAL-DIRECT-001", "status": "booked"}),
             ) as mock_direct:
                 result = tool._run(product_id="prod_001", deal_type="PD", max_cpm=40.0)
@@ -346,9 +414,12 @@ class TestCreateDealTool:
         )
         tool = CreateDealTool()
         with patch.dict(os.environ, {"INTERNAL_API_KEY": "bad-key"}):
-            with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response):
+            with patch(
+                "ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response
+            ):
                 with patch.object(
-                    CreateDealTool, "_create_deal_direct",
+                    CreateDealTool,
+                    "_create_deal_direct",
                     return_value=json.dumps({"deal_id": "DEAL-FALLBACK", "status": "booked"}),
                 ) as mock_direct:
                     result = tool._run(product_id="prod_001", deal_type="PG", impressions=5_000_000)
@@ -365,7 +436,9 @@ class TestCreateDealTool:
         )
         tool = CreateDealTool()
         with patch.dict(os.environ, {"INTERNAL_API_KEY": "test-key"}):
-            with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response):
+            with patch(
+                "ad_seller.interfaces.agentcore.crew_tools.httpx.post", return_value=mock_response
+            ):
                 result = tool._run(product_id="prod_001", deal_type="PD", max_cpm=5.0)
         assert "Error creating deal" in result
 
@@ -374,15 +447,34 @@ class TestGetRateCardTool:
     def test_builds_rate_card_from_products(self):
         mock_response = httpx.Response(
             200,
-            json={"products": [
-                {"product_id": "p1", "name": "CTV Premium", "inventory_type": "ctv", "base_cpm": 42.5},
-                {"product_id": "p2", "name": "Display Standard", "inventory_type": "display", "base_cpm": 12.0},
-                {"product_id": "p3", "name": "CTV Sports", "inventory_type": "ctv", "base_cpm": 45.0},
-            ]},
+            json={
+                "products": [
+                    {
+                        "product_id": "p1",
+                        "name": "CTV Premium",
+                        "inventory_type": "ctv",
+                        "base_cpm": 42.5,
+                    },
+                    {
+                        "product_id": "p2",
+                        "name": "Display Standard",
+                        "inventory_type": "display",
+                        "base_cpm": 12.0,
+                    },
+                    {
+                        "product_id": "p3",
+                        "name": "CTV Sports",
+                        "inventory_type": "ctv",
+                        "base_cpm": 45.0,
+                    },
+                ]
+            },
             request=httpx.Request("GET", "http://localhost:8001/products"),
         )
         tool = GetRateCardTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response):
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response
+        ):
             result = tool._run()
         data = json.loads(result)
         assert "rate_card" in data
@@ -393,11 +485,20 @@ class TestGetRateCardTool:
     def test_handles_plain_list_response(self):
         mock_response = httpx.Response(
             200,
-            json=[{"product_id": "p1", "name": "Video Pre-roll", "channel": "video", "avg_cpm_usd": 25.0}],
+            json=[
+                {
+                    "product_id": "p1",
+                    "name": "Video Pre-roll",
+                    "channel": "video",
+                    "avg_cpm_usd": 25.0,
+                }
+            ],
             request=httpx.Request("GET", "http://localhost:8001/products"),
         )
         tool = GetRateCardTool()
-        with patch("ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response):
+        with patch(
+            "ad_seller.interfaces.agentcore.crew_tools.httpx.get", return_value=mock_response
+        ):
             result = tool._run()
         data = json.loads(result)
         assert "video" in data["rate_card"]
@@ -411,4 +512,5 @@ class TestGetRateCardTool:
 class TestBaseURLConfig:
     def test_default_base_url(self):
         from ad_seller.interfaces.agentcore import crew_tools
+
         assert "localhost" in crew_tools._BASE_URL or "8001" in crew_tools._BASE_URL

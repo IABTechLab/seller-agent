@@ -59,8 +59,10 @@ def agency_buyer():
 def advertiser_buyer():
     return BuyerContext(
         identity=BuyerIdentity(
-            agency_id="a1", agency_name="Agency",
-            advertiser_id="adv1", advertiser_name="Advertiser",
+            agency_id="a1",
+            agency_name="Agency",
+            advertiser_id="adv1",
+            advertiser_name="Advertiser",
         ),
         is_authenticated=True,
     )
@@ -141,42 +143,64 @@ class TestStrategyByTier:
 
     def test_public_gets_aggressive(self, engine, public_buyer):
         history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=public_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=public_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
         assert history.strategy == NegotiationStrategy.AGGRESSIVE
         assert history.limits.max_rounds == 3
 
     def test_agency_gets_collaborative(self, engine, agency_buyer):
         history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=agency_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=agency_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
         assert history.strategy == NegotiationStrategy.COLLABORATIVE
         assert history.limits.max_rounds == 5
 
     def test_advertiser_gets_premium(self, engine, advertiser_buyer):
         history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=advertiser_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=advertiser_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
         assert history.strategy == NegotiationStrategy.PREMIUM
         assert history.limits.max_rounds == 6
 
     def test_premium_concedes_more_than_aggressive(self, engine, public_buyer, advertiser_buyer):
         pub_history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=public_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=public_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
         adv_history = engine.start_negotiation(
-            proposal_id="p2", product_id="prod1",
-            buyer_context=advertiser_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p2",
+            product_id="prod1",
+            buyer_context=advertiser_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
-        pub_rnd = engine.evaluate_buyer_offer(pub_history, buyer_price=70.0, buyer_context=public_buyer)
-        adv_rnd = engine.evaluate_buyer_offer(adv_history, buyer_price=70.0, buyer_context=advertiser_buyer)
+        pub_rnd = engine.evaluate_buyer_offer(
+            pub_history, buyer_price=70.0, buyer_context=public_buyer
+        )
+        adv_rnd = engine.evaluate_buyer_offer(
+            adv_history, buyer_price=70.0, buyer_context=advertiser_buyer
+        )
 
         # Premium strategy should concede more (lower seller price)
-        if pub_rnd.action == NegotiationAction.COUNTER and adv_rnd.action == NegotiationAction.COUNTER:
+        if (
+            pub_rnd.action == NegotiationAction.COUNTER
+            and adv_rnd.action == NegotiationAction.COUNTER
+        ):
             assert adv_rnd.seller_price <= pub_rnd.seller_price
 
 
@@ -185,16 +209,22 @@ class TestMultiRoundConcession:
 
     def test_accept_when_buyer_meets_base(self, engine, agency_buyer):
         history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=agency_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=agency_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=100.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.ACCEPT
 
     def test_multi_round_seller_price_decreases(self, engine, agency_buyer):
         history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=agency_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=agency_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
         seller_prices = []
         for _ in range(3):
@@ -210,8 +240,11 @@ class TestMultiRoundConcession:
 
     def test_record_round_updates_status_on_accept(self, engine, agency_buyer):
         history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=agency_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=agency_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=200.0, buyer_context=agency_buyer)
         history = engine.record_round(history, rnd)
@@ -219,8 +252,11 @@ class TestMultiRoundConcession:
 
     def test_record_round_updates_status_on_reject(self, engine, agency_buyer):
         history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=agency_buyer, base_price=100.0, floor_price=80.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=agency_buyer,
+            base_price=100.0,
+            floor_price=80.0,
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=10.0, buyer_context=agency_buyer)
         history = engine.record_round(history, rnd)
@@ -232,8 +268,11 @@ class TestAlternativePackages:
 
     def test_suggest_packages_within_budget(self, engine, agency_buyer):
         history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=agency_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=agency_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=60.0, buyer_context=agency_buyer)
         history = engine.record_round(history, rnd)
@@ -251,8 +290,13 @@ class TestAlternativePackages:
 
     def test_suggest_empty_for_no_rounds(self, engine, agency_buyer):
         history = engine.start_negotiation(
-            proposal_id="p1", product_id="prod1",
-            buyer_context=agency_buyer, base_price=100.0, floor_price=50.0,
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=agency_buyer,
+            base_price=100.0,
+            floor_price=50.0,
         )
-        suggestions = engine.suggest_alternative_packages(history, [{"package_id": "pkg1", "base_price": 50.0}])
+        suggestions = engine.suggest_alternative_packages(
+            history, [{"package_id": "pkg1", "base_price": 50.0}]
+        )
         assert suggestions == []

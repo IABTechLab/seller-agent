@@ -40,9 +40,7 @@ def _get_deal_request_flow_class():
         import ad_seller  # noqa: F401
 
         stub = types.ModuleType(parent_name)
-        stub.__path__ = [
-            str(importlib.resources.files("ad_seller").joinpath("flows"))
-        ]
+        stub.__path__ = [str(importlib.resources.files("ad_seller").joinpath("flows"))]
         stub.__package__ = parent_name
         sys.modules[parent_name] = stub
         installed_stub = True
@@ -212,9 +210,7 @@ class TestDealRequestFlowE2E:
         identity = BuyerIdentity(agency_id="ag-001", agency_name="Test Agency")
         ctx = BuyerContext(identity=identity, is_authenticated=True)
 
-        result = await self._run_steps(
-            "What is the price for video inventory?", buyer_context=ctx
-        )
+        result = await self._run_steps("What is the price for video inventory?", buyer_context=ctx)
 
         assert result["request_type"] == "inquiry"
         assert result["status"] == "completed"
@@ -505,9 +501,7 @@ class TestFixtureData:
                 base_cpm=p["base_cpm"],
                 floor_cpm=p["floor_cpm"],
                 supported_deal_types=[DealType(dt) for dt in p["supported_deal_types"]],
-                supported_pricing_models=[
-                    PricingModel(pm) for pm in p["supported_pricing_models"]
-                ],
+                supported_pricing_models=[PricingModel(pm) for pm in p["supported_pricing_models"]],
                 minimum_impressions=p.get("minimum_impressions", 10000),
             )
             assert pd.product_id == p["product_id"]
