@@ -57,6 +57,6 @@ def create_display_inventory_agent() -> Agent:
         You can delegate to Level 3 agents for detailed pricing and availability.""",
         verbose=True,
         allow_delegation=True,
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )

@@ -96,7 +96,7 @@ def create_audience_validator_agent(
         - Buyers' Audience Planner agents via UCP exchange""",
         verbose=verbose,
         allow_delegation=True,  # Can delegate to Inventory Specialists
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
         tools=tools or [],
     )

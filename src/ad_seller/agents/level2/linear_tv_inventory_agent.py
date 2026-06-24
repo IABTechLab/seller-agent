@@ -138,6 +138,6 @@ def create_linear_tv_inventory_agent() -> Agent:
         - Video Inventory Agent on in-stream video companion opportunities""",
         verbose=True,
         allow_delegation=True,
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )

@@ -71,6 +71,6 @@ def create_pricing_agent() -> Agent:
         - Proposal Review Agent on deal-specific pricing""",
         verbose=True,
         allow_delegation=False,  # Pricing decisions are final
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )

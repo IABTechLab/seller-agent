@@ -68,6 +68,6 @@ def create_availability_agent() -> Agent:
         - Proposal Review Agent on deal feasibility""",
         verbose=True,
         allow_delegation=False,  # Availability checks are definitive
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )
