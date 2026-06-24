@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "crewai[anthropic]>=1.14.4,<2.0.0",
+    "crewai[anthropic,bedrock]>=1.14.4,<2.0.0",
     "crewai-tools>=1.14.0,<2.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
@@ -51,6 +51,10 @@ dev = [
     "pytest-cov>=5.0.0",
     "ruff>=0.6.0",
     "mypy>=1.11.0",
+    # hypothesis is used by property-based tests in tests/unit/agentcore/
+    # (test_routing_mode, test_deploy_modes, test_workshop_data, test_s3_csv_adapter).
+    # Without this, pytest collection fails.
+    "hypothesis>=6.0.0",
 ]
 docs = [
     "mkdocs-material>=9.5.0",
