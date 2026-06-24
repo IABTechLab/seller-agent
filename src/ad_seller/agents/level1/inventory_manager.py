@@ -68,6 +68,6 @@ def create_inventory_manager() -> Agent:
         5. **Diversification**: Avoid over-reliance on any single buyer or channel""",
         verbose=True,
         allow_delegation=True,
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )

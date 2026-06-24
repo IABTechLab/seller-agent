@@ -76,6 +76,6 @@ def create_upsell_agent() -> Agent:
         - Inventory Manager on strategic relationships""",
         verbose=True,
         allow_delegation=True,  # Can delegate to Inventory Specialists
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )

@@ -77,6 +77,6 @@ def create_proposal_review_agent() -> Agent:
         - Inventory Manager for final approval""",
         verbose=True,
         allow_delegation=True,  # Can delegate to Pricing/Availability
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )

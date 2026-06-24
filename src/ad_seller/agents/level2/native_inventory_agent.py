@@ -65,6 +65,6 @@ def create_native_inventory_agent() -> Agent:
         - Proposal Review Agent on sponsored content requirements""",
         verbose=True,
         allow_delegation=True,
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )

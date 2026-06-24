@@ -65,6 +65,6 @@ def create_ctv_inventory_agent() -> Agent:
         - Availability Agent on forecasting streaming inventory""",
         verbose=True,
         allow_delegation=True,
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )

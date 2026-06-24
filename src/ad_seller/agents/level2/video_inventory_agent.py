@@ -61,6 +61,6 @@ def create_video_inventory_agent() -> Agent:
         strategies and with the Pricing Agent on video-specific rate cards.""",
         verbose=True,
         allow_delegation=True,
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )

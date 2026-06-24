@@ -68,6 +68,6 @@ def create_mobile_app_inventory_agent() -> Agent:
         - Proposal Review Agent on app install campaign evaluations""",
         verbose=True,
         allow_delegation=True,
-        memory=True,
+        memory=settings.crew_memory_enabled,
         llm=llm,
     )
