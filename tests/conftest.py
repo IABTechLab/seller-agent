@@ -3,12 +3,28 @@
 
 """Pytest configuration and fixtures for Ad Seller System tests."""
 
+import os
+
 import pytest
 
 from ad_seller.models.buyer_identity import BuyerContext, BuyerIdentity
 from ad_seller.models.core import DealType, PricingModel
 from ad_seller.models.flow_state import ProductDefinition
 from ad_seller.models.pricing_tiers import TieredPricingConfig
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Hard-exit after the pytest session ends (ar-r82f.21).
+
+    Even with ``_telemetry_shim.py`` setting every documented opt-out env
+    var at import time, transitive deps (chromadb/posthog/opentelemetry)
+    register atexit handlers that hang interpreter shutdown for ~5 min
+    after pytest itself finishes. Our CLI entry point handles this with
+    ``os._exit(0)`` after typer returns; pytest doesn't have an
+    equivalent path. This hook forces the same behaviour at the end of
+    a test session, after pytest's own reporting has fired.
+    """
+    os._exit(exitstatus)
 
 
 @pytest.fixture
