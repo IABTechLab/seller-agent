@@ -3,6 +3,6 @@
 
 """Provider-agnostic LLM construction for the agent layer."""
 
-from .provider import LLMFactory, LLMRole, get_llm
+from .LLMProvider import LLMProvider, LLMRole, get_llm
 
-__all__ = ["LLMFactory", "LLMRole", "get_llm"]
+__all__ = ["LLMProvider", "LLMRole", "get_llm"]

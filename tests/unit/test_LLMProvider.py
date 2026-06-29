@@ -4,7 +4,7 @@
 """Unit tests for the provider-agnostic LLM factory."""
 
 from ad_seller.config.settings import Settings
-from ad_seller.llm import LLMFactory, LLMRole, get_llm
+from ad_seller.llm import LLMProvider, LLMRole, get_llm
 
 
 def _settings(**overrides) -> Settings:
@@ -16,7 +16,7 @@ class TestNativeRouting:
     """Provider is selected natively from the model prefix."""
 
     def test_anthropic_prefix_routes_to_anthropic(self):
-        factory = LLMFactory(
+        factory = LLMProvider(
             settings=_settings(
                 default_llm_model="anthropic/claude-sonnet-4-5-20250929",
                 llm_api_key="sk-test",
@@ -27,7 +27,7 @@ class TestNativeRouting:
         assert llm.provider == "anthropic"
 
     def test_openai_prefix_routes_to_openai(self):
-        factory = LLMFactory(
+        factory = LLMProvider(
             settings=_settings(default_llm_model="openai/gpt-4o", llm_api_key="sk-test")
         )
         llm = factory.create()
@@ -35,7 +35,7 @@ class TestNativeRouting:
         assert llm.provider == "openai"
 
     def test_role_selects_model(self):
-        factory = LLMFactory(
+        factory = LLMProvider(
             settings=_settings(
                 default_llm_model="openai/gpt-4o",
                 manager_llm_model="openai/gpt-4o-mini",
@@ -50,7 +50,7 @@ class TestOpenAICompatibleRouting:
     """A custom base_url drives any OpenAI-compatible endpoint natively."""
 
     def test_nvidia_nim_routes_via_openai_with_base_url(self):
-        factory = LLMFactory(
+        factory = LLMProvider(
             settings=_settings(
                 default_llm_model="mistralai/mistral-nemotron",
                 llm_api_base_url="https://integrate.api.nvidia.com/v1",
@@ -66,7 +66,7 @@ class TestOpenAICompatibleRouting:
 
     def test_local_ollama_needs_no_key(self, monkeypatch):
         monkeypatch.delenv("LLM_API_KEY", raising=False)
-        factory = LLMFactory(
+        factory = LLMProvider(
             settings=_settings(
                 default_llm_model="llama3",
                 llm_api_base_url="http://localhost:11434/v1",
@@ -81,14 +81,14 @@ class TestParameterPassthrough:
     """Temperature, key, and api_version flow through to the LLM."""
 
     def test_temperature_override_and_fallback(self):
-        factory = LLMFactory(
+        factory = LLMProvider(
             settings=_settings(llm_temperature=0.42, llm_api_key="sk-test")
         )
         assert factory.create(temperature=0.9).temperature == 0.9
         assert factory.create().temperature == 0.42
 
     def test_api_key_passed_through(self):
-        factory = LLMFactory(settings=_settings(llm_api_key="sk-secret"))
+        factory = LLMProvider(settings=_settings(llm_api_key="sk-secret"))
         assert factory.create().api_key == "sk-secret"
 
 

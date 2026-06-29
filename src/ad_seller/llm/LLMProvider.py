@@ -30,7 +30,7 @@ class LLMRole(str, Enum):
     MANAGER = "manager"
 
 
-class LLMFactory:
+class LLMProvider:
     """Builds :class:`crewai.LLM` instances from application settings."""
 
     def __init__(self, settings: Optional[Settings] = None) -> None:
@@ -73,8 +73,8 @@ class LLMFactory:
 
 
 @lru_cache
-def _get_factory() -> LLMFactory:
-    return LLMFactory()
+def _get_provider() -> LLMProvider:
+    return LLMProvider()
 
 
 def get_llm(
@@ -83,4 +83,4 @@ def get_llm(
     max_tokens: Optional[int] = None,
 ) -> LLM:
     """Return a configured ``LLM`` for the given role."""
-    return _get_factory().create(role=role, temperature=temperature, max_tokens=max_tokens)
+    return _get_provider().create(role=role, temperature=temperature, max_tokens=max_tokens)
