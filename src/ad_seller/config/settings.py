@@ -33,14 +33,14 @@ class Settings(BaseSettings):
 
     # LLM Configuration
     # Provider is selected by the model prefix ("<provider>/<model>"). One
-    # llm_api_key serves whichever provider is chosen. Set llm_api_base for
+    # llm_api_key serves whichever provider is chosen. Set llm_api_base_url for
     # OpenAI-compatible endpoints (NVIDIA NIM, Ollama, vLLM, ...).
     default_llm_model: str = "anthropic/claude-sonnet-4-5-20250929"
     manager_llm_model: str = "anthropic/claude-opus-4-20250514"
     llm_temperature: float = 0.3
     llm_max_tokens: int = 4096
     llm_api_key: Optional[str] = None
-    llm_api_base: Optional[str] = None
+    llm_api_base_url: Optional[str] = None
     llm_api_version: Optional[str] = None
 
     # Database / Storage Configuration

@@ -90,7 +90,7 @@ ad-seller freewheel-login --provider bc
 | `MANAGER_LLM_MODEL` | `str` | `"anthropic/claude-opus-4-20250514"` | Model for the manager/orchestrator agent. Set equal to `DEFAULT_LLM_MODEL` to use one model everywhere. |
 | `LLM_TEMPERATURE` | `float` | `0.3` | LLM temperature (lower = more deterministic) |
 | `LLM_MAX_TOKENS` | `int` | `4096` | Maximum tokens per LLM response |
-| `LLM_API_BASE` | `str` | `None` | Endpoint for OpenAI-compatible providers (NVIDIA NIM, Ollama, vLLM, ...). |
+| `LLM_API_BASE_URL` | `str` | `None` | Base URL of the provider's API endpoint. Only needed for OpenAI-compatible providers reached at a custom URL (NVIDIA NIM, Ollama, vLLM, ...). Leave unset for first-party providers (Anthropic, OpenAI, Gemini). |
 | `LLM_API_VERSION` | `str` | `None` | API version, when the provider requires one (Azure). |
 
 ### Switching Providers
@@ -105,11 +105,11 @@ The agent layer is **provider-agnostic** and uses CrewAI's **native provider SDK
 | **Anthropic** (default) | `anthropic/claude-sonnet-4-5-20250929` | native |
 | **OpenAI** | `openai/gpt-4o` | native |
 | **Google Gemini** | `gemini/gemini-1.5-pro` | native (needs the Google GenAI SDK installed) |
-| **NVIDIA NIM** | any NVIDIA model | set `LLM_API_BASE` (below) |
-| **Ollama** (local) | `llama3` | set `LLM_API_BASE=http://localhost:11434/v1` |
-| **vLLM / Groq / others** | provider's model id | OpenAI-compatible → set `LLM_API_BASE` |
+| **NVIDIA NIM** | any NVIDIA model | set `LLM_API_BASE_URL` (below) |
+| **Ollama** (local) | `llama3` | set `LLM_API_BASE_URL=http://localhost:11434/v1` |
+| **vLLM / Groq / others** | provider's model id | OpenAI-compatible → set `LLM_API_BASE_URL` |
 
-For any **OpenAI-compatible** endpoint, set `LLM_API_BASE` and the request is sent over CrewAI's native OpenAI client pointed at that URL.
+For any **OpenAI-compatible** endpoint, set `LLM_API_BASE_URL` and the request is sent over CrewAI's native OpenAI client pointed at that URL.
 
 **Example — OpenAI:**
 
@@ -128,7 +128,7 @@ model (e.g. Mistral Nemotron) since the agents use tools.
 
 ```bash
 LLM_API_KEY=nvapi-xxxxxxxx
-LLM_API_BASE=https://integrate.api.nvidia.com/v1
+LLM_API_BASE_URL=https://integrate.api.nvidia.com/v1
 DEFAULT_LLM_MODEL=mistralai/mistral-nemotron
 MANAGER_LLM_MODEL=mistralai/mistral-nemotron
 ```
@@ -136,7 +136,7 @@ MANAGER_LLM_MODEL=mistralai/mistral-nemotron
 **Example — local Ollama (no key required):**
 
 ```bash
-LLM_API_BASE=http://localhost:11434/v1
+LLM_API_BASE_URL=http://localhost:11434/v1
 DEFAULT_LLM_MODEL=llama3
 MANAGER_LLM_MODEL=llama3
 ```
@@ -242,7 +242,7 @@ MANAGER_LLM_MODEL=llama3
 # LLM Provider
 # =============================================================================
 LLM_API_KEY=your-provider-api-key
-# LLM_API_BASE=                             # For NVIDIA NIM / Ollama / vLLM
+# LLM_API_BASE_URL=                         # For NVIDIA NIM / Ollama / vLLM (OpenAI-compatible URL)
 
 # =============================================================================
 # Seller Identity

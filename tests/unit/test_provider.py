@@ -53,7 +53,7 @@ class TestOpenAICompatibleRouting:
         factory = LLMFactory(
             settings=_settings(
                 default_llm_model="mistralai/mistral-nemotron",
-                llm_api_base="https://integrate.api.nvidia.com/v1",
+                llm_api_base_url="https://integrate.api.nvidia.com/v1",
                 llm_api_key="nvapi-test",
             )
         )
@@ -69,7 +69,7 @@ class TestOpenAICompatibleRouting:
         factory = LLMFactory(
             settings=_settings(
                 default_llm_model="llama3",
-                llm_api_base="http://localhost:11434/v1",
+                llm_api_base_url="http://localhost:11434/v1",
             )
         )
         llm = factory.create()

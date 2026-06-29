@@ -6,8 +6,8 @@
 CrewAI ships native provider SDKs (openai, anthropic, azure, bedrock, gemini,
 openai_compatible) and routes by the "<provider>/<model>" prefix. Any provider
 works by setting the model and llm_api_key — no third-party router. For
-OpenAI-compatible endpoints (NVIDIA NIM, Ollama, vLLM, ...) set llm_api_base and
-the request is sent over the native OpenAI-protocol client.
+OpenAI-compatible endpoints (NVIDIA NIM, Ollama, vLLM, ...) set llm_api_base_url
+and the request is sent over the native OpenAI-protocol client.
 """
 
 from enum import Enum
@@ -60,9 +60,9 @@ class LLMFactory:
 
         # A custom endpoint means an OpenAI-compatible provider; pin the native
         # provider explicitly so routing never falls back off the native path.
-        if settings.llm_api_base:
+        if settings.llm_api_base_url:
             kwargs["provider"] = _OPENAI_COMPATIBLE_PROVIDER
-            kwargs["base_url"] = settings.llm_api_base
+            kwargs["base_url"] = settings.llm_api_base_url
 
         return LLM(**kwargs)
 
