@@ -21,6 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+from .console import install_agent_console
+
 logger = logging.getLogger(__name__)
 
 # Dedicated logger for booking-time forensic events. Per proposal §5.1 Step 2
@@ -99,6 +101,7 @@ app.add_middleware(
     allow_credentials=False,
     expose_headers=["*"],
 )
+install_agent_console(app)
 
 _mcp_server_ref = None
 
