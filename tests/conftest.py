@@ -4,6 +4,7 @@
 """Pytest configuration and fixtures for Ad Seller System tests."""
 
 import os
+import sys
 
 import pytest
 
@@ -12,19 +13,39 @@ from ad_seller.models.core import DealType, PricingModel
 from ad_seller.models.flow_state import ProductDefinition
 from ad_seller.models.pricing_tiers import TieredPricingConfig
 
+_session_exit_status: int | None = None
+
 
 def pytest_sessionfinish(session, exitstatus):
-    """Hard-exit after the pytest session ends (ar-r82f.21).
+    """Record the exit status for the hard-exit in ``pytest_unconfigure``."""
+    global _session_exit_status
+    _session_exit_status = int(exitstatus)
+
+
+def pytest_unconfigure(config):
+    """Hard-exit after pytest has finished all reporting (ar-r82f.21).
 
     Even with ``_telemetry_shim.py`` setting every documented opt-out env
     var at import time, transitive deps (chromadb/posthog/opentelemetry)
     register atexit handlers that hang interpreter shutdown for ~5 min
     after pytest itself finishes. Our CLI entry point handles this with
     ``os._exit(0)`` after typer returns; pytest doesn't have an
-    equivalent path. This hook forces the same behaviour at the end of
-    a test session, after pytest's own reporting has fired.
+    equivalent path, so this hook forces the same behaviour.
+
+    The hard exit used to live in ``pytest_sessionfinish``, but the
+    terminal reporter prints the FAILURES section, short summary, and
+    stats line after the non-wrapper ``pytest_sessionfinish`` hooks run,
+    so exiting there ended every failing run with a bare ``F`` and no
+    diagnostics. ``pytest_unconfigure`` fires after all reporting is
+    done. ``os._exit`` also skips stdio flushing, which silently drops
+    any reporting still sitting in a block-buffered stream (the normal
+    case when output is redirected to a file or CI log), so both
+    streams are flushed first.
     """
-    os._exit(exitstatus)
+    if _session_exit_status is not None:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(_session_exit_status)
 
 
 @pytest.fixture
