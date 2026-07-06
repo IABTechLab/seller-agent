@@ -232,6 +232,8 @@ def test_round_trip_builder_then_parser_recovers_refs() -> None:
     import sys
     from pathlib import Path
 
+    import pytest
+
     # Path resolution (per ar-e2rj): tests can override via the
     # `AD_BUYER_SRC_PATH` env var. Otherwise, walk up from this file to
     # find the seller repo root (`ad_seller_system`); the buyer repo
@@ -247,9 +249,17 @@ def test_round_trip_builder_then_parser_recovers_refs() -> None:
             None,
         )
         if seller_repo_root is None:
-            raise RuntimeError(
-                "Could not locate ad_seller_system in path ancestry "
-                f"of {here}; set AD_BUYER_SRC_PATH to override."
+            # CI / standalone clones (e.g. IABTechLab/seller-agent) check
+            # out only the seller repo, so the ad_seller_system / sibling
+            # ad_buyer_system layout this round-trip needs does not
+            # exist. Skip cleanly here rather than erroring; the test
+            # can still be opted in locally by setting
+            # AD_BUYER_SRC_PATH or by checking out the sibling repos
+            # alongside an ad_seller_system-named seller checkout.
+            pytest.skip(
+                "Cross-repo round-trip requires the sibling "
+                "ad_buyer_system checkout; set AD_BUYER_SRC_PATH to "
+                f"the buyer src/ directory to override. (here={here})"
             )
         agent_range_root = seller_repo_root.parent
         buyer_main = agent_range_root / "ad_buyer_system" / "src"
@@ -265,6 +275,15 @@ def test_round_trip_builder_then_parser_recovers_refs() -> None:
             buyer_src = str(sibling_worktree if sibling_worktree.is_dir() else buyer_main)
         else:
             buyer_src = str(buyer_main)
+        # Even with an ad_seller_system-named ancestor, the sibling
+        # ad_buyer_system tree may be absent (partial checkout). Skip
+        # in that case too rather than failing on the import below.
+        if not Path(buyer_src).is_dir():
+            pytest.skip(
+                "Cross-repo round-trip requires the sibling "
+                f"ad_buyer_system checkout; resolved path {buyer_src} "
+                "does not exist. Set AD_BUYER_SRC_PATH to override."
+            )
     sys.path.insert(0, buyer_src)
     try:
         from ad_buyer.clients.openrtb_builder import (  # type: ignore[import-not-found]
