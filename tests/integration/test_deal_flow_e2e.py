@@ -487,9 +487,10 @@ class TestFixtureData:
         assert pubmatic_deal_response["cpm"] == 15.0
 
     def test_ix_response_structure(self, ix_deal_response):
-        assert ix_deal_response["ssp_name"] == "index_exchange"
+        assert ix_deal_response["externalDealID"] == "IX-DEAL-20260326-001"
         assert ix_deal_response["status"] == "active"
-        assert ix_deal_response["cpm"] == 22.5
+        assert ix_deal_response["floor"] == 22.5
+        assert ix_deal_response["classID"] == 1
 
     def test_products_can_become_product_definitions(self, freewheel_products):
         """Verify fixture data can be loaded into ProductDefinition models."""
