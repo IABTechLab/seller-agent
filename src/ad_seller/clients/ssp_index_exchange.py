@@ -262,32 +262,67 @@ class IndexExchangeSSPClient(RESTSSPClient):
         return self._parse_deal(resp.json())
 
     async def troubleshoot_deal(self, deal_id: str) -> SSPTroubleshootResult:
-        """Troubleshoot a deal on Index Exchange.
+        """Diagnose a deal via GET /v3/deals/{internalDealID}.
 
-        Index Exchange doesn't have a dedicated troubleshooting endpoint
-        (unlike PubMatic's MCP). We use the reporting API to pull deal
-        performance data and flag issues.
-
-        TODO: Integrate with IX Reporting API for real diagnostics.
+        Index Exchange has no dedicated troubleshooting endpoint (unlike
+        PubMatic's MCP), so health is derived from the deal's own status and
+        configuration rather than a reporting API.
         """
         http = self._ensure_connected()
 
-        # Get deal details as a baseline
         try:
-            resp = await http.get(f"/api/deals/{deal_id}")
+            resp = await http.get(f"/v3/deals/{deal_id}")
             resp.raise_for_status()
             deal_data = resp.json()
-        except Exception:
-            deal_data = {}
+        except Exception as exc:
+            return SSPTroubleshootResult(
+                deal_id=deal_id,
+                health_score=0,
+                status="unreachable",
+                primary_issues=[f"Failed to fetch deal from Index Exchange: {exc}"],
+                ssp_type=self.ssp_type,
+            )
+
+        status_str = str(deal_data.get("status", "")).lower()
+        issues: list[str] = []
+        recommendations: list[dict[str, str]] = []
+
+        if status_str == "active":
+            health_score: Optional[int] = 90
+        elif status_str == "paused":
+            health_score = 50
+            issues.append("Deal is paused")
+            recommendations.append(
+                {"action": "Resume the deal via PATCH if pausing was unintentional"}
+            )
+        elif status_str == "auto-paused":
+            health_score = 20
+            issues.append("Deal was automatically paused by Index Exchange")
+            recommendations.append(
+                {
+                    "action": "Review deal configuration (floor, targeting, budget) "
+                    "that may have triggered the system pause"
+                }
+            )
+        elif status_str == "expired":
+            health_score = 0
+            issues.append("Deal has expired")
+        else:
+            health_score = None
+
+        class_id = deal_data.get("classID")
+        direct_config = deal_data.get("directConfigurations") or {}
+        if class_id == 1 and not direct_config.get("seatIDs"):
+            issues.append("No buyer seat IDs are configured")
+        if not deal_data.get("floor"):
+            issues.append("Floor price is not set")
 
         return SSPTroubleshootResult(
-            deal_id=deal_id,
-            status=deal_data.get("status", "unknown"),
-            primary_issues=[],
-            root_causes=[],
-            recommendations=[
-                {"action": "Check IX reporting dashboard for detailed deal diagnostics"},
-            ],
+            deal_id=str(deal_data.get("externalDealID", deal_id)),
+            health_score=health_score,
+            status=status_str or "unknown",
+            primary_issues=issues,
+            recommendations=recommendations,
             ssp_type=self.ssp_type,
             raw=deal_data,
         )
@@ -295,31 +330,35 @@ class IndexExchangeSSPClient(RESTSSPClient):
     # --- Index Exchange-specific response parsing ---
 
     def _parse_deal(self, raw: dict[str, Any]) -> SSPDeal:
-        """Parse Index Exchange deal response to normalized SSPDeal."""
-        status_str = str(raw.get("status", "pending")).lower()
+        """Parse an Index Exchange /v3/deals response into a normalized SSPDeal."""
+        status_str = str(raw.get("status", "")).lower()
+        class_id = raw.get("classID")
+        direct_config = raw.get("directConfigurations") or {}
+        labels = raw.get("labels") or {}
 
-        # IX may use different field names
-        deal_type_raw = raw.get("deal_type", raw.get("type", "pmp"))
         deal_type = SSPDealType.PMP
-        if deal_type_raw in ("pmp", "PMP"):
-            deal_type = SSPDealType.PMP
-        elif deal_type_raw in ("programmatic_guaranteed", "pg", "PG"):
-            deal_type = SSPDealType.PG
-        elif deal_type_raw in ("preferred", "preferred_deal"):
-            deal_type = SSPDealType.PREFERRED
+        if class_id == 1:
+            if direct_config.get("programmaticGuaranteed"):
+                deal_type = SSPDealType.PG
+            elif raw.get("auctionType") == "fixed":
+                deal_type = SSPDealType.PREFERRED
+            else:
+                deal_type = SSPDealType.PMP
+        elif class_id == 4:
+            deal_type = SSPDealType.AUCTION_PACKAGE
 
         return SSPDeal(
-            deal_id=str(raw.get("deal_id", raw.get("id", "unknown"))),
-            name=raw.get("deal_name", raw.get("name")),
+            deal_id=str(raw.get("externalDealID", "unknown")),
+            name=raw.get("name"),
             deal_type=deal_type,
             status=_IX_STATUS_MAP.get(status_str, SSPDealStatus.CREATED),
-            advertiser=raw.get("advertiser_name", raw.get("advertiser")),
-            cpm=raw.get("floor_price", raw.get("cpm")),
-            currency=raw.get("currency", "USD"),
-            start_date=raw.get("start_date"),
-            end_date=raw.get("end_date"),
+            advertiser=labels.get("advertiser"),
+            cpm=raw.get("floor"),
+            currency="USD",
+            start_date=raw.get("startDate"),
+            end_date=raw.get("endDate"),
             targeting=raw.get("targeting"),
-            impressions_goal=raw.get("impression_goal", raw.get("impressions_goal")),
+            impressions_goal=direct_config.get("impressionGoal"),
             ssp_type=SSPType.INDEX_EXCHANGE,
             ssp_name="Index Exchange",
             raw=raw,
