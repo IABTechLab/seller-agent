@@ -185,16 +185,18 @@ class IndexExchangeSSPClient(RESTSSPClient):
         source_deal_id: str,
         overrides: Optional[dict[str, Any]] = None,
     ) -> SSPDeal:
-        """Clone a deal on Index Exchange."""
-        http = self._ensure_connected()
+        """Index Exchange has no clone/copy endpoint.
 
-        body = {"source_deal_id": source_deal_id}
-        if overrides:
-            body.update(overrides)
-
-        resp = await http.post(f"/api/deals/{source_deal_id}/copy", json=body)
-        resp.raise_for_status()
-        return self._parse_deal(resp.json())
+        There is no `/{id}/copy` (or equivalent) route on /v3/deals. To
+        duplicate a deal, callers must retrieve it with get_deal() and then
+        create_deal() a new one with a fresh external_deal_id, copying over
+        whatever fields should carry forward.
+        """
+        raise NotImplementedError(
+            "Index Exchange has no deal clone endpoint. Use get_deal() to "
+            "retrieve the source deal, then create_deal() with a new "
+            "external_deal_id to duplicate it."
+        )
 
     async def get_deal(self, deal_id: str) -> SSPDeal:
         """Get deal details from Index Exchange.
