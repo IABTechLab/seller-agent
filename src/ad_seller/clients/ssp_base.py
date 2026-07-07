@@ -74,7 +74,9 @@ class SSPDeal(BaseModel):
     priority: Optional[str] = None  # SSP-specific (e.g., PubMatic P11-P15)
     start_date: Optional[str] = None
     end_date: Optional[str] = None
-    targeting: Optional[dict[str, Any]] = None
+    # Shape varies by SSP: a flat dict (e.g. PubMatic) or a structured array of
+    # targeting objects (e.g. Index Exchange's {targetingType, keyName, sets}).
+    targeting: Optional[Any] = None
     impressions_goal: Optional[int] = None
     ssp_type: SSPType = SSPType.CUSTOM
     ssp_name: Optional[str] = None  # Human-readable SSP name
@@ -105,11 +107,15 @@ class SSPDealCreateRequest(BaseModel):
     priority: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
-    targeting: Optional[dict[str, Any]] = None
+    targeting: Optional[list[dict[str, Any]]] = None
     impressions_goal: Optional[int] = None
     buyer_seat_ids: list[str] = []
     # For clone operations
     source_deal_id: Optional[str] = None
+    # SSP-assigned identifiers some SSPs (e.g. Index Exchange) require at creation time
+    external_deal_id: Optional[str] = None
+    account_id: Optional[int] = None
+    dsp_id: Optional[int] = None
 
 
 # =============================================================================
