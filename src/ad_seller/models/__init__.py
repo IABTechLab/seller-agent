@@ -41,7 +41,6 @@ from .buyer_identity import (
     BuyerIdentity,
     IdentityLevel,
 )
-from .pricing_type import PricingType
 from .change_request import (
     ChangeRequest,
     ChangeRequestStatus,
@@ -165,6 +164,7 @@ from .pricing_tiers import (
     TieredPricingConfig,
     VolumeDiscount,
 )
+from .pricing_type import PricingType
 from .session import (
     NegotiationState,
     Session,

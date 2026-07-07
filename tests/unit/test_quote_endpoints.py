@@ -306,8 +306,8 @@ class TestCreateQuote:
         """Layer 4: quote creation should persist a quote_history record."""
         with (
             patch(
-                "ad_seller.flows.ProductSetupFlow",
-                return_value=_mock_product_setup_flow(_products()),
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
             ),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):

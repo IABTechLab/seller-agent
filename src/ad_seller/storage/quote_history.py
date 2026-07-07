@@ -14,7 +14,7 @@ Bead: ar-hm9l (child of epic ar-rrgw)
 from datetime import datetime, timezone
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ad_seller.storage.base import StorageBackend
 
