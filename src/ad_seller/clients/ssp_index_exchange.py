@@ -51,12 +51,23 @@ from .ssp_rest_client import RESTSSPClient
 logger = logging.getLogger(__name__)
 
 
-# Index Exchange deal type mapping
-_IX_DEAL_TYPE_MAP = {
-    SSPDealType.PMP: "pmp",
-    SSPDealType.PG: "programmatic_guaranteed",
-    SSPDealType.PREFERRED: "preferred",
-}
+def _ix_deal_config(deal_type: SSPDealType) -> tuple[int, str, bool]:
+    """Map an SSPDealType to Index Exchange's classID/auctionType/programmaticGuaranteed.
+
+    IX classID values: 1=Direct Deal, 3=Inventory Package, 4=Marketplace
+    Package, 5=Deal with Marketplaces. Only 1 and 4 are reachable from the
+    deal types seller-agent currently models.
+    """
+    if deal_type == SSPDealType.PG:
+        return 1, "fixed", True
+    if deal_type == SSPDealType.PMP:
+        return 1, "first", False
+    if deal_type == SSPDealType.PREFERRED:
+        return 1, "fixed", False
+    if deal_type == SSPDealType.AUCTION_PACKAGE:
+        return 4, "first", False
+    raise ValueError(f"Unsupported Index Exchange deal type: {deal_type}")
+
 
 _IX_STATUS_MAP = {
     "active": SSPDealStatus.ACTIVE,
@@ -103,32 +114,62 @@ class IndexExchangeSSPClient(RESTSSPClient):
     # --- Override deal operations with IX-specific paths ---
 
     async def create_deal(self, request: SSPDealCreateRequest) -> SSPDeal:
-        """Create a PMP deal on Index Exchange."""
+        """Create a deal on Index Exchange via POST /v3/deals."""
         http = self._ensure_connected()
 
+        account_id = request.account_id if request.account_id is not None else self._account_id
+        if not request.external_deal_id:
+            raise ValueError(
+                "Index Exchange requires external_deal_id (SSPDealCreateRequest.external_deal_id) "
+                "to create a deal"
+            )
+        if account_id is None:
+            raise ValueError(
+                "Index Exchange requires an account_id — set SSPDealCreateRequest.account_id "
+                "or configure INDEX_EXCHANGE_ACCOUNT_ID"
+            )
+
+        class_id, auction_type, programmatic_guaranteed = _ix_deal_config(request.deal_type)
+        if request.dsp_id is None:
+            raise ValueError(
+                f"Index Exchange requires dsp_id (SSPDealCreateRequest.dsp_id) for "
+                f"deal_type={request.deal_type.value}"
+            )
+
         body: dict[str, Any] = {
-            "deal_type": _IX_DEAL_TYPE_MAP.get(request.deal_type, "pmp"),
+            "classID": class_id,
+            "name": request.name,
+            "externalDealID": request.external_deal_id,
+            "account": {"accountID": account_id},
+            "auctionType": auction_type,
+            "floor": request.cpm,
         }
-        if request.name:
-            body["deal_name"] = request.name
-        if request.advertiser:
-            body["advertiser_name"] = request.advertiser
-        if request.cpm:
-            body["floor_price"] = request.cpm
-        if request.currency:
-            body["currency"] = request.currency
         if request.start_date:
-            body["start_date"] = request.start_date
+            body["startDate"] = request.start_date
         if request.end_date:
-            body["end_date"] = request.end_date
-        if request.buyer_seat_ids:
-            body["buyer_seat_ids"] = request.buyer_seat_ids
-        if request.impressions_goal:
-            body["impression_goal"] = request.impressions_goal
+            body["endDate"] = request.end_date
+
+        if class_id == 1:
+            direct_config: dict[str, Any] = {
+                "dspID": request.dsp_id,
+                "programmaticGuaranteed": programmatic_guaranteed,
+            }
+            if request.buyer_seat_ids:
+                direct_config["seatIDs"] = request.buyer_seat_ids
+            if request.impressions_goal:
+                direct_config["impressionGoal"] = request.impressions_goal
+            body["directConfigurations"] = direct_config
+        else:
+            # classID 4 (Marketplace Package) requires marketplaceConfigurations
+            # instead of directConfigurations; only dspID is confirmed required.
+            body["marketplaceConfigurations"] = {"dspID": request.dsp_id}
+
+        if request.advertiser:
+            body["labels"] = {"advertiser": request.advertiser}
         if request.targeting:
             body["targeting"] = request.targeting
 
-        resp = await http.post("/api/deals", json=body)
+        resp = await http.post("/v3/deals", json=body)
         resp.raise_for_status()
         return self._parse_deal(resp.json())
 
