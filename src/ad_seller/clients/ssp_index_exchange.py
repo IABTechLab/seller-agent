@@ -73,8 +73,15 @@ _IX_STATUS_MAP = {
     "active": SSPDealStatus.ACTIVE,
     "paused": SSPDealStatus.PAUSED,
     "expired": SSPDealStatus.EXPIRED,
-    "archived": SSPDealStatus.ARCHIVED,
-    "pending": SSPDealStatus.CREATED,
+    "auto-paused": SSPDealStatus.PAUSED,
+}
+
+# GET /v3/deals `status` filter values — IX has no equivalent for CREATED or
+# ARCHIVED, so those send no status filter (unfiltered list).
+_IX_LIST_STATUS_MAP = {
+    SSPDealStatus.ACTIVE: "active",
+    SSPDealStatus.PAUSED: "paused",
+    SSPDealStatus.EXPIRED: "expired",
 }
 
 
@@ -207,19 +214,19 @@ class IndexExchangeSSPClient(RESTSSPClient):
         status: Optional[SSPDealStatus] = None,
         limit: int = 100,
     ) -> list[SSPDeal]:
-        """List deals from Index Exchange."""
+        """List deals from Index Exchange via GET /v3/deals."""
         http = self._ensure_connected()
 
-        params: dict[str, Any] = {"limit": limit}
-        if status:
-            params["status"] = status.value
+        params: dict[str, Any] = {"pageOffset": 0, "pageSize": limit}
+        ix_status = _IX_LIST_STATUS_MAP.get(status) if status else None
+        if ix_status:
+            params["status"] = ix_status
 
-        resp = await http.get("/api/deals", params=params)
+        resp = await http.get("/v3/deals", params=params)
         resp.raise_for_status()
 
         data = resp.json()
-        items = data if isinstance(data, list) else data.get("deals", data.get("data", []))
-        return [self._parse_deal(d) for d in items]
+        return [self._parse_deal(d) for d in data.get("deals", [])]
 
     async def update_deal(
         self,
