@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from .audience_capabilities import AudienceCapabilities
 from .core import PricingModel
+from .pricing_type import PricingType
 
 # Migration log for legacy `audience_segment_ids` -> `audience_capabilities`
 # coming through StorageBackend rows or seed flows. Quiet INFO on a dedicated
@@ -98,8 +99,9 @@ class Package(BaseModel):
     geo_targets: list[str] = Field(default_factory=list)  # ["US", "US-NY", "US-CA"]
 
     # Pricing (blended from constituent products)
-    base_price: float
-    floor_price: float
+    pricing_type: PricingType = PricingType.FIXED
+    base_price: Optional[float] = None
+    floor_price: Optional[float] = None
     rate_type: PricingModel = PricingModel.CPM
     currency: str = "USD"  # ISO 4217
 
