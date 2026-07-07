@@ -4486,7 +4486,7 @@ class SSPDealDistributeRequest(BaseModel):
     buyer_seat_ids: Optional[list[str]] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
-    targeting: Optional[dict[str, Any]] = None
+    targeting: Optional[list[dict[str, Any]]] = None
     # Routing hint — if set, routes to this SSP. Otherwise uses routing rules.
     ssp_name: Optional[str] = None
     inventory_type: Optional[str] = None  # for routing: ctv, display, video, etc.
@@ -4554,6 +4554,7 @@ async def distribute_deal_via_ssp(request: SSPDealDistributeRequest):
         start_date=request.start_date,
         end_date=request.end_date,
         targeting=request.targeting,
+        external_deal_id=request.deal_id,
     )
 
     async with ssp:
