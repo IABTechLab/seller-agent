@@ -226,10 +226,29 @@ class IndexExchangeSSPClient(RESTSSPClient):
         deal_id: str,
         updates: dict[str, Any],
     ) -> SSPDeal:
-        """Update a deal on Index Exchange."""
+        """Update a deal on Index Exchange via PATCH /v3/deals/{internalDealID}.
+
+        deal_id must be the internalDealID (not externalDealID). IX requires
+        an If-Match header carrying the deal's current ETag, obtained via a
+        preceding GET. `updates["status"]`, if present, must be "active" or
+        "paused" (not "ACTIVE"/"PAUSED") — expired/auto-paused are system-set
+        and cannot be patched.
+        """
         http = self._ensure_connected()
 
-        resp = await http.post(f"/api/deals/{deal_id}", json=updates)
+        get_resp = await http.get(f"/v3/deals/{deal_id}")
+        get_resp.raise_for_status()
+        etag = get_resp.headers.get("ETag")
+        if not etag:
+            raise ValueError(
+                f"Index Exchange did not return an ETag for deal {deal_id}; cannot PATCH"
+            )
+
+        resp = await http.patch(
+            f"/v3/deals/{deal_id}",
+            json=updates,
+            headers={"If-Match": etag},
+        )
         resp.raise_for_status()
         return self._parse_deal(resp.json())
 
