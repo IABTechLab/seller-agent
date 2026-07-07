@@ -3,21 +3,36 @@
 
 """Index Exchange SSP client (REST API).
 
-Index Exchange exposes a REST API for deal management at api.indexexchange.com.
-No MCP server yet (as of March 2026), though they're part of the IAB Tech Lab
-Agentic RTB Framework (ARTF) coalition.
+Index Exchange exposes its deal management REST API at
+https://app.indexexchange.com/api/deals, with all deal endpoints under a
+/v3/deals prefix. No MCP server yet (as of March 2026), though they're part
+of the IAB Tech Lab Agentic RTB Framework (ARTF) coalition.
 
-Key endpoints:
-  - POST /api/deals — Create PMP deal
-  - GET /api/deals — List/get deals
-  - GET /api/cal/v1/mappings/deals — Deal mapping (name, dates, IDs)
-  - Reporting API for supply, demand, deals, brand data
+Key endpoints (base URL + path):
+  - POST   /v3/deals              — Create a deal
+  - GET    /v3/deals               — List deals
+  - GET    /v3/deals/{id}          — Get a single deal (id = internalDealID)
+  - PATCH  /v3/deals/{id}          — Update a deal (requires If-Match ETag)
+  - DELETE /v3/deals/{id}          — Soft-delete a deal
+  - GET    /v3/deals/reports       — Deals data export
 
-Docs: https://api.indexexchange.com/reference
-      https://kb.indexexchange.com/publishers/pmp/deals_api.htm
+There is no clone/copy endpoint — see clone_deal() below.
 
-TODO(index-exchange-auth): Full API docs require IX account for detailed
-request/response schemas and auth mechanism.
+Field names and behavior here are derived directly from deals-web-api (the
+Go service implementing /v3/deals), not from public docs, per the DEALS-7818
+gap analysis.
+
+Known limitations:
+  - directConfigurations.dspID (required for Direct deal types: PMP, PG,
+    PREFERRED) has no source anywhere in seller-agent today. create_deal()
+    will raise ValueError for these deal types until request.dsp_id is
+    supplied by the caller — there is no per-deal "target DSP" concept in
+    the current deal/flow model to derive it from.
+  - No Keycloak JWT refresh: INDEX_EXCHANGE_API_KEY is treated as a
+    long-lived token; production tokens expire and must be refreshed via
+    the client-credentials grant, which is not implemented here.
+  - The new deals-web-api `floorCurrency` field (create-only, feature-flagged)
+    is not supported; all deals are assumed USD.
 """
 
 import logging
@@ -56,14 +71,16 @@ class IndexExchangeSSPClient(RESTSSPClient):
     """Index Exchange SSP client using their REST API.
 
     Extends RESTSSPClient with Index Exchange-specific:
-    - API path structure (/api/deals, /api/cal/v1/mappings/deals)
-    - Request format (JSON body with IX-specific field names)
+    - API path structure (/v3/deals under the configured base URL)
+    - Request format (JSON body with IX's actual /v3/deals field names)
     - Response parsing (IX deal objects → normalized SSPDeal)
-    - Deal type mapping
+    - classID/auctionType/programmaticGuaranteed deal type mapping
 
     Config:
-        INDEX_EXCHANGE_API_URL=https://api.indexexchange.com
-        INDEX_EXCHANGE_API_KEY=your-api-key
+        INDEX_EXCHANGE_API_URL=https://app.indexexchange.com/api/deals
+        INDEX_EXCHANGE_API_KEY=<keycloak-jwt-bearer-token>
+        INDEX_EXCHANGE_ACCOUNT_ID=<publisher account.accountID>  (optional;
+            can instead be supplied per-request via SSPDealCreateRequest.account_id)
     """
 
     def __init__(
@@ -71,6 +88,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
         *,
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
+        account_id: Optional[int] = None,
     ) -> None:
         super().__init__(
             ssp_type=SSPType.INDEX_EXCHANGE,
@@ -80,6 +98,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
             auth_header="Authorization",
             auth_prefix="Bearer",
         )
+        self._account_id = account_id
 
     # --- Override deal operations with IX-specific paths ---
 
@@ -130,10 +149,14 @@ class IndexExchangeSSPClient(RESTSSPClient):
         return self._parse_deal(resp.json())
 
     async def get_deal(self, deal_id: str) -> SSPDeal:
-        """Get deal details from Index Exchange."""
+        """Get deal details from Index Exchange.
+
+        deal_id must be the internalDealID (IX's integer database key), not
+        the externalDealID.
+        """
         http = self._ensure_connected()
 
-        resp = await http.get(f"/api/deals/{deal_id}")
+        resp = await http.get(f"/v3/deals/{deal_id}")
         resp.raise_for_status()
         return self._parse_deal(resp.json())
 

@@ -110,19 +110,35 @@ The deal was created in the seller agent but not yet pushed to PubMatic.
 
 ### Index Exchange API Errors
 
+**Error: `Index Exchange: 401 Unauthorized`**
+
+`INDEX_EXCHANGE_API_KEY` must be a valid Keycloak JWT bearer token, not a
+static API key — it expires and must be refreshed via the client-credentials
+grant. This is not automated yet; re-issue a fresh token in your `.env`.
+
 **Error: `Index Exchange: 403 Forbidden`**
 
-Your API key doesn't have permission for that operation.
+Your token doesn't have permission for that operation.
 
-1. Verify `INDEX_EXCHANGE_API_KEY` in your `.env`.
-2. Contact your Index Exchange account manager to confirm the key has deal management scope.
+1. Verify `INDEX_EXCHANGE_API_KEY` in your `.env` is current (not expired).
+2. Contact your Index Exchange account manager to confirm the token has deal management scope.
+
+**Error: `ValueError: external_deal_id is required` / `account_id is required` / `dsp_id is required for Direct deal types`**
+
+`/v3/deals` requires `externalDealID`, `account.accountID`, and (for Direct
+deal types: PMP, PG, PREFERRED) `directConfigurations.dspID` on every create
+call. `external_deal_id` and `account_id` are supplied automatically by the
+seller-agent's deal flow / `INDEX_EXCHANGE_ACCOUNT_ID` setting; `dsp_id` has
+no current source in seller-agent and must be passed explicitly on the
+`SSPDealCreateRequest` until a target-DSP concept is added upstream.
 
 **Error: `Index Exchange: 422 Unprocessable Entity`**
 
 Deal data failed validation on the Index Exchange side.
 
-- Check the response body for a `errors` field — it will name the invalid field.
-- Common causes: floor price below IX minimum, unsupported ad format, missing `seller_id`.
+- Check the response body for an `errors` field — it will name the invalid field.
+- Common causes: `floor` below IX minimum, `externalDealID` starting with `0`
+  or outside 3–64 chars, missing `directConfigurations.dspID` on a Direct deal.
 
 ---
 

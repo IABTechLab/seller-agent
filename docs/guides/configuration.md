@@ -68,8 +68,9 @@ ad-seller freewheel-login --provider bc
 | `SSP_ROUTING_RULES` | `str` | `""` | Routing rules: `ctv:pubmatic,display:index_exchange` |
 | `PUBMATIC_MCP_URL` | `str` | `None` | PubMatic MCP endpoint (e.g., `https://mcp.pubmatic.com/sses`) |
 | `PUBMATIC_API_KEY` | `str` | `None` | PubMatic API key |
-| `INDEX_EXCHANGE_API_URL` | `str` | `None` | Index Exchange REST API URL |
-| `INDEX_EXCHANGE_API_KEY` | `str` | `None` | Index Exchange API key |
+| `INDEX_EXCHANGE_API_URL` | `str` | `None` | Index Exchange REST API URL, e.g. `https://app.indexexchange.com/api/deals` |
+| `INDEX_EXCHANGE_API_KEY` | `str` | `None` | Keycloak JWT bearer token (not a static API key — expires and must be refreshed) |
+| `INDEX_EXCHANGE_ACCOUNT_ID` | `int` | `None` | IX publisher account.accountID, required on every deal create call |
 | `MAGNITE_API_URL` | `str` | `None` | Magnite REST API URL |
 | `MAGNITE_API_KEY` | `str` | `None` | Magnite API key |
 
