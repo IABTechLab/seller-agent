@@ -25,6 +25,8 @@ class Settings(BaseSettings):
 
     # API Keys
     anthropic_api_key: str
+    openai_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None
 
     # OpenDirect Configuration
     opendirect_base_url: str = "http://localhost:3000"
@@ -35,6 +37,12 @@ class Settings(BaseSettings):
     default_protocol: str = "opendirect21"  # opendirect21, a2a
 
     # LLM Configuration
+    # Supported providers: anthropic (default), openai, gemini, bedrock
+    # Set DEFAULT_LLM_MODEL to switch provider, e.g.:
+    #   anthropic/claude-sonnet-4-5-20250929  (requires ANTHROPIC_API_KEY)
+    #   openai/gpt-4o                          (requires OPENAI_API_KEY)
+    #   gemini/gemini-2.0-flash                (requires GOOGLE_API_KEY)
+    #   bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0 (requires AWS creds)
     default_llm_model: str = "anthropic/claude-sonnet-4-5-20250929"
     manager_llm_model: str = "anthropic/claude-opus-4-20250514"
     llm_temperature: float = 0.3
