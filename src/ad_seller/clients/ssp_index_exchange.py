@@ -19,8 +19,7 @@ Key endpoints (base URL + path):
 There is no clone/copy endpoint — see clone_deal() below.
 
 Field names and behavior here are derived directly from deals-web-api (the
-Go service implementing /v3/deals), not from public docs, per the DEALS-7818
-gap analysis.
+Go service implementing /v3/deals), not from public docs.
 
 Known limitations:
   - directConfigurations.dspID (required for Direct deal types: PMP, PG,
