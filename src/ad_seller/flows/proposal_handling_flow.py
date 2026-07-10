@@ -419,7 +419,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         crew = create_proposal_review_crew(self.state.proposal_data)
 
         try:
-            result = crew.kickoff()
+            result = await crew.kickoff_async()
 
             # Parse crew recommendation
             result_text = str(result).lower()
