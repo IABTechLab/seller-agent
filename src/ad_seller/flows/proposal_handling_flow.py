@@ -12,11 +12,14 @@ This flow handles:
 - Triggering upsell opportunities
 """
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Any, Optional
 
 from crewai.flow.flow import Flow, listen, or_, start
+
+logger = logging.getLogger(__name__)
 
 from ..clients.ucp_client import UCPClient
 from ..config import get_settings
@@ -370,6 +373,18 @@ class ProposalHandlingFlow(Flow[ProposalState]):
 
         # Get audience validation results (from validate_audience step)
         audience_validation = getattr(self, "_audience_validation", {})
+        targeting_compatible = audience_validation.get("targeting_compatible", True)
+        impressions_available = True  # Simplified
+
+        # Preliminary rule-based recommendation at evaluation time (mirrors
+        # _fallback_evaluation's logic). run_crew_evaluation may override
+        # self.state.recommendation later with the crew's decision.
+        if price_acceptable and impressions_available and targeting_compatible:
+            preliminary_recommendation = "accept"
+        elif impressions_available:
+            preliminary_recommendation = "counter"
+        else:
+            preliminary_recommendation = "reject"
 
         # Initialize evaluation with audience fields
         self.state.evaluation = ProposalEvaluation(
@@ -382,13 +397,14 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             price_acceptable=price_acceptable,
             requested_impressions=self.state.proposal_data.get("impressions", 0),
             available_impressions=1000000,  # Placeholder - would come from avails
-            impressions_available=True,  # Simplified
+            impressions_available=impressions_available,
             # Audience validation fields
             audience_validated=audience_validation.get("validated", False),
             audience_coverage=audience_validation.get("coverage", 0.0),
             audience_gaps=audience_validation.get("gaps", []),
             ucp_similarity_score=audience_validation.get("similarity_score"),
-            targeting_compatible=audience_validation.get("targeting_compatible", True),
+            targeting_compatible=targeting_compatible,
+            recommendation=preliminary_recommendation,
         )
 
     @listen(evaluate_pricing)
@@ -419,7 +435,12 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         crew = create_proposal_review_crew(self.state.proposal_data)
 
         try:
-            result = crew.kickoff()
+            # This method runs inside the live server's event loop (called
+            # via ProposalHandlingFlow's async listener chain), so the sync
+            # crew.kickoff() raises immediately: "Agent execution was invoked
+            # synchronously from within a running event loop." Must use the
+            # async variant here.
+            result = await crew.kickoff_async()
 
             # Parse crew recommendation
             result_text = str(result).lower()
@@ -446,6 +467,10 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             )
 
         except Exception as e:
+            import traceback
+
+            print(f"[proposal_handling_flow] Crew evaluation failed: {e!r}", flush=True)
+            traceback.print_exc()
             self.state.warnings.append(f"Crew evaluation failed: {e}")
             # Fall back to rule-based evaluation
             self._fallback_evaluation()

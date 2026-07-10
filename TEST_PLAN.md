@@ -106,6 +106,52 @@ Ran the Test.md flow end-to-end and captured response bodies + server log. Resul
 - Order-transition loop in a shell `for` needs care with nested quoting (JSON "Extra data" errors were a shell artifact, not the API).
 - No unhandled 500s / tracebacks appeared in the server log during the run.
 
+## 2c. ✅ Local-testing fixes applied on `test-plan` (2026-07-10)
+
+Investigating whether `/proposals` works end-to-end with real LLM providers (Claude/OpenAI/Gemini)
+surfaced and fixed several of the bugs already logged above, plus two new ones. All changes below are
+on this branch only — `main` is untouched.
+
+**Setup for local testing (already the default in `.env.example` on this branch):**
+```
+AD_SERVER_TYPE=csv
+CSV_DATA_DIR=./data/csv/samples/web_display
+CREW_MEMORY_ENABLED=false   # correctness-neutral; avoids several minutes of ChromaDB latency per run
+```
+Also merged in the OpenAI/Gemini provider support commit (`openai_api_key`/`google_api_key` settings
+fields, `crewai` extras). Note: use `crewai[...,google-genai]` in `pyproject.toml`, not `...,gemini]` —
+`gemini` is not a valid extra name for the pinned crewai version and silently installs nothing.
+`gemini/gemini-2.0-flash` has also been retired by Google (404) — use `gemini/gemini-2.5-flash`.
+
+**Fixes (cross-referenced to bug numbers above where applicable):**
+
+| Fix | File | Relation to bugs above |
+|---|---|---|
+| `_get_static_product_catalog()` now reads the real CSV inventory (via `get_ad_server_client()`) when `AD_SERVER_TYPE=csv`, instead of a separately-hardcoded product list with its own random IDs | `interfaces/api/main.py` | Directly fixes **bug #6** (non-deterministic product IDs) and the **"product-source fragmentation"** note (§2b) for the `/products` ↔ `/proposals` pair — both now resolve the same file-backed, stable `product_id`s (e.g. `inv-web-homepage-lb`). The third fragmented store (`storage.get_product`, used by `/pricing` and `from-template`) is **not** touched by this fix — that 404 cluster is still open. |
+| `sync_from_ad_server()` now prefers the CSV's own `inventory_type` column over the name-based heuristic | `flows/product_setup_flow.py` | New finding, not previously logged — the heuristic misclassifies e.g. "Article Inline" (CSV: `native`) as `display`. |
+| `run_crew_evaluation()`: `crew.kickoff()` → `await crew.kickoff_async()` | `flows/proposal_handling_flow.py` | **Fixes bug #2** for the `/proposals` path specifically. Confirmed root cause via traceback: `RuntimeError: Agent execution was invoked synchronously from within a running event loop.` This was **silently swallowed** by the existing broad `except Exception` in `run_crew_evaluation`, which fell back to rule-based accept/reject — meaning `/proposals` had **never** actually run its LLM crew successfully when served via `uvicorn` directly; every prior response was the rule-based fallback wearing a "crew decided" mask. `/deals` (`deal_generation_flow.py:259`) and `/discovery` (`discovery_inquiry_flow.py:287`) likely have the same defect — **not yet checked/fixed**. |
+| `ProposalEvaluation(...)` constructor now passes `recommendation=` (rule-based, from `price_acceptable`/`impressions_available`/`targeting_compatible`, same logic as `_fallback_evaluation`) | `flows/proposal_handling_flow.py` | **New bug, not previously logged.** `models/flow_state.py`'s `ProposalEvaluation.recommendation` is a required `str` field with no default; `evaluate_pricing()` never passed it, so `POST /proposals` **500'd on every call** before ever reaching the crew step. Combined with bug #6 (product IDs never matching), this means `/proposals` was doubly broken — nobody could have hit this 500 without first fixing the ID mismatch. |
+| Added `load_dotenv(find_dotenv(usecwd=True))` at import time | `interfaces/api/main.py` | **New bug, not previously logged.** `pydantic-settings` parses `.env` into our own `Settings` object but never exports values into `os.environ`. Third-party code that reads provider keys directly via `os.getenv()` (crewai's own Anthropic/OpenAI/Gemini LLM clients) found nothing when the app was launched via plain `uvicorn ad_seller.interfaces.api.main:app` (no key in the real process env) — failing fast with `ValueError('ANTHROPIC_API_KEY is required')`, again silently caught and falling back to rule-based logic. `interfaces/cli/main.py` already did this; the API entrypoint did not. |
+| Print-based error logging added to `run_crew_evaluation`'s except block | `flows/proposal_handling_flow.py` | Diagnostic aid — the existing `except Exception as e: self.state.warnings.append(...)` never surfaced anywhere (not logged, not in the API response), which is why the four bugs above stacked silently for so long. Kept in place for future local debugging. |
+
+**Confirmed working end-to-end after all of the above:** `POST /proposals` against a `csv`-configured
+local server, real Claude (`anthropic/claude-sonnet-4-5-20250929`) calls, full 5-agent sequential crew
+(`create_proposal_review_crew`: pricing, availability, audience validation, upsell, proposal review)
+completing with a genuine, detailed negotiation recommendation (not the rule-based fallback). Round-trip
+took ~2 minutes for a real run (memory disabled); expect several more minutes with `CREW_MEMORY_ENABLED=true`.
+
+**Still open, found during this pass, not fixed:**
+- **Recommendation parsing is a naive substring match.** `run_crew_evaluation()` does
+  `if "accept" in result_text: ... elif "counter" in result_text: ...` against the crew's full text
+  output. A crew verdict of "CONDITIONAL COUNTER" containing an incidental "ACCEPT AS-IS" (inside one
+  of several proposed scenarios) gets reported as `recommendation: "accept"` — silently wrong. Needs
+  structured crew output (e.g. a Pydantic output schema on the final task) instead of text scanning.
+- Bug #2's other call sites (`/deals`, `/discovery`) not yet verified fixed.
+- The `storage.get_product` fragmentation leg (`/pricing`, `/proposals/{id}/counter`, `from-template`)
+  is untouched — those will still 404 even with a CSV-backed product.
+
+---
+
 ## 3. 🔄 Flows to test (E2E user journeys)
 
 ### P0 — core path

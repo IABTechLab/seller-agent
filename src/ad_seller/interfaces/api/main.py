@@ -16,10 +16,16 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Optional
 
+from dotenv import find_dotenv, load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+# Settings (pydantic-settings) reads .env for our own config, but does not
+# export values into os.environ — third-party libraries that read provider
+# API keys directly via os.getenv() (e.g. crewai's LLM clients) need this too.
+load_dotenv(find_dotenv(usecwd=True))
 
 logger = logging.getLogger(__name__)
 
@@ -448,20 +454,67 @@ def _get_api_settings():
 _STATIC_PRODUCT_CATALOG: Optional[dict[str, Any]] = None
 
 
-def _get_static_product_catalog() -> dict[str, Any]:
-    """Return the seller's default product catalog without running the flow.
+async def _get_static_product_catalog() -> dict[str, Any]:
+    """Return the seller's product catalog without running the full flow.
 
-    Mirrors ProductSetupFlow.create_default_products() but without the
-    initialize_setup → ensure_seller_organization → OpenDirect MCP chain
-    that hangs read endpoints. IDs are generated once and cached so that
-    repeated reads return stable product_ids.
+    Mirrors ProductSetupFlow.create_default_products() / sync_from_ad_server()
+    but without the initialize_setup → ensure_seller_organization →
+    OpenDirect MCP chain that hangs read endpoints. Cached so that repeated
+    reads return stable product_ids.
+
+    When AD_SERVER_TYPE=csv, reads the same CSV inventory directory the real
+    flow uses (see ProductSetupFlow.sync_from_ad_server), so GET /products
+    and POST /proposals resolve to the same, stable, file-backed product_ids
+    for local testing.
     """
     global _STATIC_PRODUCT_CATALOG
     if _STATIC_PRODUCT_CATALOG is not None:
         return _STATIC_PRODUCT_CATALOG
 
+    from ...config import get_settings
     from ...models.core import DealType, PricingModel
     from ...models.flow_state import ProductDefinition
+
+    if get_settings().ad_server_type == "csv":
+        from ...clients.ad_server_base import get_ad_server_client
+
+        deal_types_by_inventory_type = {
+            "display": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "video": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+            "ctv": [DealType.PROGRAMMATIC_GUARANTEED],
+            "mobile_app": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+            "native": [DealType.PREFERRED_DEAL],
+            "linear_tv": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+        }
+
+        client = get_ad_server_client()
+        async with client:
+            items = await client.list_inventory()
+
+        csv_products: dict[str, ProductDefinition] = {}
+        for item in items:
+            raw = getattr(item, "raw", {}) or {}
+            floor = raw.get("floor_price_cpm", 10.0)
+            inv_type = raw.get("inventory_type", "display")
+            product_def = ProductDefinition(
+                product_id=item.id,
+                name=item.name,
+                description=raw.get("description", ""),
+                inventory_type=inv_type,
+                supported_deal_types=deal_types_by_inventory_type.get(
+                    inv_type, [DealType.PREFERRED_DEAL]
+                ),
+                supported_pricing_models=[PricingModel.CPM],
+                base_cpm=floor,
+                floor_cpm=round(floor * 0.85, 2),
+            )
+            csv_products[product_def.product_id] = product_def
+
+        _STATIC_PRODUCT_CATALOG = {
+            "products": csv_products,
+            "inventory_types": sorted({p.inventory_type for p in csv_products.values()}),
+        }
+        return _STATIC_PRODUCT_CATALOG
 
     # Same default product list as ProductSetupFlow.create_default_products().
     # Keeping the data here avoids importing the flow (which pulls CrewAI
@@ -687,7 +740,7 @@ async def list_products():
     instead of running ProductSetupFlow per request — kicking off the flow
     spins up an OpenDirect MCP session that hangs in `session.initialize()`.
     """
-    catalog = _get_static_product_catalog()
+    catalog = await _get_static_product_catalog()
     return {
         "products": [_serialize_product(p) for p in catalog["products"].values()],
     }
@@ -700,7 +753,7 @@ async def get_product(product_id: str):
     Reads from the cached static catalog instead of running ProductSetupFlow
     per request (see `list_products` for rationale).
     """
-    catalog = _get_static_product_catalog()
+    catalog = await _get_static_product_catalog()
     product = catalog["products"].get(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -1966,7 +2019,7 @@ async def agent_card():
     # ProductSetupFlow per request (which hangs in OpenDirect MCP
     # session.initialize() — see `_get_static_product_catalog` for context).
     try:
-        inventory_types = set(_get_static_product_catalog()["inventory_types"])
+        inventory_types = set((await _get_static_product_catalog())["inventory_types"])
     except Exception:
         inventory_types = {"display", "video", "ctv", "native", "mobile_app"}
 
@@ -2221,7 +2274,7 @@ async def create_quote(
     # Read product from cached static catalog rather than running
     # ProductSetupFlow per request (hangs in OpenDirect MCP
     # session.initialize() — see ar-uwad / `_get_static_product_catalog`).
-    catalog = _get_static_product_catalog()
+    catalog = await _get_static_product_catalog()
     product = catalog["products"].get(request.product_id)
     if not product:
         raise HTTPException(

@@ -113,7 +113,11 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             for item in items:
                 raw = getattr(item, "raw", {}) or {}
                 floor = raw.get("floor_price_cpm", 10.0)
-                inv_type = self._classify_inventory_type(item)
+                # Prefer the source's own inventory_type (e.g. CSV column) over
+                # the name-based heuristic, which can misclassify (e.g. an
+                # item named "Article Inline" tagged native in the CSV would
+                # otherwise fall through to the "display" default).
+                inv_type = raw.get("inventory_type") or self._classify_inventory_type(item)
                 deal_types = self._infer_deal_types(inv_type)
                 product_def = ProductDefinition(
                     product_id=item.id,
