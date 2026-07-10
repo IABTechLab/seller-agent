@@ -98,7 +98,7 @@ The seller agent uses CrewAI's native provider integrations via `provider/model-
 |----------|-------------|-----------------|---------------|
 | **Anthropic** (default) | `anthropic/claude-sonnet-4-5-20250929` | `ANTHROPIC_API_KEY` | `crewai[anthropic]` |
 | **OpenAI** | `openai/gpt-4o` | `OPENAI_API_KEY` | `crewai[openai]` |
-| **Google Gemini** | `gemini/gemini-2.0-flash` | `GOOGLE_API_KEY` | `crewai[gemini]` |
+| **Google Gemini** | `gemini/gemini-2.5-flash` | `GOOGLE_API_KEY` | `crewai[gemini]` |
 | **Azure OpenAI** | `azure/my-deployment` | `AZURE_API_KEY`, `AZURE_API_BASE` | `crewai[azure]` |
 | **AWS Bedrock** | `bedrock/anthropic.claude-3-sonnet` | AWS credentials | `crewai[bedrock]` |
 

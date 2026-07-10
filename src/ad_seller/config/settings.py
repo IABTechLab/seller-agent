@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # Set DEFAULT_LLM_MODEL to switch provider, e.g.:
     #   anthropic/claude-sonnet-4-5-20250929  (requires ANTHROPIC_API_KEY)
     #   openai/gpt-4o                          (requires OPENAI_API_KEY)
-    #   gemini/gemini-2.0-flash                (requires GOOGLE_API_KEY)
+    #   gemini/gemini-2.5-flash                (requires GOOGLE_API_KEY)
     #   bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0 (requires AWS creds)
     default_llm_model: str = "anthropic/claude-sonnet-4-5-20250929"
     manager_llm_model: str = "anthropic/claude-opus-4-20250514"
