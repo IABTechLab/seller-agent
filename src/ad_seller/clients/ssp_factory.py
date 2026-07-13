@@ -111,7 +111,6 @@ def _create_ssp_client(name: str, settings: Any) -> Any:
         return IndexExchangeSSPClient(
             base_url=settings.index_exchange_api_url,
             api_key=settings.index_exchange_api_key,
-            account_id=settings.index_exchange_account_id,
         )
 
     else:

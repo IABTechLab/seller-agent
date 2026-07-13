@@ -70,7 +70,6 @@ ad-seller freewheel-login --provider bc
 | `PUBMATIC_API_KEY` | `str` | `None` | PubMatic API key |
 | `INDEX_EXCHANGE_API_URL` | `str` | `None` | Index Exchange REST API URL, e.g. `https://app.indexexchange.com/api/deals` |
 | `INDEX_EXCHANGE_API_KEY` | `str` | `None` | Keycloak JWT bearer token (not a static API key — expires and must be refreshed) |
-| `INDEX_EXCHANGE_ACCOUNT_ID` | `int` | `None` | IX publisher account.accountID, required on every deal create call |
 | `MAGNITE_API_URL` | `str` | `None` | Magnite REST API URL |
 | `MAGNITE_API_KEY` | `str` | `None` | Magnite API key |
 

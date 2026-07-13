@@ -123,14 +123,17 @@ Your token doesn't have permission for that operation.
 1. Verify `INDEX_EXCHANGE_API_KEY` in your `.env` is current (not expired).
 2. Contact your Index Exchange account manager to confirm the token has deal management scope.
 
-**Error: `ValueError: external_deal_id is required` / `account_id is required` / `dsp_id is required for Direct deal types`**
+**Error: `ValueError: external_deal_id is required` / `account_id is required` / `dsp_id is required`**
 
-`/v3/deals` requires `externalDealID`, `account.accountID`, and (for Direct
-deal types: PMP, PG, PREFERRED) `directConfigurations.dspID` on every create
-call. `external_deal_id` and `account_id` are supplied automatically by the
-seller-agent's deal flow / `INDEX_EXCHANGE_ACCOUNT_ID` setting; `dsp_id` has
-no current source in seller-agent and must be passed explicitly on the
-`SSPDealCreateRequest` until a target-DSP concept is added upstream.
+`/v3/deals` requires `externalDealID`, `account.accountID`, and `dspID`
+(`directConfigurations.dspID` for Direct deal types, or
+`marketplaceConfigurations.dspID` for Marketplace Package) on every create
+call. `external_deal_id` is supplied automatically by the seller-agent's
+deal flow; `account_id` and `dsp_id` have no current source in seller-agent
+— account.accountID isn't a fixed deployment-wide setting (a single
+seller-agent instance may create deals under more than one IX account), and
+there is no per-deal "target DSP" concept yet either. Both must be passed
+explicitly on the `SSPDealCreateRequest` until that's addressed upstream.
 
 **Error: `Index Exchange: 422 Unprocessable Entity`**
 

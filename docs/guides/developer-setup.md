@@ -81,7 +81,6 @@ PUBMATIC_API_KEY=your-pubmatic-key
 # Index Exchange (REST)
 INDEX_EXCHANGE_API_URL=https://app.indexexchange.com/api/deals
 INDEX_EXCHANGE_API_KEY=your-keycloak-jwt-bearer-token
-INDEX_EXCHANGE_ACCOUNT_ID=your-ix-account-id
 
 # Routing rules (optional)
 SSP_ROUTING_RULES=ctv:pubmatic,display:index_exchange

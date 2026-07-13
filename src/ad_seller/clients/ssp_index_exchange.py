@@ -16,17 +16,25 @@ Key endpoints (base URL + path):
   - DELETE /v3/deals/{id}          — Soft-delete a deal
   - GET    /v3/deals/reports       — Deals data export
 
-There is no clone/copy endpoint — see clone_deal() below.
+There is no clone/copy endpoint — clone_deal() below implements cloning by
+composing get_deal() + create_deal() instead.
 
 Field names and behavior here are derived directly from deals-web-api (the
 Go service implementing /v3/deals), not from public docs.
 
 Known limitations:
-  - directConfigurations.dspID (required for Direct deal types: PMP, PG,
-    PREFERRED) has no source anywhere in seller-agent today. create_deal()
-    will raise ValueError for these deal types until request.dsp_id is
-    supplied by the caller — there is no per-deal "target DSP" concept in
-    the current deal/flow model to derive it from.
+  - dspID (directConfigurations.dspID for Direct deal types, or
+    marketplaceConfigurations.dspID for Marketplace Package) has no source
+    anywhere in seller-agent today — it's required for every deal type this
+    connector supports, not just Direct. create_deal() will raise
+    ValueError until request.dsp_id is supplied by the caller — there is no
+    per-deal "target DSP" concept in the current deal/flow model to derive
+    it from.
+  - account.accountID is likewise not sourced anywhere upstream today —
+    it's deliberately not a fixed deployment-wide setting, since a single
+    seller-agent instance may need to create deals under more than one IX
+    account, so it must be supplied per-request via
+    SSPDealCreateRequest.account_id until callers are wired up to provide it.
   - No Keycloak JWT refresh: INDEX_EXCHANGE_API_KEY is treated as a
     long-lived token; production tokens expire and must be refreshed via
     the client-credentials grant, which is not implemented here.
@@ -35,6 +43,7 @@ Known limitations:
 """
 
 import logging
+import uuid
 from typing import Any, Optional
 
 from .ssp_base import (
@@ -96,8 +105,11 @@ class IndexExchangeSSPClient(RESTSSPClient):
     Config:
         INDEX_EXCHANGE_API_URL=https://app.indexexchange.com/api/deals
         INDEX_EXCHANGE_API_KEY=<keycloak-jwt-bearer-token>
-        INDEX_EXCHANGE_ACCOUNT_ID=<publisher account.accountID>  (optional;
-            can instead be supplied per-request via SSPDealCreateRequest.account_id)
+
+    account.accountID is not a fixed deployment-wide setting — a single
+    seller-agent instance may need to create deals under more than one IX
+    account — so it's only ever taken from SSPDealCreateRequest.account_id,
+    per-request, same as dsp_id.
     """
 
     def __init__(
@@ -105,7 +117,6 @@ class IndexExchangeSSPClient(RESTSSPClient):
         *,
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        account_id: Optional[int] = None,
     ) -> None:
         super().__init__(
             ssp_type=SSPType.INDEX_EXCHANGE,
@@ -115,7 +126,6 @@ class IndexExchangeSSPClient(RESTSSPClient):
             auth_header="Authorization",
             auth_prefix="Bearer",
         )
-        self._account_id = account_id
 
     # --- Override deal operations with IX-specific paths ---
 
@@ -123,16 +133,15 @@ class IndexExchangeSSPClient(RESTSSPClient):
         """Create a deal on Index Exchange via POST /v3/deals."""
         http = self._ensure_connected()
 
-        account_id = request.account_id if request.account_id is not None else self._account_id
         if not request.external_deal_id:
             raise ValueError(
                 "Index Exchange requires external_deal_id (SSPDealCreateRequest.external_deal_id) "
                 "to create a deal"
             )
-        if account_id is None:
+        if request.account_id is None:
             raise ValueError(
-                "Index Exchange requires an account_id — set SSPDealCreateRequest.account_id "
-                "or configure INDEX_EXCHANGE_ACCOUNT_ID"
+                "Index Exchange requires account_id (SSPDealCreateRequest.account_id) "
+                "to create a deal"
             )
 
         class_id, auction_type, programmatic_guaranteed = _ix_deal_config(request.deal_type)
@@ -146,7 +155,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
             "classID": class_id,
             "name": request.name,
             "externalDealID": request.external_deal_id,
-            "account": {"accountID": account_id},
+            "account": {"accountID": request.account_id},
             "auctionType": auction_type,
             "floor": request.cpm,
         }
@@ -184,18 +193,42 @@ class IndexExchangeSSPClient(RESTSSPClient):
         source_deal_id: str,
         overrides: Optional[dict[str, Any]] = None,
     ) -> SSPDeal:
-        """Index Exchange has no clone/copy endpoint.
+        """Clone a deal by composing get_deal() + create_deal().
 
-        There is no `/{id}/copy` (or equivalent) route on /v3/deals. To
-        duplicate a deal, callers must retrieve it with get_deal() and then
-        create_deal() a new one with a fresh external_deal_id, copying over
-        whatever fields should carry forward.
+        Index Exchange has no `/{id}/copy` (or equivalent) route on
+        /v3/deals, so this retrieves the source deal — source_deal_id must
+        be the internalDealID, same convention as get_deal()/update_deal()
+        — and creates a new one with a freshly generated external_deal_id,
+        copying over its configuration. account_id and dsp_id are read back
+        out of the source deal's raw response, since SSPDeal doesn't carry
+        them as first-class fields. `overrides` may override any
+        SSPDealCreateRequest field, e.g. a specific external_deal_id or a
+        different account_id/dsp_id.
         """
-        raise NotImplementedError(
-            "Index Exchange has no deal clone endpoint. Use get_deal() to "
-            "retrieve the source deal, then create_deal() with a new "
-            "external_deal_id to duplicate it."
+        source = await self.get_deal(source_deal_id)
+        raw = source.raw or {}
+        account = raw.get("account") or {}
+        direct_config = raw.get("directConfigurations") or {}
+        marketplace_config = raw.get("marketplaceConfigurations") or {}
+
+        create_request = SSPDealCreateRequest(
+            deal_type=source.deal_type,
+            name=source.name,
+            advertiser=source.advertiser,
+            cpm=source.cpm,
+            start_date=source.start_date,
+            end_date=source.end_date,
+            targeting=source.targeting,
+            impressions_goal=source.impressions_goal,
+            buyer_seat_ids=direct_config.get("seatIDs", []),
+            external_deal_id=f"{source.deal_id}-clone-{uuid.uuid4().hex[:8]}",
+            account_id=account.get("accountID"),
+            dsp_id=direct_config.get("dspID") or marketplace_config.get("dspID"),
         )
+        if overrides:
+            create_request = create_request.model_copy(update=overrides)
+
+        return await self.create_deal(create_request)
 
     async def get_deal(self, deal_id: str) -> SSPDeal:
         """Get deal details from Index Exchange.
@@ -286,6 +319,8 @@ class IndexExchangeSSPClient(RESTSSPClient):
         issues: list[str] = []
         recommendations: list[dict[str, str]] = []
 
+        # Status-based heuristic — revisit once deal performance metrics are
+        # surfaced through GraphQL, which will allow more accurate scoring.
         if status_str == "active":
             health_score: Optional[int] = 90
         elif status_str == "paused":
@@ -296,7 +331,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
             )
         elif status_str == "auto-paused":
             health_score = 20
-            issues.append("Deal was automatically paused by Index Exchange")
+            issues.append("Deal was automatically paused by Index Exchange due to inactivity")
             recommendations.append(
                 {
                     "action": "Review deal configuration (floor, targeting, budget) "
