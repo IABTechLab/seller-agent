@@ -39,7 +39,6 @@ def _make_settings(**overrides):
         "magnite_api_key": "",
         "index_exchange_api_url": "",
         "index_exchange_api_key": "",
-        "index_exchange_account_id": None,
     }
     defaults.update(overrides)
     return types.SimpleNamespace(**defaults)
@@ -294,20 +293,6 @@ class TestIndexExchangeClient:
             await client.create_deal(_valid_create_request(account_id=None))
 
     @pytest.mark.asyncio
-    async def test_create_deal_falls_back_to_configured_account_id(self):
-        client = IndexExchangeSSPClient(
-            base_url="https://app.indexexchange.com/api/deals", account_id=99999
-        )
-        mock_http = AsyncMock()
-        mock_http.post.return_value = _mock_response(_ix_response())
-        client._http = mock_http
-
-        await client.create_deal(_valid_create_request(account_id=None))
-
-        body = mock_http.post.call_args[1]["json"]
-        assert body["account"] == {"accountID": 99999}
-
-    @pytest.mark.asyncio
     async def test_create_deal_missing_dsp_id_raises(self):
         client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
         client._http = AsyncMock()
@@ -318,10 +303,58 @@ class TestIndexExchangeClient:
     # --- clone_deal() ---
 
     @pytest.mark.asyncio
-    async def test_clone_deal_raises_not_implemented(self):
+    async def test_clone_deal_composes_get_and_create(self):
         client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
-        with pytest.raises(NotImplementedError, match="get_deal.*create_deal"):
-            await client.clone_deal("some-deal-id")
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response(_ix_response())
+        mock_http.post.return_value = _mock_response(_ix_response())
+        client._http = mock_http
+
+        await client.clone_deal("987654")
+
+        assert mock_http.get.call_args[0][0] == "/v3/deals/987654"
+        assert mock_http.post.call_args[0][0] == "/v3/deals"
+        body = mock_http.post.call_args[1]["json"]
+        assert body["externalDealID"] != "IX-DEAL-001"
+        assert body["externalDealID"].startswith("IX-DEAL-001-clone-")
+        assert body["account"] == {"accountID": 12345}
+        assert body["directConfigurations"]["dspID"] == 5551
+
+    @pytest.mark.asyncio
+    async def test_clone_deal_marketplace_package_reads_dsp_from_marketplace_configurations(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response(
+            _ix_response(
+                classID=4,
+                directConfigurations={},
+                marketplaceConfigurations={"dspID": 777},
+            )
+        )
+        mock_http.post.return_value = _mock_response(_ix_response(classID=4))
+        client._http = mock_http
+
+        await client.clone_deal("987654")
+
+        body = mock_http.post.call_args[1]["json"]
+        assert body["classID"] == 4
+        assert body["marketplaceConfigurations"] == {"dspID": 777}
+
+    @pytest.mark.asyncio
+    async def test_clone_deal_applies_overrides(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response(_ix_response())
+        mock_http.post.return_value = _mock_response(_ix_response())
+        client._http = mock_http
+
+        await client.clone_deal(
+            "987654", overrides={"external_deal_id": "MY-CUSTOM-ID", "name": "Custom Name"}
+        )
+
+        body = mock_http.post.call_args[1]["json"]
+        assert body["externalDealID"] == "MY-CUSTOM-ID"
+        assert body["name"] == "Custom Name"
 
     # --- get_deal() ---
 
