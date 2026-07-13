@@ -356,6 +356,22 @@ class TestIndexExchangeClient:
         assert body["externalDealID"] == "MY-CUSTOM-ID"
         assert body["name"] == "Custom Name"
 
+    @pytest.mark.asyncio
+    async def test_clone_deal_generated_id_never_exceeds_64_chars(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        long_source_id = "a" * 64  # already at IX's max length
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response(_ix_response(externalDealID=long_source_id))
+        mock_http.post.return_value = _mock_response(_ix_response())
+        client._http = mock_http
+
+        await client.clone_deal("987654")
+
+        body = mock_http.post.call_args[1]["json"]
+        assert len(body["externalDealID"]) <= 64
+        assert body["externalDealID"] != long_source_id
+        assert "-clone-" in body["externalDealID"]
+
     # --- get_deal() ---
 
     @pytest.mark.asyncio

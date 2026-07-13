@@ -58,6 +58,24 @@ from .ssp_rest_client import RESTSSPClient
 
 logger = logging.getLogger(__name__)
 
+# externalDealID: 3-64 chars, letters/numbers/dashes/underscores/periods, and
+# per deals-web-api's validation cannot start with "0".
+_EXTERNAL_DEAL_ID_MAX_LEN = 64
+
+
+def _generate_clone_external_deal_id(source_external_deal_id: str) -> str:
+    """Derive a new externalDealID for a clone, guaranteed to fit IX's 64-char limit.
+
+    Appends a random suffix to the source deal's externalDealID (which is
+    already known-valid — it belongs to an existing deal) so the clone gets
+    a distinct ID, truncating the base as needed so the combined length
+    never exceeds IX's max. The source ID's leading character is preserved,
+    so the "cannot start with 0" rule stays satisfied.
+    """
+    suffix = f"-clone-{uuid.uuid4().hex[:8]}"
+    base = source_external_deal_id[: _EXTERNAL_DEAL_ID_MAX_LEN - len(suffix)]
+    return f"{base}{suffix}"
+
 
 def _ix_deal_config(deal_type: SSPDealType) -> tuple[int, str, bool]:
     """Map an SSPDealType to Index Exchange's classID/auctionType/programmaticGuaranteed.
@@ -221,7 +239,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
             targeting=source.targeting,
             impressions_goal=source.impressions_goal,
             buyer_seat_ids=direct_config.get("seatIDs", []),
-            external_deal_id=f"{source.deal_id}-clone-{uuid.uuid4().hex[:8]}",
+            external_deal_id=_generate_clone_external_deal_id(source.deal_id),
             account_id=account.get("accountID"),
             dsp_id=direct_config.get("dspID") or marketplace_config.get("dspID"),
         )
