@@ -31,6 +31,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
     "aiosqlite>=0.20.0",
+    "iab-agentic-primitives @ git+https://github.com/IABTechLab/iab-agentic-primitives.git@v0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -71,6 +72,11 @@ ad-seller = "ad_seller.interfaces.cli.main:app"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+# Required because a runtime dependency (iab-agentic-primitives) is a direct
+# git reference (VCS URL) rather than a PyPI version specifier.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ad_seller"]

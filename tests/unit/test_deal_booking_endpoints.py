@@ -296,10 +296,11 @@ class TestQuoteToDealFlow:
             ),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
-            # Step 1: Create quote
+            # Step 1: Create quote (shared QuoteRequest requires idempotency_key)
             quote_resp = await client.post(
                 "/api/v1/quotes",
                 json={
+                    "idempotency_key": "idem-flow-quote-1",
                     "product_id": "ctv-premium-sports",
                     "deal_type": "PD",
                     "impressions": 5000000,
@@ -308,7 +309,7 @@ class TestQuoteToDealFlow:
                 },
             )
             assert quote_resp.status_code == 200
-            quote_id = quote_resp.json()["quote_id"]
+            quote_id = quote_resp.json()["quote"]["quote_id"]
 
             # Step 2: Book deal from quote
             deal_resp = await client.post("/api/v1/deals", json={"quote_id": quote_id})
@@ -324,8 +325,8 @@ class TestQuoteToDealFlow:
             # Step 4: Verify original quote is now "booked"
             get_quote_resp = await client.get(f"/api/v1/quotes/{quote_id}")
             assert get_quote_resp.status_code == 200
-            assert get_quote_resp.json()["status"] == "booked"
-            assert get_quote_resp.json()["deal_id"] == deal_id
+            assert get_quote_resp.json()["quote"]["status"] == "booked"
+            assert get_quote_resp.json()["quote"]["deal_id"] == deal_id
 
             # Step 5: Double-booking returns 409
             double_book = await client.post("/api/v1/deals", json={"quote_id": quote_id})

@@ -166,25 +166,28 @@ async def test_create_quote_returns_200_without_flow_kickoff(client):
         product_id = list_resp.json()["products"][0]["product_id"]
 
         # PG deal requires impressions; pick one comfortably above min (default 10000).
+        # Shared QuoteRequest requires idempotency_key (FD-12).
         body = {
+            "idempotency_key": "idem-nokickoff-1",
             "product_id": product_id,
             "deal_type": "PG",
             "impressions": 1_000_000,
         }
         resp = await c.post("/api/v1/quotes", json=body)
     assert resp.status_code == 200, f"got {resp.status_code}: {resp.text}"
-    payload = resp.json()
-    assert payload["status"] == "available"
-    assert payload["product"]["product_id"] == product_id
-    assert payload["deal_type"] == "PG"
-    assert payload["pricing"]["final_cpm"] > 0
-    assert "quote_id" in payload and payload["quote_id"].startswith("qt-")
+    quote = resp.json()["quote"]
+    assert quote["status"] == "available"
+    assert quote["product"]["product_id"] == product_id
+    assert quote["deal_type"] == "PG"
+    assert quote["pricing"]["final_cpm"]["amount_micros"] > 0
+    assert "quote_id" in quote and quote["quote_id"].startswith("qt-")
 
 
 async def test_create_quote_returns_404_for_unknown_product(client):
     """Unknown product → 404, also without flow.kickoff()."""
     async with client as c:
         body = {
+            "idempotency_key": "idem-unknown-1",
             "product_id": "prod-doesnotexist",
             "deal_type": "PD",
             "impressions": 100_000,
@@ -194,17 +197,18 @@ async def test_create_quote_returns_404_for_unknown_product(client):
 
 
 async def test_create_quote_validates_deal_type(client):
-    """Bad deal_type → 400, also without flow.kickoff()."""
+    """Bad deal_type → 422 at the wire edge (shared QuoteRequest types it as an enum)."""
     async with client as c:
         list_resp = await c.get("/products")
         product_id = list_resp.json()["products"][0]["product_id"]
         body = {
+            "idempotency_key": "idem-badtype-1",
             "product_id": product_id,
             "deal_type": "ZZ",
             "impressions": 100_000,
         }
         resp = await c.post("/api/v1/quotes", json=body)
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 # =============================================================================

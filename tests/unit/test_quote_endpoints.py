@@ -4,6 +4,12 @@
 """Unit tests for IAB Deals API v1.0 — Quote endpoints.
 
 Tests POST /api/v1/quotes and GET /api/v1/quotes/{quote_id}.
+
+EP-12.2: the wire edge now speaks the shared ``iab-agentic-primitives``
+contract. Requests are the shared ``QuoteRequest`` (required
+``idempotency_key``; carries ``media_type``/``linear_tv``/``agent_url``)
+and responses are the shared ``QuoteResponse`` (``{"quote": {...}}`` with
+``Money`` pricing in micros).
 """
 
 import sys
@@ -85,6 +91,12 @@ def _products():
     return {"ctv-premium-sports": _make_product()}
 
 
+def _body(**fields):
+    """A valid shared QuoteRequest body (auto-supplies idempotency_key)."""
+    fields.setdefault("idempotency_key", "idem-quote-1")
+    return fields
+
+
 @pytest.fixture
 def mock_storage():
     """In-memory dict-backed mock storage."""
@@ -126,27 +138,31 @@ class TestCreateQuote:
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "ctv-premium-sports",
-                    "deal_type": "PD",
-                    "impressions": 5000000,
-                    "flight_start": "2026-04-01",
-                    "flight_end": "2026-04-30",
-                },
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=5000000,
+                    flight_start="2026-04-01",
+                    flight_end="2026-04-30",
+                ),
             )
 
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["quote_id"].startswith("qt-")
-        assert data["status"] == "available"
-        assert data["deal_type"] == "PD"
-        assert data["product"]["product_id"] == "ctv-premium-sports"
-        assert data["pricing"]["base_cpm"] == 35.0
-        assert data["pricing"]["final_cpm"] > 0
-        assert data["terms"]["flight_start"] == "2026-04-01"
-        assert data["terms"]["impressions"] == 5000000
-        assert data["terms"]["guaranteed"] is False
-        assert "expires_at" in data
+        # Shared QuoteResponse envelope wraps the Quote primitive.
+        quote = resp.json()["quote"]
+        assert quote["quote_id"].startswith("qt-")
+        assert quote["status"] == "available"
+        assert quote["deal_type"] == "PD"
+        assert quote["product"]["product_id"] == "ctv-premium-sports"
+        # Money in micros, not a bare float.
+        assert quote["pricing"]["base_cpm"]["amount_micros"] == 35_000_000
+        assert quote["pricing"]["base_cpm"]["currency"] == "USD"
+        assert quote["pricing"]["final_cpm"]["amount_micros"] > 0
+        assert quote["terms"]["flight_start"] == "2026-04-01"
+        assert quote["terms"]["impressions"] == 5000000
+        assert quote["terms"]["guaranteed"] is False
+        assert quote["expires_at"] is not None
+        assert quote["media_type"] == "digital"
 
     async def test_pg_quote_sets_guaranteed_true(self, client, mock_storage):
         with (
@@ -158,15 +174,63 @@ class TestCreateQuote:
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "ctv-premium-sports",
-                    "deal_type": "PG",
-                    "impressions": 5000000,
-                },
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PG",
+                    impressions=5000000,
+                ),
             )
 
         assert resp.status_code == 200
-        assert resp.json()["terms"]["guaranteed"] is True
+        assert resp.json()["quote"]["terms"]["guaranteed"] is True
+
+    async def test_ctv_media_type_carried_through(self, client, mock_storage):
+        """media_type is no longer silently dropped — it round-trips (FD-6)."""
+        with (
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await client.post(
+                "/api/v1/quotes",
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=1000000,
+                    media_type="ctv",
+                    agent_url="https://buyer.example/agent",
+                ),
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["quote"]["media_type"] == "ctv"
+
+    async def test_linear_tv_structurally_rejected(self, client, mock_storage):
+        """FD-6: unsupported media_type gets the shared structured rejection."""
+        with (
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await client.post(
+                "/api/v1/quotes",
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=1000000,
+                    media_type="linear_tv",
+                    linear_tv={"target_demo": "A18-49"},
+                ),
+            )
+
+        assert resp.status_code == 400
+        detail = resp.json()["detail"]
+        assert detail["error"] == "unsupported_capability"
+        assert detail["unsupported"][0]["capability"] == "linear_tv"
 
     async def test_target_cpm_accepted_when_above_floor(self, client, mock_storage):
         with (
@@ -178,16 +242,16 @@ class TestCreateQuote:
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "ctv-premium-sports",
-                    "deal_type": "PD",
-                    "impressions": 1000000,
-                    "target_cpm": 32.00,
-                },
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=1000000,
+                    target_cpm={"amount_micros": 32_000_000, "currency": "USD"},
+                ),
             )
 
         assert resp.status_code == 200
-        assert resp.json()["pricing"]["final_cpm"] == 32.0
+        assert resp.json()["quote"]["pricing"]["final_cpm"]["amount_micros"] == 32_000_000
 
     async def test_target_cpm_rejected_below_floor(self, client, mock_storage):
         with (
@@ -199,18 +263,18 @@ class TestCreateQuote:
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "ctv-premium-sports",
-                    "deal_type": "PD",
-                    "impressions": 1000000,
-                    "target_cpm": 0.50,
-                },
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=1000000,
+                    target_cpm={"amount_micros": 500_000, "currency": "USD"},
+                ),
             )
 
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["pricing"]["final_cpm"] != 0.50
-        assert data["pricing"]["final_cpm"] > 0
+        final = resp.json()["quote"]["pricing"]["final_cpm"]["amount_micros"]
+        assert final != 500_000
+        assert final > 0
 
     async def test_buyer_identity_affects_tier(self, client, mock_storage):
         with (
@@ -222,22 +286,22 @@ class TestCreateQuote:
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "ctv-premium-sports",
-                    "deal_type": "PD",
-                    "buyer_identity": {
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    buyer_identity={
                         "seat_id": "seat-ttd-12345",
                         "agency_id": "agency-groupm-001",
                         "advertiser_id": "adv-nike-001",
                         "dsp_platform": "ttd",
                     },
-                },
+                ),
             )
 
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["buyer_tier"] == "advertiser"
-        assert data["pricing"]["tier_discount_pct"] == 15.0
+        quote = resp.json()["quote"]
+        assert quote["buyer_tier"] == "advertiser"
+        assert quote["pricing"]["tier_discount_pct"] == 15.0
 
     # Error cases
 
@@ -248,28 +312,34 @@ class TestCreateQuote:
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "nonexistent",
-                    "deal_type": "PD",
-                },
+                json=_body(product_id="nonexistent", deal_type="PD"),
             )
         assert resp.status_code == 404
         assert resp.json()["detail"]["error"] == "product_not_found"
 
-    async def test_invalid_deal_type(self, client, mock_storage):
+    async def test_invalid_deal_type_rejected_at_wire(self, client, mock_storage):
+        """Shared QuoteRequest types deal_type as an enum: bad values 422 at the edge."""
         with patch(
             "ad_seller.interfaces.api.main._get_static_product_catalog",
             return_value=_mock_catalog(_products()),
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "ctv-premium-sports",
-                    "deal_type": "INVALID",
-                },
+                json=_body(product_id="ctv-premium-sports", deal_type="INVALID"),
             )
-        assert resp.status_code == 400
-        assert resp.json()["detail"]["error"] == "invalid_deal_type"
+        assert resp.status_code == 422
+
+    async def test_missing_idempotency_key_rejected(self, client, mock_storage):
+        """FD-12: idempotency_key is required on the shared QuoteRequest."""
+        with patch(
+            "ad_seller.interfaces.api.main._get_static_product_catalog",
+            return_value=_mock_catalog(_products()),
+        ):
+            resp = await client.post(
+                "/api/v1/quotes",
+                json={"product_id": "ctv-premium-sports", "deal_type": "PD"},
+            )
+        assert resp.status_code == 422
 
     async def test_pg_without_impressions(self, client, mock_storage):
         with patch(
@@ -278,10 +348,7 @@ class TestCreateQuote:
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "ctv-premium-sports",
-                    "deal_type": "PG",
-                },
+                json=_body(product_id="ctv-premium-sports", deal_type="PG"),
             )
         assert resp.status_code == 400
         assert resp.json()["detail"]["error"] == "pg_requires_impressions"
@@ -293,11 +360,11 @@ class TestCreateQuote:
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "ctv-premium-sports",
-                    "deal_type": "PD",
-                    "impressions": 50,
-                },
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=50,
+                ),
             )
         assert resp.status_code == 400
         assert resp.json()["detail"]["error"] == "below_minimum_impressions"
@@ -313,15 +380,15 @@ class TestCreateQuote:
         ):
             resp = await client.post(
                 "/api/v1/quotes",
-                json={
-                    "product_id": "ctv-premium-sports",
-                    "deal_type": "PD",
-                    "impressions": 5000000,
-                },
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=5000000,
+                ),
             )
 
         assert resp.status_code == 200
-        quote_id = resp.json()["quote_id"]
+        quote_id = resp.json()["quote"]["quote_id"]
 
         # Verify quote_history record was created
         history_key = f"quote_history:{quote_id}"
@@ -338,23 +405,49 @@ class TestCreateQuote:
 # =============================================================================
 
 
+def _full_quote_dict(**overrides):
+    """A complete internal quote dict (as persisted by create_quote)."""
+    data = {
+        "quote_id": "qt-abc123",
+        "status": "available",
+        "deal_type": "PD",
+        "product": {
+            "product_id": "ctv-premium-sports",
+            "name": "CTV",
+            "inventory_type": "ctv",
+        },
+        "pricing": {
+            "base_cpm": 35.0,
+            "final_cpm": 29.75,
+            "currency": "USD",
+            "pricing_model": "cpm",
+            "rationale": "",
+        },
+        "terms": {
+            "flight_start": "2026-04-01",
+            "flight_end": "2026-04-30",
+            "guaranteed": False,
+        },
+        "buyer_tier": "public",
+        "expires_at": (datetime.utcnow() + timedelta(hours=23)).isoformat() + "Z",
+        "created_at": datetime.utcnow().isoformat() + "Z",
+    }
+    data.update(overrides)
+    return data
+
+
 class TestGetQuote:
     async def test_retrieve_stored_quote(self, client, mock_storage):
-        quote_data = {
-            "quote_id": "qt-abc123",
-            "status": "available",
-            "product": {"product_id": "ctv-premium-sports", "name": "CTV", "inventory_type": "ctv"},
-            "pricing": {"base_cpm": 35.0, "final_cpm": 29.75, "currency": "USD"},
-            "terms": {"flight_start": "2026-04-01", "flight_end": "2026-04-30"},
-            "expires_at": (datetime.utcnow() + timedelta(hours=23)).isoformat() + "Z",
-        }
+        quote_data = _full_quote_dict()
         mock_storage._store["quote:qt-abc123"] = quote_data
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.get("/api/v1/quotes/qt-abc123")
 
         assert resp.status_code == 200
-        assert resp.json()["quote_id"] == "qt-abc123"
+        quote = resp.json()["quote"]
+        assert quote["quote_id"] == "qt-abc123"
+        assert quote["pricing"]["final_cpm"]["amount_micros"] == 29_750_000
 
     async def test_quote_not_found(self, client, mock_storage):
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):

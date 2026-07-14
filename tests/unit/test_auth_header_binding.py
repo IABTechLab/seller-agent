@@ -100,6 +100,7 @@ def _seed_key(store, *, revoked=False, expired=False):
 
 
 QUOTE_BODY = {
+    "idempotency_key": "idem-auth-quote-1",
     "product_id": "ctv-premium-sports",
     "deal_type": "PD",
     "impressions": 5000000,
@@ -170,7 +171,7 @@ class TestAuthHeaderBinding:
             )
 
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["quote"]
         assert data["buyer_tier"] == "agency", (
             "X-Api-Key header did not bind: buyer was treated as anonymous "
             f"(got tier {data['buyer_tier']!r})"
@@ -188,7 +189,7 @@ class TestAuthHeaderBinding:
             )
 
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["quote"]
         assert data["buyer_tier"] == "agency", (
             "Authorization header did not bind: buyer was treated as anonymous "
             f"(got tier {data['buyer_tier']!r})"
@@ -242,7 +243,7 @@ class TestAuthHeaderBinding:
             resp = await client.post("/api/v1/quotes", json=QUOTE_BODY)
 
         assert resp.status_code == 200
-        assert resp.json()["buyer_tier"] == "public"
+        assert resp.json()["quote"]["buyer_tier"] == "public"
 
     def test_auth_params_are_not_query_parameters(self):
         """The auth dependency must not expose authorization/x_api_key as query params."""
