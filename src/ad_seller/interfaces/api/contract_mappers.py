@@ -26,6 +26,9 @@ from iab_agentic_primitives.primitives import (
     DealType,
     MediaType,
     Money,
+    NegotiationAction,
+    NegotiationRound,
+    NegotiationStatus,
     OpenRTBParams,
     PricingModel,
     PricingType,
@@ -39,6 +42,8 @@ from iab_agentic_primitives.primitives import (
 from iab_agentic_primitives.protocol import (
     DealBookingRequest,
     DealBookingResponse,
+    NegotiationMessage,
+    NegotiationRoundResponse,
     QuoteRequest,
     QuoteResponse,
 )
@@ -291,4 +296,70 @@ def internal_deal_to_response(data: dict[str, Any]) -> DealBookingResponse:
         deal=internal_deal_to_shared_deal(data),
         audience_plan_snapshot=data.get("audience_plan_snapshot"),
         audience_match_summary=data.get("audience_match_summary"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Negotiation surface (the seller side of the 422 fix, FD-5)
+# ---------------------------------------------------------------------------
+
+
+def negotiation_round_to_response(data: dict[str, Any]) -> NegotiationRoundResponse:
+    """Map the internal counter-offer result dict to the shared response.
+
+    The internal ``negotiation_service.counter_proposal`` returns float
+    prices; the shared :class:`NegotiationRound` prices in :class:`Money`.
+    """
+    rounds_remaining = data.get("rounds_remaining")
+    if rounds_remaining is not None:
+        rounds_remaining = max(int(rounds_remaining), 0)
+    return NegotiationRoundResponse(
+        negotiation_id=data["negotiation_id"],
+        status=NegotiationStatus(data.get("status", "active")),
+        round=NegotiationRound(
+            round_number=data.get("round_number", 1),
+            buyer_price=float_to_money(data.get("buyer_price", 0.0))
+            or Money(amount_micros=0),
+            seller_price=float_to_money(data.get("seller_price", 0.0))
+            or Money(amount_micros=0),
+            action=NegotiationAction(data.get("action", "counter")),
+            concession_pct=data.get("concession_pct", 0.0),
+            cumulative_concession_pct=data.get("cumulative_concession_pct", 0.0),
+            rationale=data.get("rationale", ""),
+        ),
+        rounds_remaining=rounds_remaining,
+    )
+
+
+def terminal_round_response(
+    status_data: dict[str, Any],
+    action: NegotiationAction,
+    buyer_price: Optional[float] = None,
+) -> NegotiationRoundResponse:
+    """Build a terminal (accept/reject) response from negotiation history.
+
+    Used for the buyer's ``accept``/``reject`` moves, which do not run the
+    seller's price-evaluation engine (that stays untouched). Prices are
+    taken from the last recorded round; ``accept`` may echo a ``buyer_price``.
+    """
+    rounds = status_data.get("rounds") or []
+    last = rounds[-1] if rounds else {}
+    buyer_p = buyer_price if buyer_price is not None else last.get("buyer_price", 0.0)
+    seller_p = last.get("seller_price", buyer_p or 0.0)
+    status = (
+        NegotiationStatus.ACCEPTED
+        if action is NegotiationAction.ACCEPT
+        else NegotiationStatus.REJECTED
+    )
+    return NegotiationRoundResponse(
+        negotiation_id=status_data["negotiation_id"],
+        status=status,
+        round=NegotiationRound(
+            round_number=last.get("round_number", 1),
+            buyer_price=float_to_money(buyer_p) or Money(amount_micros=0),
+            seller_price=float_to_money(seller_p) or Money(amount_micros=0),
+            action=action,
+            rationale=last.get("rationale", ""),
+        ),
+        rounds_remaining=0,
     )
