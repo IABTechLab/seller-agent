@@ -144,6 +144,12 @@ class Settings(BaseSettings):
     approval_required_flows: str = (
         ""  # Comma-separated gate names: "proposal_decision,deal_registration"
     )
+    # Mandatory (threshold-driven) approval gate. When > 0, any proposal whose
+    # gross deal value (CPM x impressions / 1000) is >= this amount ALWAYS
+    # requires human approval before it can finalize — regardless of the
+    # opt-in ``approval_gate_enabled`` toggle. A high-value deal can never
+    # auto-finalize. 0.0 disables the threshold gate (opt-in behavior only).
+    approval_required_above_value: float = 0.0
 
     # Session Configuration
     session_ttl_seconds: int = 604800  # 7 days

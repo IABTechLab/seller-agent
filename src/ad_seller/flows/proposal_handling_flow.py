@@ -549,18 +549,53 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             }
         )
 
+    def _deal_value(self) -> float:
+        """Gross deal value of the current proposal (CPM x impressions / 1000).
+
+        Used by the mandatory threshold gate. Falls back to the raw
+        proposal_data when the evaluation has not been populated.
+        """
+        ev = self.state.evaluation
+        if ev is not None:
+            price = ev.requested_price or 0
+            impressions = ev.requested_impressions or 0
+        else:
+            price = self.state.proposal_data.get("price", 0) or 0
+            impressions = self.state.proposal_data.get("impressions", 0) or 0
+        return float(price) * float(impressions) / 1000.0
+
+    def _approval_required(self, settings: Any) -> bool:
+        """Whether this proposal decision must be gated for human approval.
+
+        Two independent triggers, OR'd together:
+
+        1. Opt-in toggle (backward compatible): ``approval_gate_enabled`` is
+           True AND ``proposal_decision`` is in ``approval_required_flows``.
+        2. Mandatory threshold gate (EP-4.5): the gross deal value is at or
+           above ``approval_required_above_value`` (when that is > 0). This
+           fires regardless of the opt-in toggle — a high-value deal can
+           never auto-finalize.
+        """
+        toggle_on = getattr(settings, "approval_gate_enabled", False) and (
+            "proposal_decision"
+            in getattr(settings, "approval_required_flows", "").split(",")
+        )
+
+        threshold = getattr(settings, "approval_required_above_value", 0.0) or 0.0
+        threshold_hit = threshold > 0 and self._deal_value() >= threshold
+
+        return bool(toggle_on or threshold_hit)
+
     @listen(or_(generate_counter_terms, identify_upsell))
     async def execute_decision(self) -> None:
         """Execute the proposal decision, with optional approval gate."""
         settings = get_settings()
 
-        # Check if approval gate is enabled for proposal decisions
-        approval_enabled = getattr(
-            settings, "approval_gate_enabled", False
-        ) and "proposal_decision" in getattr(settings, "approval_required_flows", "").split(",")
-
-        if approval_enabled and self.state.recommendation in ("accept", "counter"):
-            # Gate: mark as pending approval and return
+        if self._approval_required(settings) and self.state.recommendation in (
+            "accept",
+            "counter",
+        ):
+            # Gate: mark as pending approval and return (do NOT finalize).
             self.state.status = ExecutionStatus.PENDING_APPROVAL
             self.state.completed_at = datetime.utcnow()
             return
