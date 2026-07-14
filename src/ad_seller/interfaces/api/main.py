@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -347,14 +347,20 @@ class AgenticAudienceMatchRequest(BaseModel):
 
 
 async def _get_optional_api_key_record(
-    authorization: Optional[str] = None,
-    x_api_key: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="X-Api-Key"),
 ):
     """FastAPI dependency: validate API key from headers if present.
 
     Returns None for anonymous requests (no key in headers).
     Raises HTTPException(401) for invalid, revoked, or expired keys.
     Accepts ``Authorization: Bearer <key>`` or ``X-Api-Key: <key>``.
+
+    The ``Header(...)`` defaults mirror ``ad_seller.auth.dependencies.
+    get_api_key_record`` — without them FastAPI binds these parameters
+    as *query* parameters, real credential headers never reach the
+    validator, and every buyer silently falls through to anonymous
+    PUBLIC-tier access (while invalid/revoked keys are never rejected).
     """
     from ...auth.dependencies import get_api_key_record
 

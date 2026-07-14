@@ -135,6 +135,10 @@ class Settings(BaseSettings):
 
     # Event Bus / Human-in-the-Loop Configuration
     event_bus_enabled: bool = True
+    # Durable fallback for audit-class events (see events/audit_fallback.py).
+    # When the event bus fails for an audit-class event, the event is appended
+    # to this JSONL file (fsynced per write) instead of being dropped.
+    audit_fallback_path: str = "data/audit_fallback.jsonl"
     approval_gate_enabled: bool = False  # Default off, opt-in
     approval_timeout_hours: int = 24
     approval_required_flows: str = (
