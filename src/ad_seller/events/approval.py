@@ -123,15 +123,20 @@ class ApprovalGate:
         decided_by: str = "unknown",
         reason: str = "",
         modifications: Optional[dict[str, Any]] = None,
+        decided_by_principal: str = "",
     ) -> ApprovalResponse:
         """Submit a human decision for an approval request.
 
         Args:
             approval_id: The approval request ID.
             decision: "approve", "reject", or "counter".
-            decided_by: Identifier of the human making the decision.
+            decided_by: Free-text display label for the decision maker
+                (untrusted — supplied by the request body).
             reason: Optional reason for the decision.
             modifications: Optional modifications (e.g. counter-terms).
+            decided_by_principal: Verified approver principal derived from
+                the authenticated credential. Stamped into the audit record
+                and decision event as the trusted identity.
 
         Returns:
             The approval response.
@@ -162,6 +167,7 @@ class ApprovalGate:
             approval_id=approval_id,
             decision=decision,
             decided_by=decided_by,
+            decided_by_principal=decided_by_principal,
             reason=reason,
             modifications=modifications or {},
         )
@@ -206,16 +212,18 @@ class ApprovalGate:
                     "approval_id": approval_id,
                     "decision": decision,
                     "decided_by": decided_by,
+                    "decided_by_principal": decided_by_principal,
                     "reason": reason,
                 },
             )
         )
 
         logger.info(
-            "Approval %s decided: %s by %s",
+            "Approval %s decided: %s by %s (principal=%s)",
             approval_id,
             decision,
             decided_by,
+            decided_by_principal or "<none>",
         )
 
         return response

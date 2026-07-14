@@ -127,7 +127,11 @@ class ApprovalResponse(BaseModel):
 
     approval_id: str
     decision: str  # "approve", "reject", or "counter"
-    decided_by: str = "unknown"
+    decided_by: str = "unknown"  # Free-text display label (untrusted)
+    # Verified approver principal, derived from the authenticated API key
+    # (see auth.dependencies.principal_from_api_key). This is the identity
+    # the audit trail trusts — ``decided_by`` above is display-only.
+    decided_by_principal: str = ""
     decided_at: datetime = Field(default_factory=datetime.utcnow)
     reason: str = ""
     modifications: dict[str, Any] = Field(default_factory=dict)

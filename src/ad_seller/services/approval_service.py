@@ -49,8 +49,15 @@ async def decide_approval(
     decided_by: str = "anonymous",
     reason: str = "",
     modifications: dict[str, Any] | None = None,
+    decided_by_principal: str = "",
 ) -> dict[str, Any]:
-    """Submit a human decision for a pending approval."""
+    """Submit a human decision for a pending approval.
+
+    ``decided_by`` is a free-text display label. ``decided_by_principal`` is
+    the VERIFIED approver identity derived from the authenticated credential
+    by the caller (the REST router); it is stamped into the audit record so
+    the trail cannot be forged via the request body.
+    """
     from ..events.approval import ApprovalGate
     from ..storage.factory import get_storage
 
@@ -63,6 +70,7 @@ async def decide_approval(
             decided_by=decided_by,
             reason=reason,
             modifications=modifications if modifications is not None else {},
+            decided_by_principal=decided_by_principal,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

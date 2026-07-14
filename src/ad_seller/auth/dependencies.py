@@ -89,3 +89,48 @@ async def get_api_key_record(
         )
 
     return record
+
+
+async def require_api_key_record(
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="X-Api-Key"),
+) -> ApiKeyRecord:
+    """Validate API key and require a valid credential.
+
+    Unlike :func:`get_api_key_record` (which allows anonymous PUBLIC-tier
+    access by returning ``None``), this dependency REJECTS anonymous
+    requests with 401. It reuses the exact same header-binding and
+    validation semantics (invalid/revoked/expired keys still raise 401);
+    it only additionally forbids the no-credential path.
+
+    Use this to protect privileged control-plane endpoints — e.g. the
+    human-in-the-loop approval decide/resume/list endpoints — where an
+    unauthenticated caller must never be able to act.
+    """
+    record = await get_api_key_record(authorization, x_api_key)
+    if record is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return record
+
+
+def principal_from_api_key(record: ApiKeyRecord) -> str:
+    """Derive a stable, verified principal identifier from an API key record.
+
+    The returned string is stamped into the approval audit record as the
+    VERIFIED approver identity (as opposed to the free-text ``decided_by``
+    display field, which the caller can set to anything). It is anchored to
+    the immutable ``key_id`` of the authenticated credential and enriched
+    with the strongest available buyer identity for readability.
+    """
+    identity = record.identity
+    buyer = (
+        getattr(identity, "advertiser_id", None)
+        or getattr(identity, "agency_id", None)
+        or getattr(identity, "seat_id", None)
+        or "unknown"
+    )
+    return f"apikey:{record.key_id}:{buyer}"
