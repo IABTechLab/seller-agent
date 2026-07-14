@@ -422,9 +422,9 @@ async def create_deal_from_template(
     (EP-3.3) instead of running ProductSetupFlow per request.
     Returns the created deal data dict (includes ``schain``).
     """
-    from ..models.quotes import DealBookingStatus
     from ..engines.pricing_rules_engine import PricingRulesEngine
     from ..models.pricing_tiers import TieredPricingConfig
+    from ..models.quotes import DealBookingStatus
     from ..storage.factory import get_storage
 
     deal_type_map = _quote_deal_type_map()

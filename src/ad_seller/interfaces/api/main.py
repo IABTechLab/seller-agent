@@ -143,6 +143,17 @@ app.router.lifespan_context = lifespan
 
 # Same function objects as the routers use in Depends(...), so existing
 # `app.dependency_overrides[_get_optional_api_key_record]` test hooks work.
+# Agentic-match scoring helpers moved to services.deal_service; tests
+# import the underscore-prefixed names from this module.
+from ...services.deal_service import (  # noqa: E402
+    agentic_match_quality as _agentic_match_quality,  # noqa: F401
+)
+from ...services.deal_service import (  # noqa: E402
+    booking_logger,  # noqa: F401
+)
+from ...services.deal_service import (  # noqa: E402
+    deterministic_score as _deterministic_score,  # noqa: F401
+)
 from .deps import (  # noqa: E402,F401
     _build_buyer_context,
     _get_api_settings,
@@ -155,14 +166,6 @@ from .deps import (  # noqa: E402,F401
 # Request/response models were moved to schemas.py; re-exported for
 # backward compatibility with external importers.
 from .schemas import *  # noqa: E402,F401,F403
-
-# Agentic-match scoring helpers moved to services.deal_service; tests
-# import the underscore-prefixed names from this module.
-from ...services.deal_service import (  # noqa: E402,F401
-    agentic_match_quality as _agentic_match_quality,
-    booking_logger,
-    deterministic_score as _deterministic_score,
-)
 
 # Cached static product catalog compat surface. The single catalog source
 # lives in services.catalog_service, but tests patch
