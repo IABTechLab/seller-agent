@@ -5,10 +5,13 @@
 audience match, template/bulk/curated creation, DSP export/push, SSP
 distribution, and migration/deprecation/lineage.
 
-Endpoint registration order matches the original main.py order — in
-particular ``GET /api/v1/deals/{deal_id}`` is registered BEFORE
-``GET /api/v1/deals/export`` (existing route-shadowing preserved; fixing
-it is EP-8.4).
+EP-8.4 route-shadowing fix: literal/static routes are registered BEFORE
+their ``{param}`` sibling on the same method + prefix, because FastAPI
+matches routes in registration order. In particular
+``GET /api/v1/deals/export`` is now registered BEFORE
+``GET /api/v1/deals/{deal_id}`` so the literal export path is reachable
+(previously ``{deal_id}="export"`` shadowed it). Path strings, methods,
+and handler behavior are otherwise unchanged.
 """
 
 from typing import Optional
@@ -107,6 +110,28 @@ async def agentic_audience_match(request: AgenticAudienceMatchRequest):
       into `STRONG | MODERATE | WEAK | POOR`.
     """
     return deal_service.match_agentic_audience(request.audience_ref)
+
+
+@router.get("/api/v1/deals/export", tags=["Deal Booking"])
+async def export_deals(
+    format: str = "generic",
+    status: Optional[str] = None,
+):
+    """Export deals in DSP-native format for platform connectors.
+
+    Args:
+        format: Export format — generic, ttd, dv360, amazon, xandr
+        status: Filter by deal status (confirmed, proposed, cancelled)
+
+    Returns deals formatted for the target DSP's import requirements.
+    Enables buyer Phase 4D platform connectors to pull deals natively.
+
+    NOTE (EP-8.4): this literal route is registered BEFORE the
+    ``/api/v1/deals/{deal_id}`` catch-all so it is not shadowed. FastAPI
+    matches routes in registration order, so static/literal paths must
+    precede their ``{param}`` sibling on the same method + prefix.
+    """
+    return await deal_service.export_deals(format=format, status=status)
 
 
 @router.get("/api/v1/deals/{deal_id}", tags=["Deal Booking"])
@@ -221,23 +246,6 @@ async def bulk_deal_operations(
         failed=len(request.operations) - succeeded,
         results=result_models,
     )
-
-
-@router.get("/api/v1/deals/export", tags=["Deal Booking"])
-async def export_deals(
-    format: str = "generic",
-    status: Optional[str] = None,
-):
-    """Export deals in DSP-native format for platform connectors.
-
-    Args:
-        format: Export format — generic, ttd, dv360, amazon, xandr
-        status: Filter by deal status (confirmed, proposed, cancelled)
-
-    Returns deals formatted for the target DSP's import requirements.
-    Enables buyer Phase 4D platform connectors to pull deals natively.
-    """
-    return await deal_service.export_deals(format=format, status=status)
 
 
 @router.post("/api/v1/deals/push", tags=["Deal Booking"])
