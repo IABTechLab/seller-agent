@@ -102,22 +102,29 @@ async def test_agent_card_returns_200_with_audience_capabilities(client):
 
 
 async def test_list_products_returns_200_with_products_key(client):
-    """`GET /products` returns 200 with a `products` list."""
+    """`GET /products` returns the shared ProductListResponse."""
     async with client as c:
         resp = await c.get("/products")
     assert resp.status_code == 200
     body = resp.json()
     assert "products" in body
     assert isinstance(body["products"], list)
+    # Shared envelope carries pagination metadata.
+    assert body["total_count"] == len(body["products"])
+    assert body["limit"] == 50
+    assert body["offset"] == 0
     # Default catalog is non-empty.
     assert len(body["products"]) > 0
-    # Shape check on first product.
+    # Shape check on first product — the shared Product primitive.
     p = body["products"][0]
     assert "product_id" in p
     assert "name" in p
-    assert "inventory_type" in p
-    assert "base_cpm" in p
-    assert "deal_types" in p
+    assert "seller_organization_id" in p
+    # Money in micros, not a bare base_cpm float.
+    assert "amount_micros" in p["base_price"]
+    # Seller-local fields ride in ext (nothing silently dropped).
+    assert p["ext"]["inventory_type"] is not None
+    assert isinstance(p["ext"]["deal_types"], list)
 
 
 async def test_get_product_returns_200_for_existing_404_for_missing(client):

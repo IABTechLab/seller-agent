@@ -1,11 +1,22 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Product catalog, pricing, and discovery endpoints."""
+"""Product catalog, pricing, and discovery endpoints.
 
-from fastapi import APIRouter, Depends, HTTPException
+EP-12.2: the catalog wire edge speaks the shared
+``iab-agentic-primitives`` contract. ``GET /products`` returns the shared
+:class:`ProductListResponse` (paginated Product primitives) and
+``GET /products/{product_id}`` returns the shared Product primitive
+directly. Internal ``ProductDefinition`` is mapped at the boundary via
+:mod:`..contract_mappers`; the catalog service is untouched.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from iab_agentic_primitives.primitives import Product
+from iab_agentic_primitives.protocol import ProductListResponse
 
 from ....services import catalog_service, quote_service
+from .. import contract_mappers as cm
 from .. import deps
 from ..schemas import (
     DiscoveryRequest,
@@ -19,22 +30,27 @@ router = APIRouter()
 
 
 @router.get("/products", tags=["Products"])
-async def list_products():
-    """List all products in the catalog.
+async def list_products(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> ProductListResponse:
+    """List products in the catalog (shared ProductListResponse).
 
     Reads from the cached static catalog (see `_get_static_product_catalog`)
     instead of running ProductSetupFlow per request — kicking off the flow
     spins up an OpenDirect MCP session that hangs in `session.initialize()`.
+    Buyers filter client-side over the returned Product records (there is
+    deliberately no POST /products/search on the shared catalog surface).
     """
     catalog = deps.get_product_catalog()
-    return {
-        "products": [catalog_service.serialize_product(p) for p in catalog["products"].values()],
-    }
+    return cm.products_to_list_response(
+        list(catalog["products"].values()), limit=limit, offset=offset
+    )
 
 
 @router.get("/products/{product_id}", tags=["Products"])
-async def get_product(product_id: str):
-    """Get a specific product.
+async def get_product(product_id: str) -> Product:
+    """Get a specific product (shared Product primitive, no wrapper).
 
     Reads from the cached static catalog instead of running ProductSetupFlow
     per request (see `list_products` for rationale).
@@ -43,7 +59,7 @@ async def get_product(product_id: str):
     product = catalog["products"].get(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return catalog_service.serialize_product(product)
+    return cm.internal_product_to_shared(product)
 
 
 @router.post("/pricing", response_model=PricingResponse, tags=["Pricing"])

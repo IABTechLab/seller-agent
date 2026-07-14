@@ -24,6 +24,7 @@ from iab_agentic_primitives.primitives import (
     Deal,
     DealStatus,
     DealType,
+    DeliveryType,
     MediaType,
     Money,
     NegotiationAction,
@@ -32,6 +33,7 @@ from iab_agentic_primitives.primitives import (
     OpenRTBParams,
     PricingModel,
     PricingType,
+    Product,
     ProductRef,
     Quote,
     QuoteAvailability,
@@ -42,8 +44,8 @@ from iab_agentic_primitives.primitives import (
 from iab_agentic_primitives.protocol import (
     DealBookingRequest,
     DealBookingResponse,
-    NegotiationMessage,
     NegotiationRoundResponse,
+    ProductListResponse,
     QuoteRequest,
     QuoteResponse,
 )
@@ -362,4 +364,92 @@ def terminal_round_response(
             rationale=last.get("rationale", ""),
         ),
         rounds_remaining=0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Catalog surface
+# ---------------------------------------------------------------------------
+
+#: Registry-issued id of this seller org. The internal ProductDefinition
+#: does not carry it (seller-local), so it is supplied at the boundary.
+SELLER_ORGANIZATION_ID = "seller-premium-pub-001"
+
+#: Internal long-form DealType values -> canonical short wire values.
+_DEAL_TYPE_WIRE = {
+    "programmaticguaranteed": "PG",
+    "preferreddeal": "PD",
+    "privateauction": "PA",
+}
+
+
+def _deal_type_wire_value(deal_type: Any) -> str:
+    raw = getattr(deal_type, "value", deal_type)
+    return _DEAL_TYPE_WIRE.get(str(raw), str(raw))
+
+
+def internal_product_to_shared(product: Any) -> Product:
+    """Map the seller's internal ``ProductDefinition`` to the shared Product.
+
+    Seller-local fields with no home on the shared schema (inventory_type,
+    floor_cpm, minimum_impressions, the deal-type list, audience capability
+    ids) ride in the reserved ``ext`` slot so nothing is silently dropped.
+    """
+    currency = getattr(product, "currency", "USD") or "USD"
+
+    pricing_models = getattr(product, "supported_pricing_models", None) or []
+    pricing_model = PricingModel.CPM
+    if pricing_models:
+        pricing_model = PricingModel(getattr(pricing_models[0], "value", pricing_models[0]))
+
+    pricing_type = PricingType.FIXED
+    internal_pt = getattr(product, "pricing_type", None)
+    if internal_pt is not None:
+        pricing_type = PricingType(getattr(internal_pt, "value", internal_pt))
+
+    ext = {
+        "inventory_type": getattr(product, "inventory_type", None),
+        "floor_cpm": getattr(product, "floor_cpm", None),
+        "minimum_impressions": getattr(product, "minimum_impressions", None),
+        "deal_types": [
+            _deal_type_wire_value(dt)
+            for dt in (getattr(product, "supported_deal_types", None) or [])
+        ],
+        "audience_capabilities": getattr(product, "audience_capabilities", None) or [],
+    }
+
+    return Product(
+        product_id=product.product_id,
+        seller_organization_id=SELLER_ORGANIZATION_ID,
+        name=product.name,
+        description=getattr(product, "description", None),
+        base_price=float_to_money(getattr(product, "base_cpm", None), currency),
+        pricing_type=pricing_type,
+        pricing_model=pricing_model,
+        delivery_type=DeliveryType.GUARANTEED,
+        audience_targeting=getattr(product, "audience_targeting", None),
+        ad_product_targeting=getattr(product, "ad_product_targeting", None),
+        content_targeting=getattr(product, "content_targeting", None),
+        available_impressions=getattr(product, "maximum_impressions", None),
+        ext=ext,
+    )
+
+
+def products_to_list_response(
+    products: list[Any],
+    limit: int = 50,
+    offset: int = 0,
+) -> ProductListResponse:
+    """Build the shared :class:`ProductListResponse` from internal products.
+
+    Pagination is applied over the full internal catalog; ``total_count`` is
+    the unpaginated size (shared catalog contract).
+    """
+    total = len(products)
+    page = products[offset : offset + limit]
+    return ProductListResponse(
+        products=[internal_product_to_shared(p) for p in page],
+        total_count=total,
+        limit=limit,
+        offset=offset,
     )
