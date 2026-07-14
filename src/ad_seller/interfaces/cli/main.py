@@ -41,15 +41,16 @@ def init(
     ),
 ):
     """Initialize the seller system and set up default products."""
-    from ...flows import ProductSetupFlow
+    from ...services import catalog_service
 
     console.print(Panel("Initializing Ad Seller System...", title="Setup"))
 
-    flow = ProductSetupFlow()
-    asyncio.run(flow.kickoff())
+    # Read the default catalog from the single cached service source (EP-3.2)
+    # rather than spinning up ProductSetupFlow / an OpenDirect MCP session.
+    products = catalog_service.get_static_product_catalog()["products"]
 
     console.print(f"[green]✓[/green] Organization '{organization_name}' initialized")
-    console.print(f"[green]✓[/green] Created {len(flow.state.products)} default products")
+    console.print(f"[green]✓[/green] Created {len(products)} default products")
 
     # Show products
     table = Table(title="Product Catalog")
@@ -58,7 +59,7 @@ def init(
     table.add_column("Type")
     table.add_column("Base CPM")
 
-    for product in flow.state.products.values():
+    for product in products.values():
         table.add_row(
             product.product_id,
             product.name,
@@ -72,10 +73,9 @@ def init(
 @app.command()
 def catalog():
     """View the product catalog."""
-    from ...flows import ProductSetupFlow
+    from ...services import catalog_service
 
-    flow = ProductSetupFlow()
-    asyncio.run(flow.kickoff())
+    products = catalog_service.get_static_product_catalog()["products"]
 
     table = Table(title="Product Catalog")
     table.add_column("ID", style="cyan")
@@ -85,7 +85,7 @@ def catalog():
     table.add_column("Floor CPM", style="red")
     table.add_column("Deal Types")
 
-    for product in flow.state.products.values():
+    for product in products.values():
         deal_types = ", ".join(dt.value[:2].upper() for dt in product.supported_deal_types)
         table.add_row(
             product.product_id,
@@ -108,16 +108,13 @@ def price(
     volume: int = typer.Option(0, "--volume", "-v", help="Impression volume for discounts"),
 ):
     """Get pricing for a product based on buyer tier."""
-    from ...engines.pricing_rules_engine import PricingRulesEngine
-    from ...flows import ProductSetupFlow
     from ...models.buyer_identity import AccessTier, BuyerContext, BuyerIdentity
-    from ...models.pricing_tiers import TieredPricingConfig
+    from ...services import catalog_service, quote_service
 
-    # Get products
-    flow = ProductSetupFlow()
-    asyncio.run(flow.kickoff())
+    # Product from the single cached catalog source (EP-3.2)
+    products = catalog_service.get_static_product_catalog()["products"]
 
-    product = flow.state.products.get(product_id)
+    product = products.get(product_id)
     if not product:
         console.print(f"[red]Product not found: {product_id}[/red]")
         raise typer.Exit(1)
@@ -143,24 +140,21 @@ def price(
         is_authenticated=access_tier != AccessTier.PUBLIC,
     )
 
-    # Calculate price
-    config = TieredPricingConfig(seller_organization_id="default")
-    engine = PricingRulesEngine(config)
-
-    decision = engine.calculate_price(
+    # Pricing via the SAME quote_service the REST /pricing route uses.
+    pricing = quote_service.get_pricing(
         product_id=product_id,
-        base_price=product.base_cpm,
+        product=product,
         buyer_context=context,
         volume=volume,
     )
 
     console.print(Panel(f"Pricing for [cyan]{product.name}[/cyan]", title="Pricing"))
-    console.print(f"Buyer Tier: [yellow]{decision.buyer_tier}[/yellow]")
-    console.print(f"Base Price: ${decision.base_price:.2f} CPM")
-    console.print(f"Tier Discount: {decision.tier_discount * 100:.0f}%")
-    console.print(f"Volume Discount: {decision.volume_discount * 100:.1f}%")
-    console.print(f"[green]Final Price: ${decision.final_price:.2f} CPM[/green]")
-    console.print(f"\nRationale: {decision.rationale}")
+    console.print(f"Buyer Tier: [yellow]{context.effective_tier.value}[/yellow]")
+    console.print(f"Base Price: ${pricing['base_price']:.2f} CPM")
+    console.print(f"Tier Discount: {pricing['tier_discount'] * 100:.0f}%")
+    console.print(f"Volume Discount: {pricing['volume_discount'] * 100:.1f}%")
+    console.print(f"[green]Final Price: ${pricing['final_price']:.2f} CPM[/green]")
+    console.print(f"\nRationale: {pricing['rationale']}")
 
 
 @app.command()
