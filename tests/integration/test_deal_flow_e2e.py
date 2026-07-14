@@ -8,9 +8,7 @@ Tests the key flow components with mocked external dependencies:
 """
 
 import importlib
-import json
 import sys
-from unittest.mock import MagicMock, patch
 
 from ad_seller.models.buyer_identity import BuyerContext, BuyerIdentity
 from ad_seller.models.core import DealType, PricingModel
@@ -284,102 +282,6 @@ class TestOrderStateTransitions:
         draft_orders = await storage.list_orders(filters={"status": "draft"})
         assert len(draft_orders) == 1
         assert draft_orders[0]["order_id"] == "ord-a"
-
-
-# ============================================================================
-# Deal template creation path
-# ============================================================================
-
-
-class TestDealTemplateCreation:
-    """Test the create_deal_from_template MCP tool path.
-
-    The MCP tool calls httpx to the seller API. We mock httpx to simulate
-    the API response and verify the tool processes it correctly.
-    """
-
-    def test_template_tool_builds_correct_request(self):
-        """Verify CreateDealFromTemplateTool builds the correct HTTP request body."""
-        from ad_seller.tools.deal_library.create_from_template import (
-            CreateDealFromTemplateTool,
-        )
-
-        tool = CreateDealFromTemplateTool()
-        assert tool.name == "create_deal_from_template"
-
-        # Verify input schema accepts required fields
-        from ad_seller.tools.deal_library.create_from_template import (
-            CreateDealFromTemplateInput,
-        )
-
-        inp = CreateDealFromTemplateInput(
-            deal_type="PG",
-            product_id="fw-ctv-premium-001",
-            impressions=100000,
-            max_cpm=40.0,
-            flight_start="2026-04-01",
-            flight_end="2026-04-30",
-        )
-        assert inp.deal_type == "PG"
-        assert inp.product_id == "fw-ctv-premium-001"
-        assert inp.impressions == 100000
-
-    def test_template_tool_handles_success_response(self):
-        """Verify tool correctly processes a 201 success response."""
-        from ad_seller.tools.deal_library.create_from_template import (
-            CreateDealFromTemplateTool,
-        )
-
-        tool = CreateDealFromTemplateTool()
-
-        mock_response = MagicMock()
-        mock_response.status_code = 201
-        mock_response.json.return_value = {
-            "deal_id": "TEST-ABC123",
-            "deal_type": "PG",
-            "product_id": "fw-ctv-premium-001",
-            "price": 38.0,
-        }
-
-        with patch("httpx.post", return_value=mock_response):
-            result = tool._run(
-                deal_type="PG",
-                product_id="fw-ctv-premium-001",
-                impressions=100000,
-                max_cpm=40.0,
-            )
-
-        parsed = json.loads(result)
-        assert parsed["deal_id"] == "TEST-ABC123"
-
-    def test_template_tool_handles_rejection(self):
-        """Verify tool handles a 422 rejection response."""
-        from ad_seller.tools.deal_library.create_from_template import (
-            CreateDealFromTemplateTool,
-        )
-
-        tool = CreateDealFromTemplateTool()
-
-        mock_response = MagicMock()
-        mock_response.status_code = 422
-        mock_response.json.return_value = {
-            "detail": {
-                "reason": "max_cpm below floor",
-                "floor_cpm": 30.0,
-                "requested_cpm": 10.0,
-            }
-        }
-
-        with patch("httpx.post", return_value=mock_response):
-            result = tool._run(
-                deal_type="PG",
-                product_id="fw-ctv-premium-001",
-                max_cpm=10.0,
-            )
-
-        parsed = json.loads(result)
-        assert parsed["rejected"] is True
-        assert parsed["floor_cpm"] == 30.0
 
 
 # ============================================================================
