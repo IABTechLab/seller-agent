@@ -6,30 +6,45 @@ Get the seller agent running locally and make your first API calls.
 
 - Python 3.11 or later
 - pip
+- An Anthropic API key (required — the server will not start without it; see [Configure](#configure) below)
 
 ## Installation
 
 Clone the repository and install in editable mode:
 
 ```bash
+git clone https://github.com/IABTechLab/seller-agent.git
+cd seller-agent
+pip install -e .
+```
+
+For the full install with optional dependencies (dev tools, docs, GAM, Redis/Postgres):
+
+```bash
 pip install -e ".[all]"
 ```
 
-For a minimal install without optional dependencies:
+## Configure
+
+The seller agent reads settings from a `.env` file in the repo root. **`ANTHROPIC_API_KEY` is required** — the app fails to start with a `ValidationError` if it is missing. Copy the template and fill it in:
 
 ```bash
-pip install -e .
+cp .env.example .env
+# then edit .env and set:
+#   ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+Every other setting has a sensible default (SQLite storage, CSV ad-server samples, no SSPs), so a single API key is enough to boot locally. See [Configuration](../guides/configuration.md) for the full list.
 
 ## Run the Server
 
 Start the FastAPI server with auto-reload for development:
 
 ```bash
-uvicorn ad_seller.interfaces.api.main:app --reload
+uvicorn ad_seller.interfaces.api.main:app --reload --port 8000
 ```
 
-The server starts at `http://localhost:8000` by default.
+The server starts at `http://localhost:8000`.
 
 ## Verify It Works
 
@@ -42,6 +57,8 @@ Expected response:
 ```json
 {"status": "healthy"}
 ```
+
+> **This quickstart is tested.** `tests/smoke/test_quickstart_smoke.py` boots the app at the exact module path documented above (`ad_seller.interfaces.api.main:app`) through its real startup lifecycle and asserts `/health`, `/`, and `/products` respond — no network or LLM calls. Run it with `pytest tests/smoke/test_quickstart_smoke.py`. If it fails, the entrypoint on this page is wrong.
 
 ## Browse the API Docs
 
