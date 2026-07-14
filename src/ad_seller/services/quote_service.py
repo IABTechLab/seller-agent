@@ -35,6 +35,37 @@ def _deal_type_map():
     }
 
 
+def get_pricing(
+    product_id: str,
+    product: Any,
+    buyer_context: Any,
+    volume: int = 0,
+) -> dict[str, Any]:
+    """Calculate tier/volume-adjusted pricing for a product."""
+    from ..engines.pricing_rules_engine import PricingRulesEngine
+    from ..models.pricing_tiers import TieredPricingConfig
+
+    config = TieredPricingConfig(seller_organization_id="default")
+    engine = PricingRulesEngine(config)
+
+    decision = engine.calculate_price(
+        product_id=product_id,
+        base_price=product.base_cpm,
+        buyer_context=buyer_context,
+        volume=volume,
+    )
+
+    return {
+        "product_id": product_id,
+        "base_price": decision.base_price,
+        "final_price": decision.final_price,
+        "currency": decision.currency,
+        "tier_discount": decision.tier_discount,
+        "volume_discount": decision.volume_discount,
+        "rationale": decision.rationale,
+    }
+
+
 async def create_quote(
     request: Any,
     buyer_context: Any,

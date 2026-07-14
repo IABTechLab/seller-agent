@@ -346,6 +346,37 @@ async def get_deal(deal_id: str) -> dict[str, Any]:
     return deal
 
 
+async def get_deal_performance(deal_id: str) -> dict[str, Any]:
+    """Return delivery stats for a deal.
+
+    Placeholder performance data — real stats come from ad server
+    integration in a future phase.
+    """
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    deal = await storage.get_deal(deal_id)
+
+    if not deal:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "deal_not_found", "message": f"Deal '{deal_id}' not found."},
+        )
+
+    # Placeholder performance data — real stats come from ad server integration
+    now = datetime.utcnow().isoformat() + "Z"
+    return {
+        "deal_id": deal_id,
+        "impressions_available": 1000000,
+        "impressions_served": 0,
+        "fill_rate": 0.0,
+        "win_rate": 0.0,
+        "avg_cpm_actual": 0.0,
+        "delivery_pacing": "not_started",
+        "last_updated": now,
+    }
+
+
 # =============================================================================
 # Legacy proposal-based deal generation (POST /deals)
 # =============================================================================

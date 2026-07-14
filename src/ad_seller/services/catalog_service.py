@@ -217,6 +217,87 @@ def reset_catalog_cache() -> None:
     _CATALOG_CACHE = None
 
 
+async def override_inventory_type(
+    product_id: str,
+    inventory_type: str,
+    reason: Optional[str] = None,
+) -> dict[str, Any]:
+    """Override the auto-detected inventory type for a product.
+
+    Returns ``{"previous_type": ..., "applied_at": ...}``.
+    """
+    from datetime import datetime
+
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+
+    # Get current product data
+    product_data = await storage.get(f"product:{product_id}")
+    previous_type = None
+
+    if product_data:
+        previous_type = product_data.get("inventory_type")
+        product_data["inventory_type"] = inventory_type
+        product_data["inventory_type_override"] = True
+        product_data["inventory_type_override_reason"] = reason
+        await storage.set(f"product:{product_id}", product_data)
+    else:
+        # Create override record even if product not yet synced
+        override_data = {
+            "product_id": product_id,
+            "inventory_type": inventory_type,
+            "inventory_type_override": True,
+            "inventory_type_override_reason": reason,
+        }
+        await storage.set(f"product:{product_id}", override_data)
+
+    now = datetime.utcnow().isoformat() + "Z"
+
+    # Store override in a separate key for persistence across syncs
+    await storage.set(
+        f"inventory_override:{product_id}",
+        {
+            "product_id": product_id,
+            "inventory_type": inventory_type,
+            "reason": reason,
+            "applied_at": now,
+        },
+    )
+
+    return {"previous_type": previous_type, "applied_at": now}
+
+
+async def get_inventory_type_override(product_id: str) -> Optional[dict[str, Any]]:
+    """Get the current inventory type override for a product, if any."""
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    return await storage.get(f"inventory_override:{product_id}")
+
+
+async def delete_inventory_type_override(product_id: str) -> bool:
+    """Remove an inventory type override. Returns False if none exists."""
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    override = await storage.get(f"inventory_override:{product_id}")
+
+    if not override:
+        return False
+
+    await storage.delete(f"inventory_override:{product_id}")
+
+    # Remove override flag from product
+    product_data = await storage.get(f"product:{product_id}")
+    if product_data:
+        product_data.pop("inventory_type_override", None)
+        product_data.pop("inventory_type_override_reason", None)
+        await storage.set(f"product:{product_id}", product_data)
+
+    return True
+
+
 def serialize_product(product: Any) -> dict[str, Any]:
     """Serialize a ProductDefinition to the public JSON shape."""
     return {
