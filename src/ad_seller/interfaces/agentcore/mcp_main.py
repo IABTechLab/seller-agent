@@ -5,9 +5,11 @@ using Streamable HTTP transport. This entrypoint runs the seller's FastMCP
 server via ``mcp.run(transport="streamable-http")`` which handles the
 ``/mcp`` route with proper trailing-slash support.
 
-The FastAPI REST API is started in a background thread on port 8001 so
-that MCP tools which call back to REST endpoints via httpx can resolve
-to localhost.
+EP-3.2: the MCP tools are now thin adapters that call the seller service
+layer (``ad_seller.services``) directly in-process. They no longer reach the
+REST API over an httpx loopback, so the old background FastAPI REST sidecar —
+which existed solely so loopback tools could resolve to localhost — has been
+removed. A single process listens on port 8000 (MCP) and nothing else.
 
 Deploy with::
 
@@ -18,14 +20,11 @@ Local testing::
 
     python src/ad_seller/interfaces/agentcore/mcp_main.py
     # MCP endpoint: http://localhost:8000/mcp  (Streamable HTTP)
-    # REST API:     http://localhost:8001/health, /api/v1/...
 """
 
-import asyncio
 import logging
 import os
 import sys
-import threading
 
 # Add the src directory to Python path so ad_seller is importable.
 # We're at src/ad_seller/interfaces/agentcore/mcp_main.py — three levels up to src/
@@ -41,36 +40,6 @@ os.environ.setdefault("CSV_DATA_DIR", "./data/csv/samples/aws_workshop")
 
 logger = logging.getLogger(__name__)
 
-_INTERNAL_REST_PORT = int(os.environ.get("INTERNAL_API_PORT", "8001"))
-
-
-def _start_fastapi_background():
-    """Start FastAPI REST API on an internal port in a background thread.
-
-    Required because some MCP tools (transition_order, create_deal_from_template,
-    etc.) call back to the REST API via httpx to localhost.
-    """
-    import uvicorn
-
-    from ad_seller.interfaces.api.main import app as fastapi_app
-
-    config = uvicorn.Config(
-        fastapi_app,
-        host="0.0.0.0",
-        port=_INTERNAL_REST_PORT,
-        log_level="warning",
-    )
-    server = uvicorn.Server(config)
-
-    def _run():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(server.serve())
-
-    thread = threading.Thread(target=_run, daemon=True, name="fastapi-rest-bg")
-    thread.start()
-    logger.info("FastAPI REST background server starting on port %d", _INTERNAL_REST_PORT)
-
 
 def main():
     """Start the MCP server on port 8000 with Streamable HTTP transport.
@@ -79,15 +48,9 @@ def main():
     from the AgentCore MCP docs. This handles ``POST /mcp`` and ``POST /mcp/``
     correctly.
 
-    FastAPI REST API runs in a background thread on port 8001 for MCP tool
-    callbacks via httpx.
+    No background REST server is started: MCP tools call the service layer
+    directly in-process (EP-3.2), so there is nothing to loop back to.
     """
-    # Point MCP tools that call REST API to the internal port
-    os.environ.setdefault("SELLER_AGENT_URL", f"http://localhost:{_INTERNAL_REST_PORT}")
-
-    # Start FastAPI REST in background for MCP tool callbacks
-    _start_fastapi_background()
-
     # Import and run the MCP server — this blocks on port 8000
     from mcp.server.transport_security import TransportSecuritySettings
 
