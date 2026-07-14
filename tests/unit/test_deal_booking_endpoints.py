@@ -107,31 +107,32 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"quote_id": quote["quote_id"]})
+            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
 
         assert resp.status_code == 200
-        data = resp.json()
+        # Shared DealBookingResponse envelope wraps the Deal primitive.
+        data = resp.json()["deal"]
         assert data["deal_id"].startswith("DEMO-")
         assert data["status"] == "proposed"
         assert data["quote_id"] == quote["quote_id"]
-        assert data["pricing"]["final_cpm"] == 28.26
-        assert data["pricing"]["base_cpm"] == 35.0
+        assert data["pricing"]["final_cpm"]["amount_micros"] == 28_260_000
+        assert data["pricing"]["base_cpm"]["amount_micros"] == 35_000_000
         assert data["terms"]["impressions"] == 5000000
         assert data["product"]["product_id"] == "ctv-premium-sports"
         assert "ttd" in data["activation_instructions"]
         assert "dv360" in data["activation_instructions"]
         assert data["openrtb_params"]["id"] == data["deal_id"]
-        assert data["openrtb_params"]["bidfloor"] == 28.26
+        assert data["openrtb_params"]["bidfloor"]["amount_micros"] == 28_260_000
 
     async def test_quote_status_updated_to_booked(self, client, mock_storage):
         quote = _make_available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"quote_id": quote["quote_id"]})
+            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
 
         assert resp.status_code == 200
-        deal_id = resp.json()["deal_id"]
+        deal_id = resp.json()["deal"]["deal_id"]
         stored_quote = mock_storage._store[f"quote:{quote['quote_id']}"]
         assert stored_quote["status"] == "booked"
         assert stored_quote["deal_id"] == deal_id
@@ -141,9 +142,9 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"quote_id": quote["quote_id"]})
+            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
 
-        deal_id = resp.json()["deal_id"]
+        deal_id = resp.json()["deal"]["deal_id"]
         stored_deal = mock_storage._store[f"deal:{deal_id}"]
         assert stored_deal["deal_id"] == deal_id
         assert stored_deal["status"] == "proposed"
@@ -153,16 +154,19 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"quote_id": quote["quote_id"]})
+            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
 
         assert resp.status_code == 200
-        assert resp.json()["openrtb_params"]["at"] == 3
+        assert resp.json()["deal"]["openrtb_params"]["at"] == 3
 
     # Error cases
 
     async def test_quote_not_found(self, client, mock_storage):
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"quote_id": "qt-nonexistent"})
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-notfound", "quote_id": "qt-nonexistent"},
+            )
         assert resp.status_code == 404
         assert resp.json()["detail"]["error"] == "quote_not_found"
 
@@ -173,7 +177,7 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"quote_id": quote["quote_id"]})
+            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
         assert resp.status_code == 410
         assert resp.json()["detail"]["error"] == "quote_expired"
 
@@ -182,9 +186,30 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"quote_id": quote["quote_id"]})
+            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
         assert resp.status_code == 409
         assert resp.json()["detail"]["error"] == "quote_already_booked"
+
+    async def test_idempotent_replay_returns_same_deal(self, client, mock_storage):
+        """FD-12: same idempotency_key -> same Deal, no duplicate booking."""
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            first = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-replay", "quote_id": quote["quote_id"]},
+            )
+            # The quote is now booked; a naive re-book would 409. Replaying the
+            # SAME key must instead return the original deal (200), unchanged.
+            second = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-replay", "quote_id": quote["quote_id"]},
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["deal"]["deal_id"] == second.json()["deal"]["deal_id"]
 
 
 # =============================================================================
@@ -215,7 +240,7 @@ class TestGetDeal:
             resp = await client.get("/api/v1/deals/DEMO-ABC123456789")
 
         assert resp.status_code == 200
-        assert resp.json()["deal_id"] == "DEMO-ABC123456789"
+        assert resp.json()["deal"]["deal_id"] == "DEMO-ABC123456789"
 
     async def test_deal_not_found(self, client, mock_storage):
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
@@ -226,7 +251,12 @@ class TestGetDeal:
     async def test_lazy_expiry_for_proposed_deal(self, client, mock_storage):
         deal_data = {
             "deal_id": "DEMO-EXPIREDONE1",
+            "deal_type": "PD",
             "status": "proposed",
+            "quote_id": "qt-test123456",
+            "product": {"product_id": "ctv-premium-sports", "name": "CTV", "inventory_type": "ctv"},
+            "pricing": {"base_cpm": 35.0, "final_cpm": 28.26, "currency": "USD"},
+            "terms": {"impressions": 5000000, "flight_start": "2026-04-01", "flight_end": "2026-04-30"},
             "expires_at": (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z",
         }
         mock_storage._store["deal:DEMO-EXPIREDONE1"] = deal_data
@@ -235,13 +265,18 @@ class TestGetDeal:
             resp = await client.get("/api/v1/deals/DEMO-EXPIREDONE1")
 
         assert resp.status_code == 200
-        assert resp.json()["status"] == "expired"
+        assert resp.json()["deal"]["status"] == "expired"
         assert mock_storage._store["deal:DEMO-EXPIREDONE1"]["status"] == "expired"
 
     async def test_active_deal_not_expired(self, client, mock_storage):
         deal_data = {
             "deal_id": "DEMO-ACTIVEDEAL1",
+            "deal_type": "PD",
             "status": "active",
+            "quote_id": "qt-test123456",
+            "product": {"product_id": "ctv-premium-sports", "name": "CTV", "inventory_type": "ctv"},
+            "pricing": {"base_cpm": 35.0, "final_cpm": 28.26, "currency": "USD"},
+            "terms": {"impressions": 5000000, "flight_start": "2026-04-01", "flight_end": "2026-04-30"},
             "expires_at": (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z",
         }
         mock_storage._store["deal:DEMO-ACTIVEDEAL1"] = deal_data
@@ -250,7 +285,7 @@ class TestGetDeal:
             resp = await client.get("/api/v1/deals/DEMO-ACTIVEDEAL1")
 
         assert resp.status_code == 200
-        assert resp.json()["status"] == "active"
+        assert resp.json()["deal"]["status"] == "active"
 
 
 # =============================================================================
@@ -312,15 +347,18 @@ class TestQuoteToDealFlow:
             quote_id = quote_resp.json()["quote"]["quote_id"]
 
             # Step 2: Book deal from quote
-            deal_resp = await client.post("/api/v1/deals", json={"quote_id": quote_id})
+            deal_resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-flow-book-1", "quote_id": quote_id},
+            )
             assert deal_resp.status_code == 200
-            deal_id = deal_resp.json()["deal_id"]
+            deal_id = deal_resp.json()["deal"]["deal_id"]
             assert deal_id.startswith("DEMO-")
 
             # Step 3: Retrieve the deal
             get_deal_resp = await client.get(f"/api/v1/deals/{deal_id}")
             assert get_deal_resp.status_code == 200
-            assert get_deal_resp.json()["deal_id"] == deal_id
+            assert get_deal_resp.json()["deal"]["deal_id"] == deal_id
 
             # Step 4: Verify original quote is now "booked"
             get_quote_resp = await client.get(f"/api/v1/quotes/{quote_id}")
@@ -328,6 +366,11 @@ class TestQuoteToDealFlow:
             assert get_quote_resp.json()["quote"]["status"] == "booked"
             assert get_quote_resp.json()["quote"]["deal_id"] == deal_id
 
-            # Step 5: Double-booking returns 409
-            double_book = await client.post("/api/v1/deals", json={"quote_id": quote_id})
+            # Step 5: Double-booking returns 409. A *different* idempotency key
+            # forces a real re-book attempt (the quote is already booked) rather
+            # than an idempotent replay of Step 2.
+            double_book = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-flow-book-2", "quote_id": quote_id},
+            )
             assert double_book.status_code == 409

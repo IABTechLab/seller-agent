@@ -21,9 +21,12 @@ from typing import Any, Optional
 
 from iab_agentic_primitives.primitives import (
     AccessTier,
+    Deal,
+    DealStatus,
     DealType,
     MediaType,
     Money,
+    OpenRTBParams,
     PricingModel,
     PricingType,
     ProductRef,
@@ -33,7 +36,12 @@ from iab_agentic_primitives.primitives import (
     QuoteStatus,
     QuoteTerms,
 )
-from iab_agentic_primitives.protocol import QuoteRequest, QuoteResponse
+from iab_agentic_primitives.protocol import (
+    DealBookingRequest,
+    DealBookingResponse,
+    QuoteRequest,
+    QuoteResponse,
+)
 from iab_agentic_primitives.protocol.errors import ErrorCode, ErrorDetail
 
 # ---------------------------------------------------------------------------
@@ -200,3 +208,87 @@ def internal_quote_to_response(
 ) -> QuoteResponse:
     """Wrap the internal quote dict in the shared :class:`QuoteResponse`."""
     return QuoteResponse(quote=internal_quote_to_shared_quote(data, media_type))
+
+
+# ---------------------------------------------------------------------------
+# Deal booking surface
+# ---------------------------------------------------------------------------
+
+
+def deal_booking_request_to_internal(req: DealBookingRequest) -> Any:
+    """Map the shared :class:`DealBookingRequest` to the seller's internal model.
+
+    ``idempotency_key`` and ``consent_context`` are handled at the boundary
+    (router) and by the shared model; the internal
+    :class:`DealBookingRequestModel` keeps only the fields
+    ``deal_service.book_deal`` reads.
+    """
+    from .schemas import DealBookingRequestModel, QuoteBuyerIdentityModel
+
+    buyer_identity = None
+    if req.buyer_identity is not None:
+        buyer_identity = QuoteBuyerIdentityModel(
+            seat_id=req.buyer_identity.seat_id,
+            agency_id=req.buyer_identity.agency_id,
+            advertiser_id=req.buyer_identity.advertiser_id,
+            dsp_platform=req.buyer_identity.dsp_platform,
+        )
+
+    return DealBookingRequestModel(
+        quote_id=req.quote_id,
+        buyer_identity=buyer_identity,
+        notes=req.notes,
+        audience_plan=req.audience_plan,
+    )
+
+
+def _openrtb_to_shared(params: dict[str, Any] | None) -> Optional[OpenRTBParams]:
+    if not params:
+        return None
+    return OpenRTBParams(
+        id=params.get("id", ""),
+        bidfloor=float_to_money(
+            params.get("bidfloor"), params.get("bidfloorcur", "USD")
+        )
+        or Money(amount_micros=0, currency=params.get("bidfloorcur", "USD")),
+        at=params.get("at", 3),
+        wseat=params.get("wseat", []) or [],
+        wadomain=params.get("wadomain", []) or [],
+    )
+
+
+def internal_deal_to_shared_deal(data: dict[str, Any]) -> Deal:
+    """Build the shared :class:`Deal` primitive from the internal deal dict."""
+    product = data.get("product", {})
+    return Deal(
+        deal_id=data["deal_id"],
+        deal_type=DealType(data["deal_type"]),
+        status=DealStatus(data.get("status", "proposed")),
+        quote_id=data.get("quote_id"),
+        product=ProductRef(
+            product_id=product.get("product_id", ""),
+            name=product.get("name", ""),
+            inventory_type=product.get("inventory_type"),
+        ),
+        pricing=_quote_pricing_to_shared(data.get("pricing", {})),
+        terms=_quote_terms_to_shared(data.get("terms", {})),
+        buyer_tier=AccessTier(data.get("buyer_tier", "public")),
+        seller_id=data.get("seller_id"),
+        expires_at=_parse_dt(data.get("expires_at")),
+        activation_instructions=data.get("activation_instructions", {}) or {},
+        openrtb_params=_openrtb_to_shared(data.get("openrtb_params")),
+        created_at=_parse_dt(data.get("created_at")) or datetime.now(),
+    )
+
+
+def internal_deal_to_response(data: dict[str, Any]) -> DealBookingResponse:
+    """Wrap the internal deal dict in the shared :class:`DealBookingResponse`.
+
+    The seller's audience-plan snapshot / match-summary (proposal §5.7) ride
+    on the envelope alongside the Deal primitive.
+    """
+    return DealBookingResponse(
+        deal=internal_deal_to_shared_deal(data),
+        audience_plan_snapshot=data.get("audience_plan_snapshot"),
+        audience_match_summary=data.get("audience_match_summary"),
+    )

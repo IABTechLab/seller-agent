@@ -178,6 +178,7 @@ class TestDualContentTypeAcceptance:
             resp = await client.post(
                 "/api/v1/deals",
                 json={
+                    "idempotency_key": "idem-snap",
                     "quote_id": quote["quote_id"],
                     "audience_plan": _make_audience_plan(),
                 },
@@ -185,7 +186,7 @@ class TestDualContentTypeAcceptance:
             )
 
         assert resp.status_code == 200
-        assert resp.json()["deal_id"].startswith("DEMO-")
+        assert resp.json()["deal"]["deal_id"].startswith("DEMO-")
 
     async def test_accepts_new_agentic_audiences_alias(self, client, mock_storage):
         quote = _make_available_quote(quote_id="qt-agentic")
@@ -195,6 +196,7 @@ class TestDualContentTypeAcceptance:
             resp = await client.post(
                 "/api/v1/deals",
                 json={
+                    "idempotency_key": "idem-snap",
                     "quote_id": quote["quote_id"],
                     "audience_plan": _make_audience_plan(),
                 },
@@ -202,7 +204,7 @@ class TestDualContentTypeAcceptance:
             )
 
         assert resp.status_code == 200
-        assert resp.json()["deal_id"].startswith("DEMO-")
+        assert resp.json()["deal"]["deal_id"].startswith("DEMO-")
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +223,7 @@ class TestSnapshotResponseShape:
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
-                json={"quote_id": quote["quote_id"], "audience_plan": plan},
+                json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"], "audience_plan": plan},
                 headers={"Content-Type": _UCP},
             )
 
@@ -240,6 +242,7 @@ class TestSnapshotResponseShape:
             resp = await client.post(
                 "/api/v1/deals",
                 json={
+                    "idempotency_key": "idem-snap",
                     "quote_id": quote["quote_id"],
                     "audience_plan": _make_audience_plan(),
                 },
@@ -278,15 +281,17 @@ class TestSnapshotResponseShape:
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
-                json={"quote_id": quote["quote_id"]},
+                json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"]},
             )
 
         assert resp.status_code == 200
         body = resp.json()
         # No audience plan -> legacy shape (no snapshot fields land on the
         # response or on the persisted record).
-        assert "audience_plan_snapshot" not in body
-        assert "audience_match_summary" not in body
+        # The shared DealBookingResponse always carries these optional
+        # fields; they are null when the booking had no audience_plan.
+        assert body["audience_plan_snapshot"] is None
+        assert body["audience_match_summary"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +311,7 @@ class TestPlanIdLogging:
             with caplog.at_level(logging.INFO, logger="ad_seller.audience.booking"):
                 resp = await client.post(
                     "/api/v1/deals",
-                    json={"quote_id": quote["quote_id"], "audience_plan": plan},
+                    json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"], "audience_plan": plan},
                 )
 
         assert resp.status_code == 200
@@ -315,7 +320,7 @@ class TestPlanIdLogging:
         msg = records[0].getMessage()
         # Plan id, deal id, and quote id all surface for end-to-end correlation.
         assert plan["audience_plan_id"] in msg
-        assert resp.json()["deal_id"] in msg
+        assert resp.json()["deal"]["deal_id"] in msg
         assert quote["quote_id"] in msg
 
     async def test_no_audience_plan_does_not_log(self, client, mock_storage, caplog):
@@ -324,7 +329,7 @@ class TestPlanIdLogging:
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             with caplog.at_level(logging.INFO, logger="ad_seller.audience.booking"):
-                await client.post("/api/v1/deals", json={"quote_id": quote["quote_id"]})
+                await client.post("/api/v1/deals", json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"]})
 
         assert [r for r in caplog.records if r.name == "ad_seller.audience.booking"] == []
 
@@ -348,10 +353,10 @@ class TestSnapshotPersistence:
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
-                json={"quote_id": quote["quote_id"], "audience_plan": plan},
+                json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"], "audience_plan": plan},
             )
 
-        deal_id = resp.json()["deal_id"]
+        deal_id = resp.json()["deal"]["deal_id"]
         stored = mock_storage._store[f"deal:{deal_id}"]
         # Frozen snapshot is verbatim on the persisted record.
         assert stored["audience_plan_snapshot"] == plan

@@ -513,6 +513,7 @@ class TestBookDealAudiencePlanRejection:
                 resp = await c.post(
                     "/api/v1/deals",
                     json={
+                        "idempotency_key": "idem-audplan-1",
                         "quote_id": quote_id,
                         "audience_plan": {
                             "primary": _ref("standard", "3-7"),
@@ -535,6 +536,7 @@ class TestBookDealAudiencePlanRejection:
                 resp = await c.post(
                     "/api/v1/deals",
                     json={
+                        "idempotency_key": "idem-audplan-2",
                         "quote_id": quote_id,
                         "audience_plan": {
                             "primary": _ref("standard", "3-7"),
@@ -543,5 +545,5 @@ class TestBookDealAudiencePlanRejection:
                     },
                 )
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["deal"]
         assert data["deal_id"].startswith("DEMO-")

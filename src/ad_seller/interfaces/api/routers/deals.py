@@ -17,8 +17,10 @@ and handler behavior are otherwise unchanged.
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from iab_agentic_primitives.protocol import DealBookingRequest, DealBookingResponse
 
 from ....services import deal_service
+from .. import contract_mappers as cm
 from .. import deps
 from ..schemas import (
     AgenticAudienceMatchRequest,
@@ -27,7 +29,6 @@ from ..schemas import (
     BulkDealResponse,
     CuratedDealRequest,
     CuratorRegistrationRequest,
-    DealBookingRequestModel,
     DealDeprecationRequest,
     DealFromTemplateRequest,
     DealFromTemplateResponse,
@@ -59,9 +60,9 @@ async def generate_deal(request: DealRequest):
 
 @router.post("/api/v1/deals", tags=["Deal Booking"])
 async def book_deal(
-    request: DealBookingRequestModel,
+    request: DealBookingRequest,
     api_key_record=Depends(deps._get_optional_api_key_record),
-):
+) -> DealBookingResponse:
     """Book a deal from a previously issued quote.
 
     The seller validates the quote, generates a Deal ID, and returns
@@ -89,8 +90,40 @@ async def book_deal(
     ``ad_seller.audience.booking``. The buyer logs the same hash on its
     side; matching entries are the cross-system anchor for dispute
     resolution.
+
+    **Idempotency (FD-12):** the request carries a required
+    ``idempotency_key``. A replay with a key already booked returns the
+    same Deal without minting a second one (no duplicate side effect).
     """
-    return await deal_service.book_deal(request)
+    from ....storage.factory import get_storage
+
+    internal_request = cm.deal_booking_request_to_internal(request)
+
+    # Honor the shared idempotency key: same key -> same response, no
+    # duplicate booking (FD-12). Kept at the wire edge so deal_service
+    # stays untouched. Defensive against storage backends/mocks that do
+    # not implement the generic get/set KV methods.
+    idem_storage_key = f"idempotency:deal:{request.idempotency_key}"
+    storage = await get_storage()
+    try:
+        prior_deal_id = await storage.get(idem_storage_key)
+    except Exception:
+        prior_deal_id = None
+    # Only a real, previously-persisted string id counts as a prior booking;
+    # this also guards against AsyncMock storages that auto-return truthy
+    # sentinels for undefined KV methods.
+    if isinstance(prior_deal_id, str) and prior_deal_id:
+        existing = await deal_service.get_deal(prior_deal_id)
+        return cm.internal_deal_to_response(existing)
+
+    result = await deal_service.book_deal(internal_request)
+
+    try:
+        await storage.set(idem_storage_key, result["deal_id"], ttl=86400)
+    except Exception:
+        pass
+
+    return cm.internal_deal_to_response(result)
 
 
 @router.post("/agentic-audience/match", tags=["Audience"])
@@ -135,12 +168,14 @@ async def export_deals(
 
 
 @router.get("/api/v1/deals/{deal_id}", tags=["Deal Booking"])
-async def get_deal_by_id(deal_id: str):
+async def get_deal_by_id(deal_id: str) -> DealBookingResponse:
     """Get the current status of a deal.
 
-    Performs a lazy expiry check for deals in 'proposed' status.
+    Performs a lazy expiry check for deals in 'proposed' status. Returns
+    the shared :class:`DealBookingResponse` (wraps the Deal primitive).
     """
-    return await deal_service.get_deal(deal_id)
+    result = await deal_service.get_deal(deal_id)
+    return cm.internal_deal_to_response(result)
 
 
 @router.post(

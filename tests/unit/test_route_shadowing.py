@@ -112,13 +112,18 @@ class TestDealsExportNotShadowed:
         """Reordering must not break the {deal_id} catch-all for real IDs."""
         mock_storage._store["deal:DEMO-REALDEAL123"] = {
             "deal_id": "DEMO-REALDEAL123",
+            "deal_type": "PD",
             "status": "active",
+            "quote_id": "qt-real",
+            "product": {"product_id": "ctv-premium", "name": "CTV", "inventory_type": "ctv"},
+            "pricing": {"base_cpm": 30.0, "final_cpm": 30.0, "currency": "USD"},
+            "terms": {"impressions": 1000000, "flight_start": "2026-04-01", "flight_end": "2026-04-30"},
         }
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.get("/api/v1/deals/DEMO-REALDEAL123")
 
         assert resp.status_code == 200
-        assert resp.json()["deal_id"] == "DEMO-REALDEAL123"
+        assert resp.json()["deal"]["deal_id"] == "DEMO-REALDEAL123"
 
 
 # =============================================================================
