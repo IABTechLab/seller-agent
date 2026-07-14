@@ -67,6 +67,75 @@ async def _get_storage():
 
 
 # =============================================================================
+# Helpers: in-process service dispatch (replaces HTTP loopback to localhost)
+# =============================================================================
+
+
+def _dumps(data: Any) -> str:
+    """Serialize a service result exactly as the REST layer would over the wire."""
+    return json.dumps(data, indent=2, default=str)
+
+
+async def _service_json(coro) -> str:
+    """Await a service coroutine and return its result as a JSON string.
+
+    Mirrors the previous loopback behavior of returning the REST response
+    body even for error responses: an ``HTTPException`` raised by a service
+    is serialized as ``{"detail": ...}`` — the same envelope FastAPI emits.
+    """
+    from fastapi import HTTPException
+
+    try:
+        result = await coro
+    except HTTPException as exc:
+        return _dumps({"detail": exc.detail})
+    return _dumps(result)
+
+
+def _static_catalog() -> dict[str, Any]:
+    """Single cached product catalog source (same one the REST routes read)."""
+    from ..services import catalog_service
+
+    return catalog_service.get_static_product_catalog()
+
+
+def _public_context():
+    """Anonymous PUBLIC-tier buyer context.
+
+    The MCP loopback tools sent no API key and no buyer identity, so the REST
+    endpoints resolved every call to an anonymous PUBLIC context. Building that
+    context directly here preserves the exact behavior in-process.
+    """
+    from ..models.buyer_identity import BuyerContext, BuyerIdentity
+
+    return BuyerContext(identity=BuyerIdentity(), is_authenticated=False)
+
+
+async def _registry_service():
+    """Build an AgentRegistryService (mirrors interfaces.api.deps, no app import)."""
+    from ..clients.agent_registry_client import AAMPRegistryClient
+    from ..registry import AgentRegistryService
+
+    storage = await _get_storage()
+    settings = _get_settings()
+    clients = [AAMPRegistryClient(registry_url=settings.agent_registry_url)]
+    if settings.agent_registry_extra_urls:
+        for url in settings.agent_registry_extra_urls.split(","):
+            url = url.strip()
+            if url:
+                clients.append(AAMPRegistryClient(registry_url=url))
+    return AgentRegistryService(storage, registry_clients=clients)
+
+
+async def _api_key_service():
+    """Build an ApiKeyService (same construction the REST admin router uses)."""
+    from ..auth.api_key_service import ApiKeyService
+
+    storage = await _get_storage()
+    return ApiKeyService(storage)
+
+
+# =============================================================================
 # Setup & Status
 # =============================================================================
 
@@ -240,13 +309,15 @@ async def set_publisher_identity(name: str, domain: str = "", org_id: str = "") 
 async def list_products(limit: int | None = 50) -> str:
     """List products in the catalog. These are the inventory items available for deals."""
     limit = limit or 50
-    from ..flows import ProductSetupFlow
+    from ..services import catalog_service
 
-    flow = ProductSetupFlow()
-    await flow.kickoff_async()
+    # Read from the single cached catalog source (EP-3.3) instead of running
+    # ProductSetupFlow per call (which spins up an OpenDirect MCP session that
+    # hangs in session.initialize()). Same source the REST /products route uses.
+    catalog = catalog_service.get_static_product_catalog()
 
     products = []
-    for pid, product in list(flow.state.products.items())[:limit]:
+    for pid, product in list(catalog["products"].items())[:limit]:
         products.append(
             {
                 "product_id": pid,
@@ -406,40 +477,35 @@ async def update_rate_card(entries: str) -> str:
 @mcp.tool()
 async def get_pricing(product_id: str, buyer_tier: str = "public", volume: int = 0) -> str:
     """Calculate tiered pricing for a product based on buyer identity."""
-    from ..engines.pricing_rules_engine import PricingRulesEngine
-    from ..flows import ProductSetupFlow
     from ..models.buyer_identity import BuyerContext, BuyerIdentity
-    from ..models.core import DealType
-    from ..models.pricing_tiers import TieredPricingConfig
+    from ..services import catalog_service, quote_service
 
-    setup = ProductSetupFlow()
-    await setup.kickoff_async()
-    product = setup.state.products.get(product_id)
+    # Product from the single cached catalog source; pricing via the SAME
+    # quote_service.get_pricing the REST /pricing route calls (single source)
+    # instead of re-instantiating ProductSetupFlow/TieredPricingConfig/
+    # PricingRulesEngine independently.
+    catalog = catalog_service.get_static_product_catalog()
+    product = catalog["products"].get(product_id)
 
     if not product:
         return json.dumps({"error": f"Product '{product_id}' not found"})
 
     context = BuyerContext(identity=BuyerIdentity(), is_authenticated=buyer_tier != "public")
-    config = TieredPricingConfig(seller_organization_id="default")
-    engine = PricingRulesEngine(config)
-
-    decision = engine.calculate_price(
+    pricing = quote_service.get_pricing(
         product_id=product_id,
-        base_price=product.base_cpm,
+        product=product,
         buyer_context=context,
-        deal_type=DealType.PREFERRED_DEAL,
         volume=volume,
-        inventory_type=product.inventory_type,
     )
 
     return json.dumps(
         {
             "product_id": product_id,
-            "base_cpm": decision.base_price,
-            "final_cpm": decision.final_price,
-            "tier_discount": decision.tier_discount,
-            "volume_discount": decision.volume_discount,
-            "rationale": decision.rationale,
+            "base_cpm": pricing["base_price"],
+            "final_cpm": pricing["final_price"],
+            "tier_discount": pricing["tier_discount"],
+            "volume_discount": pricing["volume_discount"],
+            "rationale": pricing["rationale"],
         },
         indent=2,
     )
@@ -453,18 +519,22 @@ async def get_pricing(product_id: str, buyer_tier: str = "public", volume: int =
 @mcp.tool()
 async def request_quote(product_id: str, deal_type: str = "PD", impressions: int = 0) -> str:
     """Request a non-binding price quote for a product."""
-    import httpx
+    from types import SimpleNamespace
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    from ..services import quote_service
 
-    body = {"product_id": product_id, "deal_type": deal_type}
-    if impressions:
-        body["impressions"] = impressions
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/api/v1/quotes", json=body)
-        return resp.text
+    request = SimpleNamespace(
+        product_id=product_id,
+        deal_type=deal_type,
+        impressions=impressions or None,
+        flight_start=None,
+        flight_end=None,
+        target_cpm=None,
+        buyer_identity=None,
+    )
+    return await _service_json(
+        quote_service.create_quote(request, _public_context(), _static_catalog())
+    )
 
 
 @mcp.tool()
@@ -478,54 +548,79 @@ async def create_deal_from_template(
 ) -> str:
     """Create a deal directly from parameters (one-step, no quote needed).
     Returns the deal or a rejection if max_cpm is below floor."""
-    import httpx
+    from types import SimpleNamespace
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    from fastapi import HTTPException
 
-    body: dict[str, Any] = {"deal_type": deal_type, "product_id": product_id}
-    if max_cpm:
-        body["max_cpm"] = max_cpm
-    if impressions:
-        body["impressions"] = impressions
-    if flight_start:
-        body["flight_start"] = flight_start
-    if flight_end:
-        body["flight_end"] = flight_end
+    from ..services import deal_service
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/api/v1/deals/from-template", json=body)
-        return resp.text
+    request = SimpleNamespace(
+        deal_type=deal_type,
+        product_id=product_id,
+        impressions=impressions or None,
+        max_cpm=max_cpm or None,
+        flight_start=flight_start or None,
+        flight_end=flight_end or None,
+        buyer_identity=None,
+        notes=None,
+    )
+    try:
+        deal_data = await deal_service.create_deal_from_template(
+            request, _public_context(), _static_catalog()
+        )
+    except HTTPException as exc:
+        return _dumps({"detail": exc.detail})
+
+    # Mirror the REST DealFromTemplateResponse projection (single source of I/O).
+    return _dumps(
+        {
+            "deal_id": deal_data["deal_id"],
+            "status": "confirmed",
+            "deal_type": deal_data["deal_type"],
+            "product_id": deal_data["product_id"],
+            "actual_price_cpm": deal_data["actual_price_cpm"],
+            "currency": deal_data.get("currency", "USD"),
+            "impressions": deal_data["impressions"],
+            "flight_start": deal_data["flight_start"],
+            "flight_end": deal_data["flight_end"],
+            "buyer_tier": deal_data["buyer_tier"],
+            "activation_instructions": deal_data["activation_instructions"],
+            "schain": deal_data["schain"],
+            "created_at": deal_data["created_at"],
+        }
+    )
 
 
 @mcp.tool()
 async def get_deal_performance(deal_id: str) -> str:
     """Get delivery and performance metrics for a deal."""
-    import httpx
+    from ..services import deal_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/api/v1/deals/{deal_id}/performance")
-        return resp.text
+    return await _service_json(deal_service.get_deal_performance(deal_id))
 
 
 @mcp.tool()
 async def push_deal_to_buyers(deal_id: str, buyer_urls: str) -> str:
     """Push a deal to buyer endpoints via IAB Deals API v1.0.
     Pass buyer_urls as comma-separated list."""
-    import httpx
+    from types import SimpleNamespace
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    from ..services import deal_service
 
     urls = [u.strip() for u in buyer_urls.split(",") if u.strip()]
-    body = {"deal_id": deal_id, "buyer_urls": urls}
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/api/v1/deals/push", json=body)
-        return resp.text
+    request = SimpleNamespace(
+        deal_id=deal_id,
+        buyer_urls=urls,
+        buyer_api_keys=None,
+        deal_type=None,
+        price=None,
+        name=None,
+        impressions=None,
+        flight_start=None,
+        flight_end=None,
+        buyer_seat_ids=None,
+    )
+    return await _service_json(deal_service.push_deal_to_buyers(request))
 
 
 @mcp.tool()
@@ -538,118 +633,115 @@ async def distribute_deal_via_ssp(
 ) -> str:
     """Distribute a deal through configured SSP(s).
     Routes based on ssp_name or inventory_type routing rules."""
-    import httpx
+    from types import SimpleNamespace
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    from ..services import deal_service
 
-    body: dict[str, Any] = {"deal_id": deal_id, "deal_type": deal_type}
-    if cpm:
-        body["cpm"] = cpm
-    if ssp_name:
-        body["ssp_name"] = ssp_name
-    if inventory_type:
-        body["inventory_type"] = inventory_type
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/api/v1/deals/distribute", json=body)
-        return resp.text
+    request = SimpleNamespace(
+        deal_id=deal_id,
+        deal_type=deal_type,
+        name=None,
+        advertiser=None,
+        cpm=cpm or None,
+        buyer_seat_ids=None,
+        start_date=None,
+        end_date=None,
+        targeting=None,
+        ssp_name=ssp_name or None,
+        inventory_type=inventory_type or None,
+    )
+    return await _service_json(deal_service.distribute_deal_via_ssp(request))
 
 
 @mcp.tool()
 async def troubleshoot_deal(deal_id: str, ssp_name: str) -> str:
     """Diagnose deal performance issues via SSP diagnostics."""
-    import httpx
+    from ..services import deal_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(
-            f"{url}/api/v1/deals/{deal_id}/ssp-troubleshoot", params={"ssp_name": ssp_name}
-        )
-        return resp.text
+    return await _service_json(deal_service.troubleshoot_deal_via_ssp(deal_id, ssp_name))
 
 
 @mcp.tool()
 async def migrate_deal(old_deal_id: str, reason: str = "", max_cpm: float = 0) -> str:
     """Replace an existing deal with a new one. Creates lineage tracking."""
-    import httpx
+    from types import SimpleNamespace
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    from ..services import deal_service
 
-    body: dict[str, Any] = {"old_deal_id": old_deal_id}
-    if reason:
-        body["reason"] = reason
-    if max_cpm:
-        body["max_cpm"] = max_cpm
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/api/v1/deals/{old_deal_id}/migrate", json=body)
-        return resp.text
+    request = SimpleNamespace(
+        old_deal_id=old_deal_id,
+        deal_type=None,
+        product_id=None,
+        max_cpm=max_cpm or None,
+        impressions=None,
+        flight_start=None,
+        flight_end=None,
+        buyer_seat_ids=None,
+        reason=reason or None,
+        buyer_identity=None,
+    )
+    return await _service_json(deal_service.migrate_deal(old_deal_id, request))
 
 
 @mcp.tool()
 async def deprecate_deal(deal_id: str, reason: str, replacement_deal_id: str = "") -> str:
     """Mark a deal as deprecated with reason and optional replacement."""
-    import httpx
+    from types import SimpleNamespace
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    from ..services import deal_service
 
-    body: dict[str, Any] = {"reason": reason}
-    if replacement_deal_id:
-        body["replacement_deal_id"] = replacement_deal_id
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/api/v1/deals/{deal_id}/deprecate", json=body)
-        return resp.text
+    request = SimpleNamespace(
+        reason=reason,
+        replacement_deal_id=replacement_deal_id or None,
+    )
+    return await _service_json(deal_service.deprecate_deal(deal_id, request))
 
 
 @mcp.tool()
 async def get_deal_lineage(deal_id: str) -> str:
     """Get the lineage chain for a deal — parents and replacements."""
-    import httpx
+    from ..services import deal_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/api/v1/deals/{deal_id}/lineage")
-        return resp.text
+    return await _service_json(deal_service.get_deal_lineage(deal_id))
 
 
 @mcp.tool()
 async def export_deals(format: str = "generic", status: str = "") -> str:
     """Export deals in DSP-native format (generic, ttd, dv360, amazon, xandr)."""
-    import httpx
+    from ..services import deal_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    params: dict[str, str] = {"format": format}
-    if status:
-        params["status"] = status
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/api/v1/deals/export", params=params)
-        return resp.text
+    return await _service_json(deal_service.export_deals(format=format, status=status or None))
 
 
 @mcp.tool()
 async def bulk_deal_operations(operations: str) -> str:
     """Process multiple deal operations in one batch.
     Pass operations as JSON array: [{"action":"create","quote_id":"..."}, ...]"""
-    import httpx
+    from types import SimpleNamespace
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    from ..services import deal_service
 
     parsed = json.loads(operations)
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/api/v1/deals/bulk", json={"operations": parsed})
-        return resp.text
+    ops = [
+        SimpleNamespace(
+            action=o.get("action"),
+            deal_id=o.get("deal_id"),
+            quote_id=o.get("quote_id"),
+            buyer_identity=o.get("buyer_identity"),
+            notes=o.get("notes"),
+        )
+        for o in parsed
+    ]
+    results = await deal_service.bulk_deal_operations(ops)
+    succeeded = sum(1 for r in results if r["success"])
+    return _dumps(
+        {
+            "total": len(ops),
+            "succeeded": succeeded,
+            "failed": len(ops) - succeeded,
+            "results": results,
+        }
+    )
 
 
 # =============================================================================
@@ -661,31 +753,25 @@ async def bulk_deal_operations(operations: str) -> str:
 async def list_orders(limit: int | None = 50) -> str:
     """List orders and their current states."""
     limit = limit or 50
-    import httpx
+    from ..services import order_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/api/v1/orders", params={"limit": limit})
-        return resp.text
+    # The REST GET /api/v1/orders endpoint filters only by status; the historic
+    # ``limit`` query param was ignored server-side, so it is a no-op here too.
+    return await _service_json(order_service.list_orders(status=None))
 
 
 @mcp.tool()
 async def transition_order(order_id: str, new_status: str, reason: str = "") -> str:
     """Transition an order to a new state (e.g., draft→approved→delivering)."""
-    import httpx
+    from ..services import order_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    body: dict[str, Any] = {"new_status": new_status}
-    if reason:
-        body["reason"] = reason
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/api/v1/orders/{order_id}/transition", json=body)
-        return resp.text
+    return await _service_json(
+        order_service.transition_order(
+            order_id=order_id,
+            to_status=new_status,
+            reason=reason,
+        )
+    )
 
 
 # =============================================================================
@@ -696,31 +782,23 @@ async def transition_order(order_id: str, new_status: str, reason: str = "") -> 
 @mcp.tool()
 async def list_pending_approvals() -> str:
     """List pending approval requests waiting for human decision."""
-    import httpx
+    from ..services import approval_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/approvals")
-        return resp.text
+    return await _service_json(approval_service.list_pending_approvals())
 
 
 @mcp.tool()
 async def approve_or_reject(approval_id: str, decision: str, reason: str = "") -> str:
     """Submit an approval decision. decision: 'approve', 'reject', or 'counter'."""
-    import httpx
+    from ..services import approval_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    body: dict[str, Any] = {"decision": decision}
-    if reason:
-        body["reason"] = reason
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/approvals/{approval_id}/decide", json=body)
-        return resp.text
+    return await _service_json(
+        approval_service.decide_approval(
+            approval_id=approval_id,
+            decision=decision,
+            reason=reason,
+        )
+    )
 
 
 @mcp.tool()
@@ -753,27 +831,85 @@ async def set_approval_gates(
 @mcp.tool()
 async def get_supply_chain() -> str:
     """Get the seller's supply chain transparency info (sellers.json format)."""
-    import httpx
+    from ..models.supply_chain import build_schain_from_sellers_json, load_sellers_json
 
     settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    seller_domain = getattr(settings, "seller_domain", "demo-publisher.example.com")
+    seller_name = getattr(settings, "seller_name", "Demo Publisher")
+    seller_id = getattr(settings, "seller_organization_id", "default")
+    sellers_json_path = getattr(settings, "sellers_json_path", None)
+    deal_types = ["programmatic_guaranteed", "preferred_deal", "private_auction"]
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/api/v1/supply-chain")
-        return resp.text
+    sellers_json = load_sellers_json(sellers_json_path)
+
+    if sellers_json:
+        primary = next(
+            (s for s in sellers_json.sellers if s.seller_id == seller_id),
+            sellers_json.sellers[0] if sellers_json.sellers else None,
+        )
+        schain_obj = build_schain_from_sellers_json(sellers_json, seller_id)
+        schain_nodes = [
+            {
+                "asi": node.asi,
+                "sid": node.sid,
+                "name": node.name or "",
+                "domain": node.domain or node.asi,
+                "seller_type": next(
+                    (s.seller_type for s in sellers_json.sellers if s.seller_id == node.sid),
+                    "PUBLISHER",
+                ),
+                "is_direct": (node == schain_obj.nodes[0]) if schain_obj.nodes else False,
+                "comment": next(
+                    (s.comment for s in sellers_json.sellers if s.seller_id == node.sid), None
+                ),
+            }
+            for node in schain_obj.nodes
+        ]
+        return _dumps(
+            {
+                "seller_id": primary.seller_id if primary else seller_id,
+                "seller_name": primary.name if primary else seller_name,
+                "seller_type": primary.seller_type if primary else "PUBLISHER",
+                "domain": primary.domain if primary else seller_domain,
+                "is_direct": primary.seller_type == "PUBLISHER" if primary else True,
+                "supported_deal_types": deal_types,
+                "contact_email": sellers_json.contact_email,
+                "schain": schain_nodes,
+                "version": sellers_json.version,
+            }
+        )
+
+    return _dumps(
+        {
+            "seller_id": seller_id,
+            "seller_name": seller_name,
+            "seller_type": "PUBLISHER",
+            "domain": seller_domain,
+            "is_direct": True,
+            "supported_deal_types": deal_types,
+            "contact_email": None,
+            "schain": [
+                {
+                    "asi": seller_domain,
+                    "sid": seller_id,
+                    "name": seller_name,
+                    "domain": seller_domain,
+                    "seller_type": "PUBLISHER",
+                    "is_direct": True,
+                    "comment": "Direct seller — no intermediaries",
+                }
+            ],
+            "version": "1.0",
+        }
+    )
 
 
 @mcp.tool()
 async def list_curators() -> str:
     """List registered curators (Agent Range is pre-registered)."""
-    import httpx
+    from ..services import deal_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/api/v1/curators")
-        return resp.text
+    return _dumps(deal_service.list_curators())
 
 
 @mcp.tool()
@@ -785,22 +921,23 @@ async def create_curated_deal(
     impressions: int = 0,
 ) -> str:
     """Create a deal with curator overlay. The curator's fee is added on top."""
-    import httpx
+    from types import SimpleNamespace
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    from ..services import deal_service
 
-    body: dict[str, Any] = {"curator_id": curator_id, "deal_type": deal_type}
-    if product_id:
-        body["product_id"] = product_id
-    if max_cpm:
-        body["max_cpm"] = max_cpm
-    if impressions:
-        body["impressions"] = impressions
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/api/v1/deals/curated", json=body)
-        return resp.text
+    request = SimpleNamespace(
+        curator_id=curator_id,
+        deal_type=deal_type,
+        product_id=product_id or None,
+        max_cpm=max_cpm or None,
+        impressions=impressions or None,
+        flight_start=None,
+        flight_end=None,
+        buyer_seat_ids=[],
+        audience_segments=[],
+        content_categories=[],
+    )
+    return await _service_json(deal_service.create_curated_deal(request, _static_catalog()))
 
 
 # =============================================================================
@@ -811,44 +948,65 @@ async def create_curated_deal(
 @mcp.tool()
 async def list_buyer_agents() -> str:
     """List registered buyer agents and their trust levels."""
-    import httpx
-
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/registry/agents")
-        return resp.text
+    service = await _registry_service()
+    agents = await service.list_agents()
+    return _dumps(
+        {
+            "agents": [a.model_dump(mode="json") for a in agents],
+            "total": len(agents),
+        }
+    )
 
 
 @mcp.tool()
 async def register_buyer_agent(agent_url: str) -> str:
     """Discover and register a buyer agent by URL.
     Fetches their agent card and adds them to the registry."""
-    import httpx
+    service = await _registry_service()
+    agent, tier = await service.resolve_agent_access(agent_url)
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
+    if not agent:
+        return _dumps({"detail": f"Could not fetch agent card from {agent_url}"})
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/registry/agents/discover", json={"url": agent_url})
-        return resp.text
+    return _dumps(
+        {
+            "agent": agent.model_dump(mode="json"),
+            "max_access_tier": tier.value if tier else None,
+            "is_blocked": agent.is_blocked,
+        }
+    )
 
 
 @mcp.tool()
 async def set_agent_trust(agent_id: str, trust_level: str) -> str:
     """Set trust level for a buyer agent.
     Levels: unknown, registered, approved, preferred, blocked."""
-    import httpx
+    from ..models.agent_registry import TRUST_TO_TIER_MAP, TrustStatus
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.put(
-            f"{url}/registry/agents/{agent_id}/trust", json={"trust_status": trust_level}
+    try:
+        ts = TrustStatus(trust_level)
+    except ValueError:
+        return _dumps(
+            {
+                "detail": f"Invalid trust_status: {trust_level}. "
+                f"Valid values: {[s.value for s in TrustStatus]}"
+            }
         )
-        return resp.text
+
+    service = await _registry_service()
+    agent = await service.update_trust_status(agent_id, ts, None)
+    if not agent:
+        return _dumps({"detail": "Agent not found"})
+
+    tier = TRUST_TO_TIER_MAP.get(ts)
+    return _dumps(
+        {
+            "agent_id": agent_id,
+            "trust_status": ts.value,
+            "max_access_tier": tier.value if tier else None,
+            "notes": None,
+        }
+    )
 
 
 # =============================================================================
@@ -859,46 +1017,41 @@ async def set_agent_trust(agent_id: str, trust_level: str) -> str:
 @mcp.tool()
 async def create_api_key(name: str = "buyer", seat_id: str = "", agency_id: str = "") -> str:
     """Create an API key for a buyer or agent."""
-    import httpx
+    from ..models.api_key import ApiKeyCreateRequest
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    body: dict[str, Any] = {"name": name}
-    if seat_id:
-        body["seat_id"] = seat_id
-    if agency_id:
-        body["agency_id"] = agency_id
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{url}/auth/api-keys", json=body)
-        return resp.text
+    # The historic ``name`` argument was never a field on the REST create
+    # schema (Pydantic dropped it); only seat_id/agency_id ever took effect.
+    create_req = ApiKeyCreateRequest(
+        seat_id=seat_id or None,
+        agency_id=agency_id or None,
+        label="",
+    )
+    service = await _api_key_service()
+    response = await service.create_key(create_req)
+    return _dumps(response.model_dump(mode="json"))
 
 
 @mcp.tool()
 async def list_api_keys() -> str:
     """List active API keys."""
-    import httpx
-
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/auth/api-keys")
-        return resp.text
+    service = await _api_key_service()
+    keys = await service.list_keys()
+    return _dumps(
+        {
+            "keys": [k.model_dump(mode="json") for k in keys],
+            "total": len(keys),
+        }
+    )
 
 
 @mcp.tool()
 async def revoke_api_key(key_id: str) -> str:
     """Revoke an API key."""
-    import httpx
-
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.delete(f"{url}/auth/api-keys/{key_id}")
-        return resp.text
+    service = await _api_key_service()
+    revoked = await service.revoke_key(key_id)
+    if not revoked:
+        return _dumps({"detail": "API key not found"})
+    return _dumps({"key_id": key_id, "status": "revoked"})
 
 
 # =============================================================================
@@ -909,14 +1062,9 @@ async def revoke_api_key(key_id: str) -> str:
 @mcp.tool()
 async def list_sessions() -> str:
     """List active buyer conversation sessions."""
-    import httpx
+    from ..services import session_service
 
-    settings = _get_settings()
-    url = getattr(settings, "seller_agent_url", "http://localhost:8000")
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{url}/sessions")
-        return resp.text
+    return await _service_json(session_service.list_sessions())
 
 
 # =============================================================================

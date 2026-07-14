@@ -168,33 +168,38 @@ class TestListProductsIntegration:
 
 
 class TestCreateDealFromTemplateIntegration:
-    """Test create_deal_from_template MCP tool with mocked HTTP."""
+    """create_deal_from_template MCP tool calls the deal_service in-process.
 
-    async def test_creates_deal_via_http(self):
+    EP-3.2: the tool no longer loops back to REST over httpx — it invokes the
+    same ``deal_service.create_deal_from_template`` the REST route uses. We
+    patch that service function and assert the tool routed through it (not
+    over HTTP) and projected the service result into the tool's I/O shape.
+    """
+
+    async def test_creates_deal_via_service(self):
         from ad_seller.interfaces.mcp_server import create_deal_from_template
 
-        settings = make_settings()
+        deal_data = {
+            "deal_id": "INTEG-DEAL-001",
+            "deal_type": "PG",
+            "status": "confirmed",
+            "product_id": "fw-ctv-premium-001",
+            "actual_price_cpm": 38.0,
+            "currency": "USD",
+            "impressions": 100000,
+            "flight_start": "2026-04-01",
+            "flight_end": "2026-04-30",
+            "buyer_tier": "public",
+            "activation_instructions": {"ttd": "…"},
+            "schain": {"complete": 1, "nodes": []},
+            "created_at": "2026-04-01T00:00:00Z",
+        }
 
-        mock_response = AsyncMock()
-        mock_response.text = json.dumps(
-            {
-                "deal_id": "INTEG-DEAL-001",
-                "deal_type": "PG",
-                "product_id": "fw-ctv-premium-001",
-                "price": 38.0,
-                "status": "created",
-            }
-        )
-        mock_response.status_code = 201
+        service_mock = AsyncMock(return_value=deal_data)
 
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with (
-            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
-            patch("httpx.AsyncClient", return_value=mock_client),
+        with patch(
+            "ad_seller.services.deal_service.create_deal_from_template",
+            service_mock,
         ):
             result = await create_deal_from_template(
                 deal_type="PG",
@@ -205,9 +210,14 @@ class TestCreateDealFromTemplateIntegration:
                 flight_end="2026-04-30",
             )
 
+        # The service was invoked directly (no httpx loopback).
+        assert service_mock.await_count == 1
+
         parsed = json.loads(result)
         assert parsed["deal_id"] == "INTEG-DEAL-001"
         assert parsed["deal_type"] == "PG"
+        assert parsed["status"] == "confirmed"
+        assert parsed["actual_price_cpm"] == 38.0
 
 
 # ============================================================================
@@ -216,16 +226,13 @@ class TestCreateDealFromTemplateIntegration:
 
 
 class TestListOrdersIntegration:
-    """Test list_orders MCP tool with mocked HTTP."""
+    """list_orders MCP tool calls order_service in-process (no httpx loopback)."""
 
-    async def test_returns_orders(self):
+    async def test_returns_orders_via_service(self):
         from ad_seller.interfaces.mcp_server import list_orders
 
-        settings = make_settings()
-
-        mock_response = AsyncMock()
-        mock_response.text = json.dumps(
-            {
+        service_mock = AsyncMock(
+            return_value={
                 "orders": [
                     {"order_id": "ord-001", "status": "draft", "deal_id": "DEAL-001"},
                     {"order_id": "ord-002", "status": "approved", "deal_id": "DEAL-002"},
@@ -234,16 +241,10 @@ class TestListOrdersIntegration:
             }
         )
 
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with (
-            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
-            patch("httpx.AsyncClient", return_value=mock_client),
-        ):
+        with patch("ad_seller.services.order_service.list_orders", service_mock):
             result = await list_orders(limit=50)
+
+        assert service_mock.await_count == 1
 
         parsed = json.loads(result)
         assert parsed["count"] == 2
