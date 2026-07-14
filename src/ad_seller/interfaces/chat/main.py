@@ -12,7 +12,7 @@ Enables natural language conversations with buyers for:
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from ...flows import DealRequestFlow, ProductSetupFlow
+from ...flows import DealRequestFlow
 from ...models.buyer_identity import AccessTier, BuyerContext, BuyerIdentity
 from ...models.session import Session, SessionStatus
 
@@ -58,10 +58,16 @@ class ChatInterface:
         self._current_session: Optional[Session] = None
 
     async def initialize(self) -> None:
-        """Initialize products and resources."""
-        flow = ProductSetupFlow()
-        await flow.kickoff_async()
-        self._products = flow.state.products
+        """Initialize products and resources.
+
+        Reads the catalog from the single cached ``catalog_service`` source
+        (the same one the REST layer uses) instead of running ProductSetupFlow
+        per interface — EP-3.2 thin-adapter rewiring.
+        """
+        from ...services import catalog_service
+
+        catalog = catalog_service.get_static_product_catalog()
+        self._products = catalog["products"]
 
     def set_buyer_context(self, context: BuyerContext) -> None:
         """Set the buyer context for the conversation.
@@ -416,16 +422,11 @@ class ChatInterface:
                 "type": "negotiation",
             }
 
-        # Use NegotiationEngine
-        from ...engines.negotiation_engine import NegotiationEngine
-        from ...engines.pricing_rules_engine import PricingRulesEngine
-        from ...engines.yield_optimizer import YieldOptimizer
-        from ...models.pricing_tiers import TieredPricingConfig
+        # NegotiationEngine wiring is owned by the service layer (single source)
+        # so chat, REST, and MCP all negotiate identically — EP-3.2.
+        from ...services import negotiation_service
 
-        config = TieredPricingConfig(seller_organization_id="default")
-        pricing_engine = PricingRulesEngine(config)
-        yield_opt = YieldOptimizer()
-        neg_engine = NegotiationEngine(pricing_engine, yield_opt)
+        neg_engine = negotiation_service.build_negotiation_engine()
 
         # Try to resume existing negotiation from session
         history = None

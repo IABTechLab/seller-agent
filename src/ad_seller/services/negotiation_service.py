@@ -18,6 +18,25 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 
+def build_negotiation_engine():
+    """Construct the seller's ``NegotiationEngine`` with its standard wiring.
+
+    Single source of the engine assembly (default tiered-pricing config +
+    pricing-rules engine + yield optimizer). Both the REST negotiation path
+    (``counter_proposal``) and the chat adapter build the engine here so the
+    negotiation behavior stays identical across surfaces (EP-3.2).
+    """
+    from ..engines.negotiation_engine import NegotiationEngine
+    from ..engines.pricing_rules_engine import PricingRulesEngine
+    from ..engines.yield_optimizer import YieldOptimizer
+    from ..models.pricing_tiers import TieredPricingConfig
+
+    config = TieredPricingConfig(seller_organization_id="default")
+    pricing_engine = PricingRulesEngine(config)
+    yield_opt = YieldOptimizer()
+    return NegotiationEngine(pricing_engine, yield_opt)
+
+
 async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, Any]) -> dict[str, Any]:
     """Evaluate a submitted proposal.
 
@@ -114,20 +133,13 @@ async def counter_proposal(
     Loads or creates a NegotiationHistory, evaluates the buyer's offer,
     persists the updated history, and emits a NEGOTIATION_ROUND event.
     """
-    from ..engines.negotiation_engine import NegotiationEngine
-    from ..engines.pricing_rules_engine import PricingRulesEngine
-    from ..engines.yield_optimizer import YieldOptimizer
     from ..events.helpers import emit_event
     from ..events.models import EventType
     from ..models.negotiation import NegotiationHistory
-    from ..models.pricing_tiers import TieredPricingConfig
     from ..storage.factory import get_storage
 
     storage = await get_storage()
-    config = TieredPricingConfig(seller_organization_id="default")
-    pricing_engine = PricingRulesEngine(config)
-    yield_opt = YieldOptimizer()
-    neg_engine = NegotiationEngine(pricing_engine, yield_opt)
+    neg_engine = build_negotiation_engine()
 
     # Load existing negotiation or start new one
     existing = await storage.get_negotiation(proposal_id)
