@@ -51,6 +51,36 @@ class EventType(str, Enum):
     NEGOTIATION_CONCLUDED = "negotiation.concluded"
 
 
+# Audit-class event types: money decisions and order state transitions whose
+# loss would break the audit trail. Emission for these is fail-closed: if the
+# event bus fails, the event is appended to a durable fallback JSONL file; if
+# that also fails, the error propagates to the caller instead of being
+# swallowed. Non-audit events keep the existing fail-open behavior.
+# See events/helpers.py and events/audit_fallback.py.
+AUDIT_EVENT_TYPES: frozenset[EventType] = frozenset(
+    {
+        # Proposal decisions / negotiation concessions
+        EventType.PROPOSAL_ACCEPTED,
+        EventType.PROPOSAL_REJECTED,
+        EventType.PROPOSAL_COUNTERED,
+        # Deal / order state transitions
+        EventType.DEAL_CREATED,
+        EventType.DEAL_REGISTERED,
+        EventType.DEAL_SYNCED,
+        EventType.EXECUTION_COMPLETED,
+        # Approval decisions
+        EventType.APPROVAL_REQUESTED,
+        EventType.APPROVAL_GRANTED,
+        EventType.APPROVAL_DENIED,
+        EventType.APPROVAL_TIMED_OUT,
+        # Negotiation rounds / concessions
+        EventType.NEGOTIATION_STARTED,
+        EventType.NEGOTIATION_ROUND,
+        EventType.NEGOTIATION_CONCLUDED,
+    }
+)
+
+
 class Event(BaseModel):
     """An event emitted by the system."""
 
