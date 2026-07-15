@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     gam_application_name: str = "AdSellerSystem"  # Application name for GAM API
     gam_api_version: str = "v202505"  # SOAP API version
     gam_default_trafficker_id: Optional[str] = None  # Default trafficker user ID
+    gam_automatic_booking: bool = False  # Auto-traffic deals into GAM on order creation
 
     # FreeWheel Configuration (alternative ad server)
     freewheel_enabled: bool = False  # Feature flag to enable FreeWheel integration

@@ -156,6 +156,10 @@ class BookDealInGAMTool(BaseTool):
             "pd": GAMLineItemType.PREFERRED_DEAL,
         }
         line_item_type = deal_type_map.get(deal_type_lower, GAMLineItemType.STANDARD)
+        is_programmatic = line_item_type in (
+            GAMLineItemType.SPONSORSHIP,
+            GAMLineItemType.PREFERRED_DEAL,
+        )
 
         try:
             from ...clients import GAMSoapClient
@@ -183,7 +187,7 @@ class BookDealInGAMTool(BaseTool):
                     advertiser_id=advertiser_id,
                     notes=f"OpenDirect Deal: {deal_id}",
                     external_order_id=deal_id,
-                    is_programmatic=True,
+                    is_programmatic=is_programmatic,
                 )
 
                 # Step 3: Build targeting

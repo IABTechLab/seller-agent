@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -2981,9 +2981,73 @@ class TransitionOrderRequest(BaseModel):
     metadata: Optional[dict] = None
 
 
+async def _push_deal_to_gam(deal_id: str, quote_id: Optional[str]) -> None:
+    """Background task: traffic a booked deal into GAM as order + line item."""
+    import asyncio
+    import logging
+
+    logger = logging.getLogger("ad_seller.gam_auto")
+    try:
+        from ...storage.factory import get_storage
+        from ...tools.gam.book_deal import BookDealInGAMTool
+
+        storage = await get_storage()
+
+        deal = await storage.get_deal(deal_id)
+        if not deal:
+            logger.warning("gam_auto: deal %s not found", deal_id)
+            return
+
+        if deal.get("gam_order_id"):
+            logger.info("gam_auto: deal %s already in GAM, skipping", deal_id)
+            return
+
+        # Resolve product details from the deal record or linked quote
+        product = deal.get("product") or {}
+        pricing = deal.get("pricing") or {}
+        terms = deal.get("terms") or {}
+
+        if not pricing.get("final_cpm") and quote_id:
+            quote = await storage.get_quote(quote_id)
+            if quote:
+                product = quote.get("product") or product
+                pricing = quote.get("pricing") or pricing
+                terms = quote.get("terms") or terms
+
+        product_name = product.get("name") or product.get("product_name") or deal_id
+        cpm = float(pricing.get("final_cpm") or pricing.get("cpm") or 0)
+        impressions = int(terms.get("impressions") or pricing.get("impressions") or 0)
+        start_date = (terms.get("flight_start") or "")[:10] or datetime.utcnow().strftime("%Y-%m-%d")
+        end_date = (terms.get("flight_end") or "")[:10] or (datetime.utcnow().replace(year=datetime.utcnow().year + 1)).strftime("%Y-%m-%d")
+
+        if not cpm or not impressions:
+            logger.warning("gam_auto: deal %s missing cpm or impressions, skipping GAM", deal_id)
+            return
+
+        tool = BookDealInGAMTool()
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: tool._run(
+                deal_id=deal_id,
+                deal_type="standard",
+                advertiser_name="IAB Tech Lab Buyer Agent",
+                campaign_name=f"IAB Agent Demo - {product_name}",
+                ad_unit_ids=["17980522"],
+                impressions=impressions,
+                cpm_rate=cpm,
+                start_date=start_date,
+                end_date=end_date,
+            ),
+        )
+        logger.info("gam_auto: deal %s → %s", deal_id, result)
+    except Exception as exc:
+        logging.getLogger("ad_seller.gam_auto").error("gam_auto failed for %s: %s", deal_id, exc)
+
+
 @app.post("/api/v1/orders", tags=["Orders"])
 async def create_order(
     request: CreateOrderRequest,
+    background_tasks: BackgroundTasks,
     _auth: None = Depends(_get_optional_api_key_record),
 ):
     """Create a new order and persist its state machine."""
@@ -3002,6 +3066,10 @@ async def create_order(
     order_data["metadata"] = request.metadata or {}
 
     await storage.set_order(order_id, order_data)
+
+    s = _get_api_settings()
+    if s.gam_enabled and s.gam_automatic_booking and request.deal_id:
+        background_tasks.add_task(_push_deal_to_gam, request.deal_id, request.quote_id)
 
     return order_data
 
@@ -3953,6 +4021,93 @@ class DealPerformanceResponse(BaseModel):
     avg_cpm_actual: float
     delivery_pacing: str  # ahead, on_track, behind, not_started
     last_updated: str
+
+
+@app.post("/api/v1/deals/{deal_id}/push-to-gam", tags=["Reporting"])
+async def push_deal_to_gam(
+    deal_id: str,
+    _auth: None = Depends(_get_optional_api_key_record),
+):
+    """Manually traffic a booked deal into GAM as a DRAFT order + line item.
+
+    Use this when GAM_AUTOMATIC_BOOKING=false (the default). Returns the GAM
+    order ID that was created and stored against the deal record.
+
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH.
+    """
+    s = _get_api_settings()
+    if not s.gam_enabled:
+        raise HTTPException(status_code=503, detail="GAM not enabled — set GAM_ENABLED=true")
+    if not s.gam_network_code or not s.gam_json_key_path:
+        raise HTTPException(status_code=503, detail="GAM credentials not configured")
+
+    from ...storage.factory import get_storage
+    from ...tools.gam.book_deal import BookDealInGAMTool
+
+    storage = await get_storage()
+    deal = await storage.get_deal(deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail=f"Deal '{deal_id}' not found")
+
+    if deal.get("gam_order_id"):
+        return {
+            "deal_id": deal_id,
+            "gam_order_id": deal["gam_order_id"],
+            "status": "already_exists",
+            "message": "Deal already trafficked into GAM",
+        }
+
+    product = deal.get("product") or {}
+    pricing = deal.get("pricing") or {}
+    terms = deal.get("terms") or {}
+
+    quote_id = deal.get("quote_id")
+    if (not pricing.get("final_cpm")) and quote_id:
+        quote = await storage.get_quote(quote_id)
+        if quote:
+            product = quote.get("product") or product
+            pricing = quote.get("pricing") or pricing
+            terms = quote.get("terms") or terms
+
+    product_name = product.get("name") or product.get("product_name") or deal_id
+    cpm = float(pricing.get("final_cpm") or pricing.get("cpm") or 0)
+    impressions = int(terms.get("impressions") or pricing.get("impressions") or 0)
+    start_date = (terms.get("flight_start") or "")[:10] or datetime.utcnow().strftime("%Y-%m-%d")
+    end_date = (terms.get("flight_end") or "")[:10] or (datetime.utcnow().replace(year=datetime.utcnow().year + 1)).strftime("%Y-%m-%d")
+
+    if not cpm or not impressions:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Deal '{deal_id}' is missing CPM or impressions — cannot create GAM line item",
+        )
+
+    import asyncio
+
+    tool = BookDealInGAMTool()
+    result = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: tool._run(
+            deal_id=deal_id,
+            deal_type="standard",
+            advertiser_name="IAB Tech Lab Buyer Agent",
+            campaign_name=f"IAB Agent Demo - {product_name}",
+            ad_unit_ids=["17980522"],
+            impressions=impressions,
+            cpm_rate=cpm,
+            start_date=start_date,
+            end_date=end_date,
+        ),
+    )
+
+    deal_refreshed = await storage.get_deal(deal_id)
+    gam_order_id = (deal_refreshed or {}).get("gam_order_id")
+
+    return {
+        "deal_id": deal_id,
+        "gam_order_id": gam_order_id,
+        "status": "created" if gam_order_id else "error",
+        "message": result,
+    }
 
 
 @app.get("/api/v1/deals/{deal_id}/performance", tags=["Deal Performance"])
