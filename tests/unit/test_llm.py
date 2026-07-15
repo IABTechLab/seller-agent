@@ -14,9 +14,10 @@ def _settings(**overrides) -> Settings:
 
 
 class TestUnchangedWhenNoBaseUrl:
-    """No LLM_API_BASE_URL configured — identical to constructing LLM directly,
-    so DEFAULT_LLM_MODEL/MANAGER_LLM_MODEL provider swapping (Anthropic,
-    OpenAI, Gemini, Bedrock) works exactly as before this module existed."""
+    """No OPENAI_COMPATIBLE_LLM_API_BASE_URL configured — identical to
+    constructing LLM directly, so DEFAULT_LLM_MODEL/MANAGER_LLM_MODEL
+    provider swapping (Anthropic, OpenAI, Gemini, Bedrock) works exactly as
+    before this module existed."""
 
     def test_anthropic_model_routes_natively(self, monkeypatch):
         monkeypatch.setattr(
@@ -52,16 +53,16 @@ class TestUnchangedWhenNoBaseUrl:
 
 
 class TestCustomOpenAICompatibleEndpoint:
-    """LLM_API_BASE_URL configured — pins routing to the native OpenAI client
-    regardless of the model id's shape, covering NVIDIA NIM, Ollama,
-    HuggingFace TGI, and similar endpoints."""
+    """OPENAI_COMPATIBLE_LLM_API_BASE_URL configured — pins routing to the
+    native OpenAI client regardless of the model id's shape, covering NVIDIA
+    NIM, Ollama, HuggingFace TGI, and similar endpoints."""
 
     def test_nvidia_nim_routes_via_openai_with_base_url(self, monkeypatch):
         monkeypatch.setattr(
             "ad_seller.llm.get_settings",
             lambda: _settings(
-                llm_api_key="nvapi-test",
-                llm_api_base_url="https://integrate.api.nvidia.com/v1",
+                openai_compatible_llm_api_key="nvapi-test",
+                openai_compatible_llm_api_base_url="https://integrate.api.nvidia.com/v1",
             ),
         )
         llm = build_llm(
@@ -75,7 +76,9 @@ class TestCustomOpenAICompatibleEndpoint:
     def test_local_ollama_needs_no_key(self, monkeypatch):
         monkeypatch.setattr(
             "ad_seller.llm.get_settings",
-            lambda: _settings(llm_api_base_url="http://localhost:11434/v1"),
+            lambda: _settings(
+                openai_compatible_llm_api_base_url="http://localhost:11434/v1"
+            ),
         )
         llm = build_llm(model="llama3", temperature=0.3, max_tokens=4096)
         assert llm.provider == "openai"

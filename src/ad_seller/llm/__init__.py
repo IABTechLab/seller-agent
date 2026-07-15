@@ -10,11 +10,11 @@ code here is involved in that path.
 
 This module adds one more alternative: any OpenAI-wire-compatible endpoint
 that has no CrewAI native provider prefix of its own (NVIDIA NIM, Ollama,
-HuggingFace TGI, vLLM, ...). Setting LLM_API_BASE_URL pins the request to
-CrewAI's native OpenAI-compatible client regardless of the model id's shape,
-using the raw model id the endpoint expects for DEFAULT_LLM_MODEL /
-MANAGER_LLM_MODEL. Leaving LLM_API_BASE_URL unset keeps today's behavior
-exactly as-is.
+HuggingFace TGI, vLLM, ...). Setting OPENAI_COMPATIBLE_LLM_API_BASE_URL pins
+the request to CrewAI's native OpenAI-compatible client regardless of the
+model id's shape, using the raw model id the endpoint expects for
+DEFAULT_LLM_MODEL / MANAGER_LLM_MODEL. Leaving
+OPENAI_COMPATIBLE_LLM_API_BASE_URL unset keeps today's behavior exactly as-is.
 """
 
 from crewai import LLM
@@ -30,14 +30,14 @@ def build_llm(model: str, temperature: float, max_tokens: int) -> LLM:
     """Build an ``LLM`` for ``model``, honoring a custom base URL if configured."""
     settings = get_settings()
 
-    if settings.llm_api_base_url:
+    if settings.openai_compatible_llm_api_base_url:
         return LLM(
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
-            api_key=settings.llm_api_key,
+            api_key=settings.openai_compatible_llm_api_key,
             provider=_OPENAI_COMPATIBLE_PROVIDER,
-            base_url=settings.llm_api_base_url,
+            base_url=settings.openai_compatible_llm_api_base_url,
         )
 
     return LLM(model=model, temperature=temperature, max_tokens=max_tokens)

@@ -49,13 +49,13 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 4096
 
     # Alternative: any OpenAI-wire-compatible endpoint (NVIDIA NIM, Ollama,
-    # HuggingFace TGI, vLLM, ...). Set LLM_API_BASE_URL alongside
-    # DEFAULT_LLM_MODEL/MANAGER_LLM_MODEL (using the raw model id the
-    # endpoint expects) to route through that endpoint instead of a named
-    # provider above. LLM_API_KEY is optional — omit it for endpoints like a
-    # local Ollama server that don't require one.
-    llm_api_key: Optional[str] = None
-    llm_api_base_url: Optional[str] = None
+    # HuggingFace TGI, vLLM, ...). Set OPENAI_COMPATIBLE_LLM_API_BASE_URL
+    # alongside DEFAULT_LLM_MODEL/MANAGER_LLM_MODEL (using the raw model id
+    # the endpoint expects) to route through that endpoint instead of a named
+    # provider above. OPENAI_COMPATIBLE_LLM_API_KEY is optional — omit it for
+    # endpoints like a local Ollama server that don't require one.
+    openai_compatible_llm_api_key: Optional[str] = None
+    openai_compatible_llm_api_base_url: Optional[str] = None
 
     # Database / Storage Configuration
     database_url: str = "sqlite:///./ad_seller.db"
