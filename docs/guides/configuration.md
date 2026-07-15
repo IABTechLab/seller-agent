@@ -89,6 +89,8 @@ ad-seller freewheel-login --provider bc
 | `MANAGER_LLM_MODEL` | `str` | `"anthropic/claude-opus-4-20250514"` | Model for manager/orchestrator agents |
 | `LLM_TEMPERATURE` | `float` | `0.3` | LLM temperature (lower = more deterministic) |
 | `LLM_MAX_TOKENS` | `int` | `4096` | Maximum tokens per LLM response |
+| `OPENAI_COMPATIBLE_LLM_API_KEY` | `str` | `None` | API key for a [custom OpenAI-compatible endpoint](#custom-openai-compatible-endpoints) (optional — some endpoints don't require one) |
+| `OPENAI_COMPATIBLE_LLM_API_BASE_URL` | `str` | `None` | Base URL for a custom OpenAI-compatible endpoint; when set, `DEFAULT_LLM_MODEL`/`MANAGER_LLM_MODEL` are sent as-is to that endpoint instead of being routed by provider prefix |
 
 ### Supported Providers
 
@@ -115,6 +117,33 @@ OPENAI_API_KEY=sk-xxxxx
     Agent prompts are tuned and tested with Claude models. Other providers work but may produce different quality results. If you switch providers, test negotiation and pricing flows to verify acceptable output quality.
 
 For other providers, see the [CrewAI LLM documentation](https://docs.crewai.com/en/learn/litellm-removal-guide).
+
+### Custom OpenAI-Compatible Endpoints
+
+For endpoints that don't have one of the native provider prefixes above —
+NVIDIA NIM, Ollama, HuggingFace TGI, vLLM, LM Studio, and similar — set
+`OPENAI_COMPATIBLE_LLM_API_BASE_URL`. This pins the request to CrewAI's native OpenAI-compatible
+client regardless of the model id's shape, so `DEFAULT_LLM_MODEL` /
+`MANAGER_LLM_MODEL` should be set to the raw model id the endpoint expects
+(no provider prefix). `OPENAI_COMPATIBLE_LLM_API_KEY` is optional — omit it for endpoints, such
+as a local Ollama server, that don't require one.
+
+**Example — NVIDIA NIM:**
+
+```bash
+OPENAI_COMPATIBLE_LLM_API_KEY=nvapi-xxxxx
+OPENAI_COMPATIBLE_LLM_API_BASE_URL=https://integrate.api.nvidia.com/v1
+DEFAULT_LLM_MODEL=meta/llama-3.1-70b-instruct
+MANAGER_LLM_MODEL=meta/llama-3.1-70b-instruct
+```
+
+**Example — Ollama, local or self-hosted:**
+
+```bash
+OPENAI_COMPATIBLE_LLM_API_BASE_URL=http://localhost:11434/v1
+DEFAULT_LLM_MODEL=llama3
+MANAGER_LLM_MODEL=llama3
+```
 
 ## Database & Storage
 
