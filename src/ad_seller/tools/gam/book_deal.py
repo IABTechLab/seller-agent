@@ -242,6 +242,24 @@ class BookDealInGAMTool(BaseTool):
                     message="Deal successfully booked in GAM",
                 )
 
+                # Write gam_order_id back to the deal record so the
+                # performance endpoint can query real delivery data
+                try:
+                    import asyncio
+
+                    from ...storage.factory import get_storage
+
+                    async def _persist_gam_order_id() -> None:
+                        storage = await get_storage()
+                        deal = await storage.get_deal(deal_id)
+                        if deal:
+                            deal["gam_order_id"] = order.id
+                            await storage.set_deal(deal_id, deal)
+
+                    asyncio.run(_persist_gam_order_id())
+                except Exception:
+                    pass  # Best-effort — never block the booking result
+
                 lines = [
                     "Deal booked successfully in GAM:\n",
                     f"- OpenDirect Deal ID: {deal_id}",

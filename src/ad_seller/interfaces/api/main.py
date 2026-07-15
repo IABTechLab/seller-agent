@@ -18,7 +18,7 @@ from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,7 @@ app = FastAPI(
         },
         {"name": "Deal Performance", "description": "Deal delivery and performance metrics"},
         {"name": "Bulk Operations", "description": "Batch deal create/update/cancel"},
+        {"name": "Reporting", "description": "GAM delivery reporting (seller-internal)"},
     ],
 )
 
@@ -608,9 +609,9 @@ def _get_static_product_catalog() -> dict[str, Any]:
     ]
 
     products: dict[str, ProductDefinition] = {}
-    for cfg in default_products:
+    for i, cfg in enumerate(default_products):
         product_def = ProductDefinition(
-            product_id=f"prod-{uuid.uuid4().hex[:8]}",
+            product_id=f"prod-{i + 1:03d}",
             name=cfg["name"],
             description=cfg.get("description"),
             inventory_type=cfg["inventory_type"],
@@ -715,6 +716,114 @@ async def get_product(product_id: str):
     return _serialize_product(product)
 
 
+class ProductSearchFilters(BaseModel):
+    """Filters for product search (mirrors buyer OpenDirectClient.search_products)."""
+
+    channel: Optional[str] = None
+    adFormat: Optional[str] = None
+    minPrice: Optional[float] = None
+    maxPrice: Optional[float] = None
+    deliveryType: Optional[str] = None
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+def _serialize_product_iab(product: Any) -> dict[str, Any]:
+    """Serialize a ProductDefinition to IAB OpenDirect 2.1 wire format.
+
+    The buyer's OpenDirectClient.search_products() parses the response via
+    Product.model_validate() which requires camelCase aliases: publisherId,
+    basePrice, rateType.  _serialize_product() uses our internal snake_case
+    shape for UI consumers; this variant targets the buyer agent wire spec.
+    """
+    publisher_id = _get_api_settings().seller_organization_id or "seller-pub-001"
+    deal_types = [dt.value for dt in product.supported_deal_types]
+    delivery = "Guaranteed" if "programmaticguaranteed" in deal_types else "NonGuaranteed"
+    return {
+        "id": product.product_id,
+        "publisherId": publisher_id,
+        "name": product.name,
+        "description": product.description or "",
+        "basePrice": product.base_cpm,
+        "rateType": "CPM",
+        "deliveryType": delivery,
+        "availableImpressions": 1_000_000,
+        "targeting": {"capabilities": ["geo", "demographic", "contextual"]},
+        # Pass our extra fields through; buyer Product ignores unknown fields
+        "product_id": product.product_id,
+        "inventory_type": product.inventory_type,
+        "floor_cpm": product.floor_cpm,
+        "deal_types": deal_types,
+    }
+
+
+@app.post("/products/search", tags=["Products"])
+async def search_products(filters: ProductSearchFilters):
+    """Search products with optional filters.
+
+    Returns IAB OpenDirect 2.1 camelCase shape so the buyer's
+    Product.model_validate() can parse publisherId / basePrice / rateType.
+    """
+    catalog = _get_static_product_catalog()
+    products = list(catalog["products"].values())
+    if filters.channel:
+        products = [p for p in products if p.inventory_type == filters.channel]
+    if filters.minPrice is not None:
+        products = [p for p in products if p.base_cpm >= filters.minPrice]
+    if filters.maxPrice is not None:
+        products = [p for p in products if p.base_cpm <= filters.maxPrice]
+    return {"products": [_serialize_product_iab(p) for p in products[: filters.limit]]}
+
+
+class AvailsCheckRequest(BaseModel):
+    """Availability check request (mirrors buyer AvailsRequest schema).
+
+    Accepts both camelCase (productId) and snake_case (product_id) so callers
+    using either convention work without a 422.
+    """
+
+    productId: Optional[str] = Field(None, alias="productId")
+    product_id: Optional[str] = Field(None, alias="product_id")
+    startDate: Optional[str] = Field(None, alias="startDate")
+    start_date: Optional[str] = Field(None, alias="start_date")
+    endDate: Optional[str] = Field(None, alias="endDate")
+    end_date: Optional[str] = Field(None, alias="end_date")
+    requestedImpressions: Optional[int] = None
+    budget: Optional[float] = None
+    targeting: Optional[dict] = None
+
+    model_config = {"populate_by_name": True}
+
+    def resolved_product_id(self) -> str:
+        """Return whichever of productId/product_id was supplied."""
+        return self.productId or self.product_id or ""
+
+
+@app.post("/products/avails", tags=["Products"])
+async def check_product_avails(request: AvailsCheckRequest):
+    """Check availability for a product.
+
+    FIX-4: Added to support buyer's AvailsCheckTool which calls
+    POST /products/avails. Returns static 1M available impressions,
+    matching the placeholder already used in ProposalHandlingFlow.
+    """
+    pid = request.resolved_product_id()
+    catalog = _get_static_product_catalog()
+    product = catalog["products"].get(pid)
+    if not product:
+        raise HTTPException(status_code=404, detail=f"Product {pid} not found")
+    requested = request.requestedImpressions or 0
+    available = 1_000_000
+    return {
+        "productId": pid,
+        "availableImpressions": available,
+        "guaranteedImpressions": int(available * 0.85),
+        "estimatedCpm": product.base_cpm,
+        "totalCost": round((product.base_cpm / 1000) * requested, 2) if requested else 0.0,
+        "deliveryConfidence": 85.0,
+        "availableTargeting": ["geo", "demographic", "contextual"],
+    }
+
+
 @app.post("/pricing", response_model=PricingResponse, tags=["Pricing"])
 async def get_pricing(
     request: PricingRequest,
@@ -777,9 +886,15 @@ async def submit_proposal(
 
     from ...flows import ProductSetupFlow, ProposalHandlingFlow
 
-    # Get products
-    setup_flow = ProductSetupFlow()
-    await setup_flow.kickoff_async()
+    # Run ProductSetupFlow to get the serial-ID product catalog (prod-001…prod-012).
+    # Wrap in try/except so a setup failure doesn't produce a raw 500.
+    try:
+        setup_flow = ProductSetupFlow()
+        await setup_flow.kickoff_async()
+        products = setup_flow.state.products
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("ProductSetupFlow failed: %s", exc)
+        products = {}
 
     # Enforce agent registry
     _, max_tier = await _resolve_and_enforce_agent(request.agent_url)
@@ -794,7 +909,6 @@ async def submit_proposal(
         max_access_tier=max_tier,
     )
 
-    # Process proposal
     proposal_id = f"prop-{uuid.uuid4().hex[:8]}"
     proposal_data = {
         "product_id": request.product_id,
@@ -806,13 +920,22 @@ async def submit_proposal(
         "buyer_id": request.buyer_id,
     }
 
-    flow = ProposalHandlingFlow()
-    result = flow.handle_proposal(
-        proposal_id=proposal_id,
-        proposal_data=proposal_data,
-        buyer_context=context,
-        products=setup_flow.state.products,
-    )
+    try:
+        flow = ProposalHandlingFlow()
+        result = await flow.handle_proposal_async(
+            proposal_id=proposal_id,
+            proposal_data=proposal_data,
+            buyer_context=context,
+            products=products,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("ProposalHandlingFlow failed for %s: %s", proposal_id, exc)
+        return ProposalResponse(
+            proposal_id=proposal_id,
+            recommendation="reject",
+            status="failed",
+            errors=[f"Proposal evaluation error: {exc}"],
+        )
 
     # Verify pricing against quote history (Layer 4 — CPM hallucination defense)
     from ...storage.factory import get_storage
@@ -861,8 +984,8 @@ async def submit_proposal(
 
     return ProposalResponse(
         proposal_id=proposal_id,
-        recommendation=result["recommendation"],
-        status=result["status"],
+        recommendation=result.get("recommendation") or "reject",
+        status=result.get("status", "failed"),
         counter_terms=result.get("counter_terms"),
         pricing_verified=pricing_verified,
         pricing_verification_reason=pricing_verification_reason,
@@ -3762,8 +3885,10 @@ async def get_deal_performance(deal_id: str):
     """Return delivery stats for a deal.
 
     Provides performance feedback for buyer SPO (Supply Path Optimization).
-    Returns placeholder/mock stats initially — real ad server integration
-    comes in a future phase.
+
+    If GAM is configured and the deal has a linked gam_order_id (set when
+    the deal is trafficked into GAM), returns real delivery data from the
+    ad server. Otherwise returns placeholder stats.
     """
     from ...storage.factory import get_storage
 
@@ -3776,8 +3901,60 @@ async def get_deal_performance(deal_id: str):
             detail={"error": "deal_not_found", "message": f"Deal '{deal_id}' not found."},
         )
 
-    # Placeholder performance data — real stats come from ad server integration
     now = datetime.utcnow().isoformat() + "Z"
+    s = _get_api_settings()
+
+    # Real path: GAM configured + deal was trafficked into GAM
+    gam_order_id = deal.get("gam_order_id") or deal.get("metadata", {}).get("gam_order_id")
+    if s.gam_enabled and s.gam_network_code and s.gam_json_key_path and gam_order_id:
+        try:
+            from ...clients.gam_soap_client import GAMSoapClient
+
+            client = GAMSoapClient()
+            client.connect()
+            report = client.get_delivery_report([str(gam_order_id)], days=30)
+            client.disconnect()
+
+            summary = report.get("summary", {})
+            impressions_served = summary.get("impressions", 0)
+            impressions_available = 0
+            for order in report.get("orders", []):
+                for li in order.get("line_items", []):
+                    goal = li.get("impressions_goal", 0)
+                    if goal and goal > 0:
+                        impressions_available += goal
+
+            fill_rate = (
+                round(impressions_served / impressions_available * 100, 1)
+                if impressions_available
+                else 0.0
+            )
+            revenue = summary.get("revenue_usd", 0.0)
+            avg_cpm = (
+                round(revenue / impressions_served * 1000, 2)
+                if impressions_served
+                else 0.0
+            )
+            pacing = (
+                "not_started" if impressions_served == 0
+                else "on_track" if fill_rate >= 40
+                else "behind"
+            )
+
+            return DealPerformanceResponse(
+                deal_id=deal_id,
+                impressions_available=impressions_available,
+                impressions_served=impressions_served,
+                fill_rate=fill_rate,
+                win_rate=0.0,
+                avg_cpm_actual=avg_cpm,
+                delivery_pacing=pacing,
+                last_updated=now,
+            )
+        except Exception:
+            pass  # Fall through to placeholder on any GAM error
+
+    # Fallback: placeholder stats (GAM not configured or order not yet trafficked)
     return DealPerformanceResponse(
         deal_id=deal_id,
         impressions_available=1000000,
@@ -5160,3 +5337,113 @@ async def get_deal_lineage(deal_id: str):
         "replacements": replacements,
         "chain_length": len(parents) + 1 + len(replacements),
     }
+
+
+# =============================================================================
+# GAM Reporting (seller-internal)
+# =============================================================================
+
+
+def _gam_configured() -> bool:
+    s = _get_api_settings()
+    return bool(s.gam_enabled and s.gam_network_code and s.gam_json_key_path)
+
+
+@app.get("/gam/orders", tags=["Reporting"])
+async def gam_list_orders(
+    limit: int = 50,
+    agent_created_only: bool = False,
+    _auth: None = Depends(_get_optional_api_key_record),
+) -> dict[str, Any]:
+    """List recent GAM orders directly from the ad server.
+
+    Args:
+        limit: Maximum number of orders to return (default 50)
+        agent_created_only: If true, return only orders created by the agent
+            (those with an externalOrderId matching an OpenDirect deal_id)
+
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
+    """
+    if not _gam_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="GAM not configured — set GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH",
+        )
+    try:
+        from ...clients.gam_soap_client import GAMSoapClient
+        from ...storage.factory import get_storage
+
+        client = GAMSoapClient()
+        client.connect()
+
+        if agent_created_only:
+            # Use SQLite as source of truth — find all deals with gam_order_id set
+            storage = await get_storage()
+            all_deals = await storage.list_deals()
+            linked = [
+                {"deal_id": d.get("deal_id"), "gam_order_id": d.get("gam_order_id")}
+                for d in all_deals
+                if d.get("gam_order_id")
+            ]
+            orders = []
+            for link in linked[:limit]:
+                order = client.get_order_by_id(link["gam_order_id"])
+                if order:
+                    order["external_order_id"] = link["deal_id"]
+                    order["agent_created"] = True
+                    orders.append(order)
+        else:
+            orders = client.list_orders(limit=limit)
+
+        user = client.get_current_user()
+        client.disconnect()
+        return {
+            "network_code": _get_api_settings().gam_network_code,
+            "user": {
+                "id": str(getattr(user, "id", "")),
+                "name": getattr(user, "name", ""),
+                "email": getattr(user, "email", ""),
+            },
+            "orders": orders,
+            "count": len(orders),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/gam/report", tags=["Reporting"])
+async def gam_delivery_report(
+    order_ids: str,
+    days: int = 30,
+    _auth: None = Depends(_get_optional_api_key_record),
+) -> dict[str, Any]:
+    """Pull a delivery report from GAM by order ID(s).
+
+    Args:
+        order_ids: Comma-separated numeric GAM order IDs
+        days: Look-back window in days (default 30)
+
+    Returns order metadata, line items, and delivery data (impressions, clicks, revenue).
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
+    """
+    if not _gam_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="GAM not configured — set GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH",
+        )
+    ids = [oid.strip() for oid in order_ids.split(",") if oid.strip()]
+    if not ids:
+        raise HTTPException(
+            status_code=400,
+            detail="order_ids must be a comma-separated list of numeric GAM order IDs",
+        )
+    try:
+        from ...clients.gam_soap_client import GAMSoapClient
+
+        client = GAMSoapClient()
+        client.connect()
+        report = client.get_delivery_report(ids, days=days)
+        client.disconnect()
+        return report
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

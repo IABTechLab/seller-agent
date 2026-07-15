@@ -35,7 +35,7 @@ with case-insensitive variable names.
 | `GAM_NETWORK_CODE` | `str` | `None` | GAM network code (numeric ID) |
 | `GAM_JSON_KEY_PATH` | `str` | `None` | Path to GAM service account JSON key file |
 | `GAM_APPLICATION_NAME` | `str` | `"AdSellerSystem"` | Application name for GAM API requests |
-| `GAM_API_VERSION` | `str` | `"v202411"` | GAM SOAP API version |
+| `GAM_API_VERSION` | `str` | `"v202505"` | GAM SOAP API version |
 | `GAM_DEFAULT_TRAFFICKER_ID` | `str` | `None` | Default trafficker user ID for order creation |
 | `FREEWHEEL_ENABLED` | `bool` | `false` | Feature flag to enable FreeWheel integration |
 | `FREEWHEEL_NETWORK_ID` | `str` | `None` | Publisher network/account ID in FreeWheel |
@@ -227,7 +227,7 @@ GAM_ENABLED=true
 GAM_NETWORK_CODE=12345678
 GAM_JSON_KEY_PATH=/etc/secrets/gam-service-account.json
 GAM_APPLICATION_NAME=AcmeSellerAgent
-GAM_API_VERSION=v202411
+GAM_API_VERSION=v202505
 # GAM_DEFAULT_TRAFFICKER_ID=111222333  # Optional
 
 # =============================================================================
