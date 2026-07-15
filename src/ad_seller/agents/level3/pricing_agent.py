@@ -7,9 +7,10 @@ Manages rate cards, dynamic pricing, floor prices, and tiered
 pricing based on buyer identity.
 """
 
-from crewai import LLM, Agent
+from crewai import Agent
 
 from ...config import get_settings
+from ...llm import build_llm
 
 
 def create_pricing_agent() -> Agent:
@@ -27,7 +28,7 @@ def create_pricing_agent() -> Agent:
     """
     settings = get_settings()
 
-    llm = LLM(
+    llm = build_llm(
         model=settings.default_llm_model,
         temperature=0.2,  # Low temperature for consistent pricing decisions
         max_tokens=settings.llm_max_tokens,

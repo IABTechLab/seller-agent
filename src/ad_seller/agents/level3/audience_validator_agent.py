@@ -9,9 +9,10 @@ UCP (User Context Protocol) for real-time audience matching.
 
 from typing import Any
 
-from crewai import LLM, Agent
+from crewai import Agent
 
 from ...config import get_settings
+from ...llm import build_llm
 
 
 def create_audience_validator_agent(
@@ -41,7 +42,7 @@ def create_audience_validator_agent(
     """
     settings = get_settings()
 
-    llm = LLM(
+    llm = build_llm(
         model=settings.default_llm_model,
         temperature=0.2,  # Low temperature for accurate validation
         max_tokens=settings.llm_max_tokens,

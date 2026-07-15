@@ -8,9 +8,10 @@ It manages overall inventory strategy with a yield optimization objective
 function, evaluates proposals, and coordinates specialist agents.
 """
 
-from crewai import LLM, Agent
+from crewai import Agent
 
 from ...config import get_settings
+from ...llm import build_llm
 
 
 def create_inventory_manager() -> Agent:
@@ -28,7 +29,7 @@ def create_inventory_manager() -> Agent:
     """
     settings = get_settings()
 
-    llm = LLM(
+    llm = build_llm(
         model=settings.manager_llm_model,
         temperature=0.3,
         max_tokens=settings.llm_max_tokens,
