@@ -57,7 +57,7 @@ class TestSSPFactory:
 
         settings = _make_settings(
             ssp_connectors="index_exchange",
-            index_exchange_api_url="https://app.indexexchange.com/api/deals",
+            index_exchange_api_url="https://app.indexexchange.com",
             index_exchange_api_key="test-key",
         )
         registry = build_ssp_registry(settings)
@@ -107,7 +107,7 @@ class TestSSPFactory:
 
         settings = _make_settings(
             ssp_connectors="index_exchange",
-            index_exchange_api_url="https://app.indexexchange.com/api/deals",
+            index_exchange_api_url="https://app.indexexchange.com",
             index_exchange_api_key="key",
             ssp_routing_rules="ctv:index_exchange,display:index_exchange",
         )
@@ -190,7 +190,7 @@ class TestIndexExchangeClient:
     @pytest.mark.asyncio
     async def test_create_deal_pmp_payload_shape(self):
         client = IndexExchangeSSPClient(
-            base_url="https://app.indexexchange.com/api/deals", api_key="test-key"
+            base_url="https://app.indexexchange.com", api_key="test-key"
         )
         mock_http = AsyncMock()
         mock_http.post.return_value = _mock_response(_ix_response())
@@ -200,7 +200,7 @@ class TestIndexExchangeClient:
         result = await client.create_deal(request)
 
         call_args = mock_http.post.call_args
-        assert call_args[0][0] == "/v3/deals"
+        assert call_args[0][0] == "/api/deals/v3/deals"
         body = call_args[1]["json"]
 
         assert body["classID"] == 1
@@ -238,7 +238,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_create_deal_pg_sets_fixed_auction_and_programmatic_guaranteed(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.post.return_value = _mock_response(_ix_response())
         client._http = mock_http
@@ -251,7 +251,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_create_deal_preferred_sets_fixed_auction_not_guaranteed(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.post.return_value = _mock_response(_ix_response())
         client._http = mock_http
@@ -264,7 +264,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_create_deal_auction_package_uses_marketplace_configurations(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.post.return_value = _mock_response(_ix_response(classID=4))
         client._http = mock_http
@@ -278,7 +278,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_create_deal_missing_external_deal_id_raises(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         client._http = AsyncMock()
 
         with pytest.raises(ValueError, match="external_deal_id"):
@@ -286,7 +286,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_create_deal_missing_account_id_raises(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         client._http = AsyncMock()
 
         with pytest.raises(ValueError, match="account_id"):
@@ -294,7 +294,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_create_deal_missing_dsp_id_raises(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         client._http = AsyncMock()
 
         with pytest.raises(ValueError, match="dsp_id"):
@@ -304,7 +304,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_clone_deal_composes_get_and_create(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(_ix_response())
         mock_http.post.return_value = _mock_response(_ix_response())
@@ -312,8 +312,8 @@ class TestIndexExchangeClient:
 
         await client.clone_deal("987654")
 
-        assert mock_http.get.call_args[0][0] == "/v3/deals/987654"
-        assert mock_http.post.call_args[0][0] == "/v3/deals"
+        assert mock_http.get.call_args[0][0] == "/api/deals/v3/deals/987654"
+        assert mock_http.post.call_args[0][0] == "/api/deals/v3/deals"
         body = mock_http.post.call_args[1]["json"]
         assert body["externalDealID"] != "IX-DEAL-001"
         assert body["externalDealID"].startswith("IX-DEAL-001-clone-")
@@ -322,7 +322,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_clone_deal_marketplace_package_reads_dsp_from_marketplace_configurations(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(
             _ix_response(
@@ -342,7 +342,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_clone_deal_applies_overrides(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(_ix_response())
         mock_http.post.return_value = _mock_response(_ix_response())
@@ -358,7 +358,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_clone_deal_generated_id_never_exceeds_64_chars(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         long_source_id = "a" * 64  # already at IX's max length
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(_ix_response(externalDealID=long_source_id))
@@ -376,27 +376,27 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_get_deal_uses_v3_path(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(_ix_response())
         client._http = mock_http
 
         await client.get_deal("987654")
 
-        assert mock_http.get.call_args[0][0] == "/v3/deals/987654"
+        assert mock_http.get.call_args[0][0] == "/api/deals/v3/deals/987654"
 
     # --- list_deals() ---
 
     @pytest.mark.asyncio
     async def test_list_deals_uses_pageSize_pageOffset(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response({"totalCount": 1, "deals": [_ix_response()]})
         client._http = mock_http
 
         deals = await client.list_deals(limit=50)
 
-        assert mock_http.get.call_args[0][0] == "/v3/deals"
+        assert mock_http.get.call_args[0][0] == "/api/deals/v3/deals"
         params = mock_http.get.call_args[1]["params"]
         assert params["pageSize"] == 50
         assert params["pageOffset"] == 0
@@ -413,7 +413,7 @@ class TestIndexExchangeClient:
     )
     @pytest.mark.asyncio
     async def test_list_deals_status_mapping(self, status, expected_param):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response({"totalCount": 0, "deals": []})
         client._http = mock_http
@@ -425,7 +425,7 @@ class TestIndexExchangeClient:
     @pytest.mark.parametrize("status", [SSPDealStatus.CREATED, SSPDealStatus.ARCHIVED])
     @pytest.mark.asyncio
     async def test_list_deals_sends_no_status_param_when_unmapped(self, status):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response({"totalCount": 0, "deals": []})
         client._http = mock_http
@@ -438,7 +438,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_update_deal_uses_patch_with_if_match_etag(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(_ix_response(), headers={"ETag": '"etag-123"'})
         mock_http.patch.return_value = _mock_response(_ix_response(status="paused"))
@@ -446,14 +446,14 @@ class TestIndexExchangeClient:
 
         await client.update_deal("987654", {"status": "paused"})
 
-        assert mock_http.get.call_args[0][0] == "/v3/deals/987654"
-        assert mock_http.patch.call_args[0][0] == "/v3/deals/987654"
+        assert mock_http.get.call_args[0][0] == "/api/deals/v3/deals/987654"
+        assert mock_http.patch.call_args[0][0] == "/api/deals/v3/deals/987654"
         assert mock_http.patch.call_args[1]["json"] == {"status": "paused"}
         assert mock_http.patch.call_args[1]["headers"] == {"If-Match": '"etag-123"'}
 
     @pytest.mark.asyncio
     async def test_update_deal_raises_without_etag(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(_ix_response(), headers={})
         client._http = mock_http
@@ -463,7 +463,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_update_deal_412_propagates(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(_ix_response(), headers={"ETag": '"stale"'})
         mock_http.patch.return_value = _mock_response(
@@ -479,7 +479,7 @@ class TestIndexExchangeClient:
     # --- _parse_deal() ---
 
     def test_parse_deal_maps_fields(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         deal = client._parse_deal(_ix_response())
 
         assert deal.deal_id == "IX-DEAL-001"
@@ -501,7 +501,7 @@ class TestIndexExchangeClient:
         ],
     )
     def test_parse_deal_status_map(self, status_str, expected):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         deal = client._parse_deal(_ix_response(status=status_str))
         assert deal.status == expected
 
@@ -512,7 +512,7 @@ class TestIndexExchangeClient:
         assert "pending" not in _IX_STATUS_MAP
 
     def test_parse_deal_maps_pg_type(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         deal = client._parse_deal(
             _ix_response(
                 classID=1,
@@ -523,7 +523,7 @@ class TestIndexExchangeClient:
         assert deal.deal_type == SSPDealType.PG
 
     def test_parse_deal_maps_pmp_type(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         deal = client._parse_deal(
             _ix_response(
                 classID=1,
@@ -534,7 +534,7 @@ class TestIndexExchangeClient:
         assert deal.deal_type == SSPDealType.PMP
 
     def test_parse_deal_maps_preferred_type(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         deal = client._parse_deal(
             _ix_response(
                 classID=1,
@@ -545,7 +545,7 @@ class TestIndexExchangeClient:
         assert deal.deal_type == SSPDealType.PREFERRED
 
     def test_parse_deal_maps_auction_package_type(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         deal = client._parse_deal(_ix_response(classID=4, directConfigurations={}))
         assert deal.deal_type == SSPDealType.AUCTION_PACKAGE
 
@@ -557,7 +557,7 @@ class TestIndexExchangeClient:
     )
     @pytest.mark.asyncio
     async def test_troubleshoot_deal_health_score_by_status(self, status_str, expected_score):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(_ix_response(status=status_str))
         client._http = mock_http
@@ -569,7 +569,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_troubleshoot_deal_flags_missing_seat_ids(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.return_value = _mock_response(
             _ix_response(directConfigurations={"dspID": 5551, "seatIDs": []})
@@ -582,7 +582,7 @@ class TestIndexExchangeClient:
 
     @pytest.mark.asyncio
     async def test_troubleshoot_deal_api_failure_returns_unreachable(self):
-        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com/api/deals")
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
         mock_http.get.side_effect = httpx.ConnectError("connection refused")
         client._http = mock_http
@@ -621,7 +621,7 @@ class TestSSPErrors:
     @pytest.mark.asyncio
     async def test_http_error_propagates(self):
         client = IndexExchangeSSPClient(
-            base_url="https://app.indexexchange.com/api/deals",
+            base_url="https://app.indexexchange.com",
             api_key="test-key",
         )
         mock_response = MagicMock()

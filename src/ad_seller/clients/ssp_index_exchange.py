@@ -3,18 +3,24 @@
 
 """Index Exchange SSP client (REST API).
 
-Index Exchange exposes its deal management REST API at
-https://app.indexexchange.com/api/deals, with all deal endpoints under a
-/v3/deals prefix. No MCP server yet (as of March 2026), though they're part
-of the IAB Tech Lab Agentic RTB Framework (ARTF) coalition.
+Index Exchange's REST API lives at the FQDN https://app.indexexchange.com.
+Deal-management endpoints (this connector's concern) sit under a shared
+/api/deals prefix, with /v3/deals beneath that for deal CRUD operations.
+INDEX_EXCHANGE_API_URL is configured as just the FQDN — the /api/deals
+prefix is applied in code (_API_BASE_PATH below) rather than baked into the
+configured base URL, since /api/deals is only one of several path prefixes
+under this host we expect to call as seller-agent's agentic workflows
+expand (e.g. a planned /v1/seats lookup for DSP resolution). No MCP server
+yet (as of March 2026), though they're part of the IAB Tech Lab Agentic RTB
+Framework (ARTF) coalition.
 
-Key endpoints (base URL + path):
-  - POST   /v3/deals              — Create a deal
-  - GET    /v3/deals               — List deals
-  - GET    /v3/deals/{id}          — Get a single deal (id = internalDealID)
-  - PATCH  /v3/deals/{id}          — Update a deal (requires If-Match ETag)
-  - DELETE /v3/deals/{id}          — Soft-delete a deal
-  - GET    /v3/deals/reports       — Deals data export
+Key endpoints (FQDN + path):
+  - POST   /api/deals/v3/deals              — Create a deal
+  - GET    /api/deals/v3/deals               — List deals
+  - GET    /api/deals/v3/deals/{id}          — Get a single deal (id = internalDealID)
+  - PATCH  /api/deals/v3/deals/{id}          — Update a deal (requires If-Match ETag)
+  - DELETE /api/deals/v3/deals/{id}          — Soft-delete a deal
+  - GET    /api/deals/v3/deals/reports       — Deals data export
 
 There is no clone/copy endpoint — clone_deal() below implements cloning by
 composing get_deal() + create_deal() instead.
@@ -57,6 +63,12 @@ from .ssp_base import (
 from .ssp_rest_client import RESTSSPClient
 
 logger = logging.getLogger(__name__)
+
+# Shared prefix for all deal-management endpoints under the configured FQDN.
+# Kept out of the configured base URL so other IX path prefixes (e.g. a
+# planned /v1/seats DSP-resolution route) can be added without requiring a
+# reconfigured base URL per prefix.
+_API_BASE_PATH = "/api/deals"
 
 # externalDealID: 3-64 chars, letters/numbers/dashes/underscores/periods, and
 # per deals-web-api's validation cannot start with "0".
@@ -115,13 +127,14 @@ class IndexExchangeSSPClient(RESTSSPClient):
     """Index Exchange SSP client using their REST API.
 
     Extends RESTSSPClient with Index Exchange-specific:
-    - API path structure (/v3/deals under the configured base URL)
+    - API path structure (/api/deals/v3/deals under the configured FQDN)
     - Request format (JSON body with IX's actual /v3/deals field names)
     - Response parsing (IX deal objects → normalized SSPDeal)
     - classID/auctionType/programmaticGuaranteed deal type mapping
 
     Config:
-        INDEX_EXCHANGE_API_URL=https://app.indexexchange.com/api/deals
+        INDEX_EXCHANGE_API_URL=https://app.indexexchange.com   (FQDN only —
+            see _API_BASE_PATH for why the /api/deals prefix isn't baked in here)
         INDEX_EXCHANGE_API_KEY=<keycloak-jwt-bearer-token>
 
     account.accountID is not a fixed deployment-wide setting — a single
@@ -202,7 +215,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
         if request.targeting:
             body["targeting"] = request.targeting
 
-        resp = await http.post("/v3/deals", json=body)
+        resp = await http.post(f"{_API_BASE_PATH}/v3/deals", json=body)
         resp.raise_for_status()
         return self._parse_deal(resp.json())
 
@@ -256,7 +269,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
         """
         http = self._ensure_connected()
 
-        resp = await http.get(f"/v3/deals/{deal_id}")
+        resp = await http.get(f"{_API_BASE_PATH}/v3/deals/{deal_id}")
         resp.raise_for_status()
         return self._parse_deal(resp.json())
 
@@ -274,7 +287,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
         if ix_status:
             params["status"] = ix_status
 
-        resp = await http.get("/v3/deals", params=params)
+        resp = await http.get(f"{_API_BASE_PATH}/v3/deals", params=params)
         resp.raise_for_status()
 
         data = resp.json()
@@ -295,7 +308,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
         """
         http = self._ensure_connected()
 
-        get_resp = await http.get(f"/v3/deals/{deal_id}")
+        get_resp = await http.get(f"{_API_BASE_PATH}/v3/deals/{deal_id}")
         get_resp.raise_for_status()
         etag = get_resp.headers.get("ETag")
         if not etag:
@@ -304,7 +317,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
             )
 
         resp = await http.patch(
-            f"/v3/deals/{deal_id}",
+            f"{_API_BASE_PATH}/v3/deals/{deal_id}",
             json=updates,
             headers={"If-Match": etag},
         )
@@ -321,7 +334,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
         http = self._ensure_connected()
 
         try:
-            resp = await http.get(f"/v3/deals/{deal_id}")
+            resp = await http.get(f"{_API_BASE_PATH}/v3/deals/{deal_id}")
             resp.raise_for_status()
             deal_data = resp.json()
         except Exception as exc:
