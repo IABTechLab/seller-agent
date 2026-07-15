@@ -27,6 +27,7 @@ from ..models.buyer_identity import BuyerContext
 from ..models.flow_state import (
     ExecutionStatus,
     ProposalEvaluation,
+    ProposalReviewOutput,
     SellerFlowState,
 )
 from ..models.ucp import AudienceCapability, SignalType
@@ -419,17 +420,13 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         crew = create_proposal_review_crew(self.state.proposal_data)
 
         try:
-            result = crew.kickoff()
+            result = await crew.kickoff_async()
 
-            # Parse crew recommendation
-            result_text = str(result).lower()
-
-            if "accept" in result_text:
-                self.state.recommendation = "accept"
-            elif "counter" in result_text:
-                self.state.recommendation = "counter"
+            review: Optional[ProposalReviewOutput] = result.pydantic
+            if review is not None:
+                self.state.recommendation = review.decision.value
             else:
-                self.state.recommendation = "reject"
+                self._fallback_evaluation()
 
             # Emit proposal.evaluated event
             await emit_event(
