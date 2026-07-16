@@ -394,8 +394,18 @@ def internal_product_to_shared(product: Any) -> Product:
     Seller-local fields with no home on the shared schema (inventory_type,
     floor_cpm, minimum_impressions, the deal-type list, audience capability
     ids) ride in the reserved ``ext`` slot so nothing is silently dropped.
+
+    ``inventory_type`` additionally populates the shared ``ad_formats``
+    field (e.g. "display" -> ["display"], "video" -> ["video"]) so buyers
+    filtering the catalog by adFormat can match products. Serving
+    ``ad_formats: []`` with the taxonomy hidden in ``ext.inventory_type``
+    made every adFormat-filtered client-side search return zero products.
+    ``ext.inventory_type`` is kept as-is for existing consumers.
     """
     currency = getattr(product, "currency", "USD") or "USD"
+
+    inventory_type = getattr(product, "inventory_type", None)
+    ad_formats = [inventory_type] if inventory_type else []
 
     pricing_models = getattr(product, "supported_pricing_models", None) or []
     pricing_model = PricingModel.CPM
@@ -408,7 +418,7 @@ def internal_product_to_shared(product: Any) -> Product:
         pricing_type = PricingType(getattr(internal_pt, "value", internal_pt))
 
     ext = {
-        "inventory_type": getattr(product, "inventory_type", None),
+        "inventory_type": inventory_type,
         "floor_cpm": getattr(product, "floor_cpm", None),
         "minimum_impressions": getattr(product, "minimum_impressions", None),
         "deal_types": [
@@ -427,6 +437,7 @@ def internal_product_to_shared(product: Any) -> Product:
         pricing_type=pricing_type,
         pricing_model=pricing_model,
         delivery_type=DeliveryType.GUARANTEED,
+        ad_formats=ad_formats,
         audience_targeting=getattr(product, "audience_targeting", None),
         ad_product_targeting=getattr(product, "ad_product_targeting", None),
         content_targeting=getattr(product, "content_targeting", None),
