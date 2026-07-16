@@ -31,6 +31,11 @@ class DealBookingStatus(str, Enum):
     """Status of a booked deal."""
 
     PROPOSED = "proposed"
+    # "confirmed" was always a real domain status (deal export/push logic
+    # compares against the literal), but the member was missing — so
+    # deal_service.create_deal_from_template / bulk create raised
+    # AttributeError (500) on every call. Surfaced by the EP-5.2 tests.
+    CONFIRMED = "confirmed"
     ACTIVE = "active"
     EXPIRED = "expired"
     CANCELLED = "cancelled"

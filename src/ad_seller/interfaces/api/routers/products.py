@@ -73,16 +73,15 @@ async def get_pricing(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Enforce agent registry (blocked agents get 403 before any data)
-    _, max_tier = await deps._resolve_and_enforce_agent(request.agent_url)
-
-    context = deps._build_buyer_context(
+    # EP-5.2: verify the claimed tier against the agent registry and cap at
+    # the verified ceiling (blocked agents 403; unverifiable claims floor).
+    context = await deps._verified_buyer_context(
+        endpoint="POST /pricing",
         buyer_tier=request.buyer_tier,
         agency_id=request.agency_id,
         advertiser_id=request.advertiser_id,
         api_key_record=api_key_record,
         agent_url=request.agent_url,
-        max_access_tier=max_tier,
     )
 
     pricing = quote_service.get_pricing(

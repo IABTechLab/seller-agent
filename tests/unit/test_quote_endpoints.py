@@ -192,6 +192,12 @@ class TestCreateQuote:
                 return_value=_mock_catalog(_products()),
             ),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            # EP-5.2: agent_url now triggers registry verification; keep the
+            # unit test network-free (unfetchable card -> PUBLIC floor).
+            patch(
+                "ad_seller.registry.agent_registry.fetch_agent_card",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             resp = await client.post(
                 "/api/v1/quotes",
@@ -276,7 +282,17 @@ class TestCreateQuote:
         assert final != 500_000
         assert final > 0
 
-    async def test_buyer_identity_affects_tier(self, client, mock_storage):
+    async def test_self_asserted_buyer_identity_cannot_raise_tier(
+        self, client, mock_storage
+    ):
+        """EP-5.2: body-asserted identity alone is UNVERIFIED — it floors.
+
+        Pre-EP-5.2 this exact request was quoted at the ADVERTISER tier
+        (15% off) purely because the buyer typed an advertiser_id into the
+        body. Tier now requires a verified credential: a seller-issued API
+        key (see test_auth_header_binding) or a registry-verified agent_url
+        (see test_trust_tier_verification).
+        """
         with (
             patch(
                 "ad_seller.interfaces.api.main._get_static_product_catalog",
@@ -300,8 +316,8 @@ class TestCreateQuote:
 
         assert resp.status_code == 200
         quote = resp.json()["quote"]
-        assert quote["buyer_tier"] == "advertiser"
-        assert quote["pricing"]["tier_discount_pct"] == 15.0
+        assert quote["buyer_tier"] == "public"
+        assert quote["pricing"]["tier_discount_pct"] == 0.0
 
     # Error cases
 

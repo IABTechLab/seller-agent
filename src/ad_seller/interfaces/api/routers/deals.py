@@ -212,9 +212,12 @@ async def create_deal_from_template(
     # Product data from the single cached catalog source (EP-3.3)
     catalog = deps.get_product_catalog()
 
-    # Resolve buyer context from API key + body
+    # Resolve buyer context from API key + body. EP-5.2: the tier is capped
+    # at the registry-verified ceiling when an agent_url is presented (the
+    # API key identity is the EP-4.5 verified principal otherwise).
     buyer_ident = request.buyer_identity
-    context = deps._build_buyer_context(
+    context = await deps._verified_buyer_context(
+        endpoint="POST /api/v1/deals/from-template",
         buyer_tier=(
             "advertiser"
             if (buyer_ident and buyer_ident.advertiser_id)
@@ -228,6 +231,7 @@ async def create_deal_from_template(
         advertiser_id=buyer_ident.advertiser_id if buyer_ident else None,
         seat_id=buyer_ident.seat_id if buyer_ident else None,
         api_key_record=api_key_record,
+        agent_url=request.agent_url,
     )
 
     deal_data = await deal_service.create_deal_from_template(request, context, catalog)

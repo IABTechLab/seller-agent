@@ -51,9 +51,12 @@ async def create_quote(
     # session.initialize() — see ar-uwad / catalog_service).
     catalog = deps.get_product_catalog()
 
-    # Resolve buyer identity — API key takes priority over body
+    # Resolve buyer identity — API key takes priority over body. EP-5.2:
+    # the claimed tier is verified against the agent registry (agent_url)
+    # and capped at the verified ceiling; unverifiable claims floor.
     buyer_ident = request.buyer_identity
-    context = deps._build_buyer_context(
+    context = await deps._verified_buyer_context(
+        endpoint="POST /api/v1/quotes",
         buyer_tier=(
             "advertiser"
             if (buyer_ident and buyer_ident.advertiser_id)
@@ -67,6 +70,7 @@ async def create_quote(
         advertiser_id=buyer_ident.advertiser_id if buyer_ident else None,
         seat_id=buyer_ident.seat_id if buyer_ident else None,
         api_key_record=api_key_record,
+        agent_url=request.agent_url,
     )
 
     internal_request = cm.quote_request_to_internal(request)

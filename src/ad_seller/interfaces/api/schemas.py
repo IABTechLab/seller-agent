@@ -162,6 +162,9 @@ class CounterOfferRequest(BaseModel):
     buyer_tier: str = "public"
     agency_id: Optional[str] = None
     advertiser_id: Optional[str] = None
+    # EP-5.2: buyer agent URL for registry trust verification. Without it
+    # (and without an API key) self-asserted tier claims floor to PUBLIC.
+    agent_url: Optional[str] = None
 
 
 class QuoteBuyerIdentityModel(BaseModel):
@@ -319,6 +322,9 @@ class DealFromTemplateRequest(BaseModel):
     flight_end: Optional[str] = None
     buyer_identity: Optional[QuoteBuyerIdentityModel] = None
     notes: Optional[str] = None
+    # EP-5.2: buyer agent URL for registry trust verification. When present,
+    # the registry-verified ceiling caps even the API key's identity tier.
+    agent_url: Optional[str] = None
 
 
 class DealFromTemplateResponse(BaseModel):

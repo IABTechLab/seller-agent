@@ -134,6 +134,92 @@ async def _resolve_and_enforce_agent(
     return agent, tier
 
 
+async def _verified_buyer_context(
+    *,
+    endpoint: str,
+    buyer_tier: str = "public",
+    agency_id: Optional[str] = None,
+    advertiser_id: Optional[str] = None,
+    seat_id: Optional[str] = None,
+    api_key_record: Optional[Any] = None,
+    agent_url: Optional[str] = None,
+):
+    """Build a BuyerContext with the trust-tier ceiling VERIFIED (EP-5.2).
+
+    Used by every price-moving path (quotes, pricing, proposals, negotiation
+    counters/messages, template booking). The buyer's CLAIMED tier — whether
+    self-asserted through body identity fields like ``advertiser_id`` or
+    derived from a seller-issued API key — is capped at a verified ceiling,
+    fail-closed:
+
+    - ``agent_url`` present: the agent is verified against the registry
+      (through AgentRegistryService / the EP-5.1 clients). The registry
+      ceiling caps the claimed tier; unknown/unverifiable agents get the
+      PUBLIC floor; blocked agents are rejected with 403 before any pricing
+      data leaks. Each verification outcome is persisted as the shared
+      contract library's ``VerifiedTrust`` primitive (TrustVerificationStore,
+      EP-0.2 durable-fallback semantics).
+    - API key, no ``agent_url``: the key's identity is the EP-4.5 verified
+      principal (seller-issued credential) — trusted as claimed.
+    - Neither: the claim is unverifiable — the effective tier is floored to
+      PUBLIC. Self-asserted identity can never raise the tier above what
+      the seller can verify.
+
+    Args:
+        endpoint: Audit label for the calling path (e.g. "POST /api/v1/quotes").
+    """
+    from ...models.buyer_identity import AccessTier
+    from ...storage.factory import get_storage
+    from ...storage.trust_verifications import TrustVerificationStore
+
+    ceiling: Optional[Any] = None
+
+    if agent_url:
+        service = await _get_registry_service()
+        agent, tier, verdict = await service.verify_buyer_trust(agent_url)
+
+        # What the buyer claims, before any ceiling is applied.
+        claimed_context = _build_buyer_context(
+            buyer_tier=buyer_tier,
+            agency_id=agency_id,
+            advertiser_id=advertiser_id,
+            seat_id=seat_id,
+            api_key_record=api_key_record,
+            agent_url=agent_url,
+        )
+        # Persist the auditable verification outcome (fail-closed store).
+        store = TrustVerificationStore(await get_storage())
+        await store.record_verification(
+            verdict,
+            agent_url=agent_url,
+            claimed_tier=claimed_context.effective_tier.value,
+            effective_ceiling=tier.value if tier is not None else None,
+            endpoint=endpoint,
+        )
+
+        if agent is not None and agent.is_blocked:
+            raise HTTPException(
+                status_code=403,
+                detail="Agent is blocked. Contact the seller operator for access.",
+            )
+        # Registry-verified ceiling (PUBLIC floor for unknown agents).
+        ceiling = tier if tier is not None else AccessTier.PUBLIC
+    elif api_key_record is None:
+        # No verifiable agent identity and no seller-issued credential:
+        # fail closed — self-asserted claims get the floor tier.
+        ceiling = AccessTier.PUBLIC
+
+    return _build_buyer_context(
+        buyer_tier=buyer_tier,
+        agency_id=agency_id,
+        advertiser_id=advertiser_id,
+        seat_id=seat_id,
+        api_key_record=api_key_record,
+        agent_url=agent_url,
+        max_access_tier=ceiling,
+    )
+
+
 def get_product_catalog() -> dict[str, Any]:
     """Return the cached static product catalog.
 

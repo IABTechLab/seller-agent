@@ -24,6 +24,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from iab_agentic_primitives.registry_client import VerifiedTrust
+
 from ..clients.agent_registry_client import (
     AAMPRegistryClient,
     BaseRegistryClient,
@@ -254,6 +256,53 @@ class AgentRegistryService:
 
         tier = TRUST_TO_TIER_MAP.get(trust)
         return agent, tier
+
+    async def verify_buyer_trust(
+        self, agent_url: str
+    ) -> tuple[Optional[RegisteredAgent], Optional[AccessTier], VerifiedTrust]:
+        """Resolve an agent AND build the auditable trust verdict (EP-5.2).
+
+        Wraps :meth:`resolve_agent_access` and maps the outcome onto the
+        shared contract library's ``VerifiedTrust`` primitive so callers can
+        persist the verification result in an auditable store.
+
+        Mapping notes:
+        - ``verified`` is True when the agent's trust status grants more
+          than the floor (REGISTERED / APPROVED / PREFERRED). UNKNOWN and
+          BLOCKED agents are not verified.
+        - ``verification_status`` carries the seller's TrustStatus value.
+        - ``domain_verified`` / ``iab_member`` / ``badge_available`` default
+          False: the seller's BaseRegistryClient surface only exposes
+          (is_registered, external_id), not the real registry's full
+          verification triplet. Enriching these requires widening the
+          EP-5.1 client surface (documented follow-up).
+
+        Returns:
+            (agent, ceiling, verdict) — ceiling is None when blocked
+            (caller must reject with 403).
+        """
+        agent, ceiling = await self.resolve_agent_access(agent_url)
+
+        if agent is None:
+            # No card, no registry record — unverifiable, floor tier.
+            verdict = VerifiedTrust(
+                agent_id=agent_url,
+                verified=False,
+                verification_status=TrustStatus.UNKNOWN.value,
+            )
+            return None, ceiling, verdict
+
+        primary_source = agent.registry_sources[0] if agent.registry_sources else None
+        external_id = primary_source.external_agent_id if primary_source else None
+        registry_id = primary_source.registry_id if primary_source else "local"
+        verdict = VerifiedTrust(
+            agent_id=external_id or agent_url,
+            verified=agent.trust_status
+            in (TrustStatus.REGISTERED, TrustStatus.APPROVED, TrustStatus.PREFERRED),
+            verification_status=agent.trust_status.value,
+            registry_id=registry_id,
+        )
+        return agent, ceiling, verdict
 
     # =========================================================================
     # Tier Computation (static utility)

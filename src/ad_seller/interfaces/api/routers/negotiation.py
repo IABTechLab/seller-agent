@@ -37,17 +37,15 @@ async def submit_proposal(
     # Product data from the single cached catalog source (EP-3.3)
     catalog = deps.get_product_catalog()
 
-    # Enforce agent registry
-    _, max_tier = await deps._resolve_and_enforce_agent(request.agent_url)
-
-    # Create buyer context (API key identity overrides body params)
-    context = deps._build_buyer_context(
+    # EP-5.2: verify the claimed tier against the agent registry and cap at
+    # the verified ceiling (blocked agents 403; unverifiable claims floor).
+    context = await deps._verified_buyer_context(
+        endpoint="POST /proposals",
         buyer_tier="agency" if request.agency_id else "public",
         agency_id=request.agency_id,
         advertiser_id=request.advertiser_id,
         api_key_record=api_key_record,
         agent_url=request.agent_url,
-        max_access_tier=max_tier,
     )
 
     result = await negotiation_service.submit_proposal(request, context, catalog)
@@ -64,12 +62,19 @@ async def counter_proposal(
 
     Loads or creates a NegotiationHistory, evaluates the buyer's offer,
     persists the updated history, and emits a NEGOTIATION_ROUND event.
+
+    EP-5.2: this endpoint previously applied NO trust-tier ceiling — a
+    buyer could self-assert ADVERTISER pricing by populating
+    advertiser_id. The claimed tier is now verified against the agent
+    registry (agent_url) or the API key; unverifiable claims floor.
     """
-    buyer_context = deps._build_buyer_context(
+    buyer_context = await deps._verified_buyer_context(
+        endpoint="POST /proposals/{proposal_id}/counter",
         buyer_tier=request.buyer_tier,
         agency_id=request.agency_id,
         advertiser_id=request.advertiser_id,
         api_key_record=api_key_record,
+        agent_url=request.agent_url,
     )
 
     return await negotiation_service.counter_proposal(
@@ -99,8 +104,13 @@ async def post_negotiation_message(
     negotiation engine; accept/reject are recorded as terminal rounds off
     the existing history.
     """
+    # EP-5.2: cap the claimed tier at a verified ceiling. The shared
+    # NegotiationMessage carries no agent_url (lib gap — QuoteRequest has
+    # one), so verification here keys off the API key; anonymous
+    # self-asserted identity claims floor to PUBLIC.
     ident = message.buyer_identity
-    buyer_context = deps._build_buyer_context(
+    buyer_context = await deps._verified_buyer_context(
+        endpoint="POST /api/v1/negotiations/messages",
         buyer_tier=(
             "advertiser"
             if (ident and ident.advertiser_id)
