@@ -162,6 +162,14 @@ class Settings(BaseSettings):
     agent_registry_enabled: bool = True
     agent_registry_url: str = "https://tools.iabtechlab.com/agent-registry"
     agent_registry_extra_urls: str = ""  # Comma-separated additional registry URLs
+    # Real IAB AAMP agent registry (EP-5.1). When aamp_registry_url is set
+    # (env AAMP_REGISTRY_URL), registry verification/lookup/search go
+    # through the shared contract library's RegistryClient against the real
+    # /api/agents API; when empty (the default), the legacy stub clients
+    # above are used. The swap is config, not code.
+    # AAMP_REGISTRY_AUTH_TOKEN carries the bearer JWT — never log it.
+    aamp_registry_url: str = ""
+    aamp_registry_auth_token: str = ""
     auto_approve_registered_agents: bool = True
     require_approval_for_unregistered: bool = True
     seller_agent_url: str = "http://localhost:8000"
