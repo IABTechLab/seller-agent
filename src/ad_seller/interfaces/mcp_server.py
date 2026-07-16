@@ -112,19 +112,19 @@ def _public_context():
 
 
 async def _registry_service():
-    """Build an AgentRegistryService (mirrors interfaces.api.deps, no app import)."""
-    from ..clients.agent_registry_client import AAMPRegistryClient
+    """Build an AgentRegistryService (mirrors interfaces.api.deps, no app import).
+
+    Registry client selection is config-driven (EP-5.1): the real IAB
+    agent registry when AAMP_REGISTRY_URL is set, legacy stubs otherwise.
+    """
+    from ..clients.agent_registry_client import build_registry_clients
     from ..registry import AgentRegistryService
 
     storage = await _get_storage()
     settings = _get_settings()
-    clients = [AAMPRegistryClient(registry_url=settings.agent_registry_url)]
-    if settings.agent_registry_extra_urls:
-        for url in settings.agent_registry_extra_urls.split(","):
-            url = url.strip()
-            if url:
-                clients.append(AAMPRegistryClient(registry_url=url))
-    return AgentRegistryService(storage, registry_clients=clients)
+    return AgentRegistryService(
+        storage, registry_clients=build_registry_clients(settings)
+    )
 
 
 async def _api_key_service():

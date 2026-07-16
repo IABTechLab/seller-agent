@@ -87,26 +87,21 @@ def _build_buyer_context(
 
 
 async def _get_registry_service():
-    """Create an AgentRegistryService with storage + AAMP client."""
-    from ...clients.agent_registry_client import AAMPRegistryClient
+    """Create an AgentRegistryService with storage + registry client(s).
+
+    Registry client selection is config-driven (EP-5.1): the real IAB
+    agent registry (AampApiRegistryClient) when AAMP_REGISTRY_URL is set,
+    the legacy stub clients otherwise.
+    """
+    from ...clients.agent_registry_client import build_registry_clients
     from ...registry import AgentRegistryService
     from ...storage.factory import get_storage
 
     storage = await get_storage()
     settings = _get_api_settings()
-    aamp = AAMPRegistryClient(registry_url=settings.agent_registry_url)
-
-    # Build client list: AAMP primary + any extra registries
-    clients = [aamp]
-    if settings.agent_registry_extra_urls:
-        for url in settings.agent_registry_extra_urls.split(","):
-            url = url.strip()
-            if url:
-                # Extra registries use AAMP client for now (same protocol)
-                # Subclass BaseRegistryClient for vendor-specific registries
-                clients.append(AAMPRegistryClient(registry_url=url))
-
-    return AgentRegistryService(storage, registry_clients=clients)
+    return AgentRegistryService(
+        storage, registry_clients=build_registry_clients(settings)
+    )
 
 
 def _get_api_settings():
