@@ -1062,10 +1062,59 @@ async def resume_flow(approval_id: str):
     if request.flow_type == "proposal_handling" and request.gate_name == "proposal_decision":
         return await _resume_proposal_flow(request, response)
 
+    if request.flow_type == "ssp_distribution" and request.gate_name == "dsp_resolution":
+        return await _resume_ssp_distribution(request, response)
+
     raise HTTPException(
         status_code=400,
         detail=f"Unknown flow_type/gate_name: {request.flow_type}/{request.gate_name}",
     )
+
+
+async def _resume_ssp_distribution(request, response):
+    """Resume an SSP distribution after a dsp_resolution approval decision.
+
+    Unlike _resume_proposal_flow, there's no CrewAI flow/state machine to
+    re-hydrate here — distribute_deal_via_ssp is a plain route, so the
+    snapshot is just the SSP name and the SSPDealCreateRequest that was
+    waiting on a dsp_id. On approval, the human's selected_dsp_id
+    (response.modifications) is applied and create_deal() finally runs.
+    """
+    from ...clients.ssp_base import SSPDealCreateRequest
+    from ...clients.ssp_factory import build_ssp_registry
+
+    if response.decision != "approve":
+        return {
+            "deal_id": request.deal_id,
+            "status": response.decision,
+            "resumed_from_approval": request.approval_id,
+        }
+
+    selected_dsp_id = response.modifications.get("selected_dsp_id")
+    if selected_dsp_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail='Approving a dsp_resolution gate requires modifications={"selected_dsp_id": <id>}',
+        )
+
+    snapshot = request.flow_state_snapshot
+    create_request = SSPDealCreateRequest(**snapshot["create_request"])
+    create_request.dsp_id = selected_dsp_id
+
+    registry = build_ssp_registry()
+    ssp = registry.get_client(snapshot["ssp_name"])
+
+    async with ssp:
+        result = await ssp.create_deal(create_request)
+
+    return {
+        "deal_id": result.deal_id,
+        "ssp": result.ssp_name,
+        "ssp_type": result.ssp_type.value,
+        "status": result.status.value,
+        "deal": result.model_dump(exclude={"raw"}),
+        "resumed_from_approval": request.approval_id,
+    }
 
 
 async def _resume_proposal_flow(request, response):
@@ -4492,6 +4541,77 @@ class SSPDealDistributeRequest(BaseModel):
     inventory_type: Optional[str] = None  # for routing: ctv, display, video, etc.
 
 
+async def _resolve_dsp_id_or_pending_approval(
+    ssp: Any,
+    create_request: Any,
+    deal_id: str,
+) -> Optional[dict[str, Any]]:
+    """Resolve create_request.dsp_id from buyer_seat_ids if not already set.
+
+    Mutates create_request.dsp_id in place when resolution is unambiguous
+    (0 or 1 candidate). If the seat ID(s) collide across more than one DSP,
+    creates a pending ApprovalGate request instead of guessing which one is
+    correct, and returns the response dict the route should return
+    immediately — the actual create_deal() call happens later, via the
+    ssp_distribution/dsp_resolution resume path, once a human picks one.
+
+    Returns None if no gating was needed: dsp_id was already set, no seat
+    IDs were given, the SSP doesn't support seat resolution at all, or
+    resolution found exactly one candidate.
+    """
+    if create_request.dsp_id is not None or not create_request.buyer_seat_ids:
+        return None
+
+    resolver = getattr(ssp, "resolve_dsp_ids_for_seat_ids", None)
+    if resolver is None:
+        return None
+
+    matches = await resolver(create_request.buyer_seat_ids)
+    if not matches:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "dsp_resolution_failed",
+                "message": f"No active DSP found for seat ID(s): {create_request.buyer_seat_ids}",
+            },
+        )
+
+    distinct_dsp_ids = sorted({m.dsp_id for m in matches})
+    if len(distinct_dsp_ids) == 1:
+        create_request.dsp_id = distinct_dsp_ids[0]
+        return None
+
+    from ...events.approval import ApprovalGate
+    from ...storage.factory import get_storage
+
+    storage = await get_storage()
+    gate = ApprovalGate(storage)
+    approval_req = await gate.request_approval(
+        flow_id=f"ssp-distribute-{deal_id}",
+        flow_type="ssp_distribution",
+        gate_name="dsp_resolution",
+        context={
+            "seat_ids": create_request.buyer_seat_ids,
+            "candidates": [m.model_dump() for m in matches],
+        },
+        flow_state_snapshot={
+            "ssp_name": ssp.ssp_type.value,
+            "create_request": create_request.model_dump(mode="json"),
+        },
+        deal_id=deal_id,
+    )
+    return {
+        "status": "pending_approval",
+        "approval_id": approval_req.approval_id,
+        "message": (
+            f"Seat ID(s) {create_request.buyer_seat_ids} matched multiple DSPs "
+            f"{distinct_dsp_ids}; a human must select the correct one via "
+            f"POST /approvals/{approval_req.approval_id}/decide "
+            '(modifications={"selected_dsp_id": <id>}) before this deal can be created.'
+        ),
+    }
+
+
 @app.post("/api/v1/deals/distribute", tags=["Deal Booking"])
 async def distribute_deal_via_ssp(request: SSPDealDistributeRequest):
     """Distribute a deal through configured SSP(s).
@@ -4501,6 +4621,12 @@ async def distribute_deal_via_ssp(request: SSPDealDistributeRequest):
 
     Supports multiple SSPs: PubMatic (MCP), Index Exchange (REST),
     Magnite (REST), or any configured SSP connector.
+
+    If buyer_seat_ids is given but not dsp_id, and the routed SSP supports
+    seat-based DSP resolution (e.g. Index Exchange), this resolves dsp_id
+    automatically. If the seat ID(s) match more than one DSP, the deal is
+    held pending human approval (see _resolve_dsp_id_or_pending_approval)
+    rather than guessing.
     """
     from ...clients.ssp_base import SSPDealCreateRequest, SSPDealType
     from ...clients.ssp_factory import build_ssp_registry
@@ -4556,6 +4682,10 @@ async def distribute_deal_via_ssp(request: SSPDealDistributeRequest):
         targeting=request.targeting,
         external_deal_id=request.deal_id,
     )
+
+    pending = await _resolve_dsp_id_or_pending_approval(ssp, create_request, request.deal_id)
+    if pending is not None:
+        return pending
 
     async with ssp:
         result = await ssp.create_deal(create_request)

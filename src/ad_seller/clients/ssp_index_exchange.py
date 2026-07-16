@@ -10,9 +10,8 @@ INDEX_EXCHANGE_API_URL is configured as just the FQDN — the /api/deals
 prefix is applied in code (_API_BASE_PATH below) rather than baked into the
 configured base URL, since /api/deals is only one of several path prefixes
 under this host we expect to call as seller-agent's agentic workflows
-expand (e.g. a planned /v1/seats lookup for DSP resolution). No MCP server
-yet (as of March 2026), though they're part of the IAB Tech Lab Agentic RTB
-Framework (ARTF) coalition.
+expand. No MCP server yet (as of March 2026), though they're part of the
+IAB Tech Lab Agentic RTB Framework (ARTF) coalition.
 
 Key endpoints (FQDN + path):
   - POST   /api/deals/v3/deals              — Create a deal
@@ -21,6 +20,8 @@ Key endpoints (FQDN + path):
   - PATCH  /api/deals/v3/deals/{id}          — Update a deal (requires If-Match ETag)
   - DELETE /api/deals/v3/deals/{id}          — Soft-delete a deal
   - GET    /api/deals/v3/deals/reports       — Deals data export
+  - GET    /api/deals/v1/dsps/-/seats        — Resolve dspID(s) from seat IDs
+    (see resolve_dsp_ids_for_seat_ids() below)
 
 There is no clone/copy endpoint — clone_deal() below implements cloning by
 composing get_deal() + create_deal() instead.
@@ -30,12 +31,13 @@ Go service implementing /v3/deals), not from public docs.
 
 Known limitations:
   - dspID (directConfigurations.dspID for Direct deal types, or
-    marketplaceConfigurations.dspID for Marketplace Package) has no source
-    anywhere in seller-agent today — it's required for every deal type this
-    connector supports, not just Direct. create_deal() will raise
-    ValueError until request.dsp_id is supplied by the caller — there is no
-    per-deal "target DSP" concept in the current deal/flow model to derive
-    it from.
+    marketplaceConfigurations.dspID for Marketplace Package) is required for
+    every deal type this connector supports, not just Direct. create_deal()
+    will raise ValueError until request.dsp_id is supplied. Callers with
+    only a buyer_seat_id (no dsp_id) should call
+    resolve_dsp_ids_for_seat_ids() first — see distribute_deal_via_ssp() in
+    interfaces/api/main.py for how ambiguous (>1 dspID) resolutions are
+    gated behind human approval before create_deal() is called.
   - account.accountID is likewise not sourced anywhere upstream today —
     it's deliberately not a fixed deployment-wide setting, since a single
     seller-agent instance may need to create deals under more than one IX
@@ -51,6 +53,8 @@ Known limitations:
 import logging
 import uuid
 from typing import Any, Optional
+
+from pydantic import BaseModel
 
 from .ssp_base import (
     SSPDeal,
@@ -121,6 +125,22 @@ _IX_LIST_STATUS_MAP = {
     SSPDealStatus.PAUSED: "paused",
     SSPDealStatus.EXPIRED: "expired",
 }
+
+
+class DspSeatMatch(BaseModel):
+    """A single seat/DSP match from resolve_dsp_ids_for_seat_ids().
+
+    A given buyer_seat_id (DSP-facing, alphanumeric) can resolve to more
+    than one dspID — collisions are rare but not impossible (empirically
+    verified against demand-data-api's rtbTradingDeskExtendedIDs table) —
+    so callers must handle zero, one, or multiple matches explicitly rather
+    than assuming a 1:1 mapping.
+    """
+
+    dsp_id: int
+    extended_seat_id: str = ""
+    buyer_name: str = ""
+    status: str = ""
 
 
 class IndexExchangeSSPClient(RESTSSPClient):
@@ -218,6 +238,41 @@ class IndexExchangeSSPClient(RESTSSPClient):
         resp = await http.post(f"{_API_BASE_PATH}/v3/deals", json=body)
         resp.raise_for_status()
         return self._parse_deal(resp.json())
+
+    async def resolve_dsp_ids_for_seat_ids(self, seat_ids: list[str]) -> list[DspSeatMatch]:
+        """Resolve dspID(s) for the given buyer seat IDs.
+
+        Calls GET /v1/dsps/-/seats?seatIDs=... — deals-web-api's wildcard
+        dspID lookup, which searches across all DSPs for seats matching the
+        given (DSP-facing, alphanumeric) seat IDs. Only active seats are
+        returned; a deleted/paused trading desk is never a valid dsp_id to
+        create a new deal against.
+
+        Returns an empty list if none matched, or more than one DspSeatMatch
+        if the seat ID(s) collide across multiple DSPs — callers must decide
+        how to handle that (e.g. gate on human approval) rather than
+        assuming the first match is correct.
+        """
+        if not seat_ids:
+            return []
+
+        http = self._ensure_connected()
+        resp = await http.get(
+            f"{_API_BASE_PATH}/v1/dsps/-/seats",
+            params={"seatIDs": ",".join(seat_ids)},
+        )
+        resp.raise_for_status()
+
+        return [
+            DspSeatMatch(
+                dsp_id=seat["dspID"],
+                extended_seat_id=seat.get("extendedSeatID", ""),
+                buyer_name=seat.get("name", ""),
+                status=seat.get("status", ""),
+            )
+            for seat in resp.json().get("seats", [])
+            if seat.get("status") == "A"
+        ]
 
     async def clone_deal(
         self,

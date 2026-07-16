@@ -300,6 +300,108 @@ class TestIndexExchangeClient:
         with pytest.raises(ValueError, match="dsp_id"):
             await client.create_deal(_valid_create_request(dsp_id=None))
 
+    # --- resolve_dsp_ids_for_seat_ids() ---
+
+    @pytest.mark.asyncio
+    async def test_resolve_dsp_ids_single_match(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response(
+            {
+                "seats": [
+                    {
+                        "seatID": 6508079,
+                        "name": "Acme",
+                        "buyerID": 10,
+                        "extendedSeatID": "acc-100522",
+                        "status": "A",
+                        "dspID": 17,
+                    }
+                ]
+            }
+        )
+        client._http = mock_http
+
+        matches = await client.resolve_dsp_ids_for_seat_ids(["acc-100522"])
+
+        call_args = mock_http.get.call_args
+        assert call_args[0][0] == "/api/deals/v1/dsps/-/seats"
+        assert call_args[1]["params"] == {"seatIDs": "acc-100522"}
+        assert len(matches) == 1
+        assert matches[0].dsp_id == 17
+        assert matches[0].extended_seat_id == "acc-100522"
+        assert matches[0].status == "A"
+
+    @pytest.mark.asyncio
+    async def test_resolve_dsp_ids_multiple_distinct_dsps(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response(
+            {
+                "seats": [
+                    {"seatID": 1, "extendedSeatID": "acc-dupe", "status": "A", "dspID": 17},
+                    {"seatID": 2, "extendedSeatID": "acc-dupe", "status": "A", "dspID": 52},
+                ]
+            }
+        )
+        client._http = mock_http
+
+        matches = await client.resolve_dsp_ids_for_seat_ids(["acc-dupe"])
+
+        assert {m.dsp_id for m in matches} == {17, 52}
+
+    @pytest.mark.asyncio
+    async def test_resolve_dsp_ids_filters_out_inactive(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response(
+            {
+                "seats": [
+                    {"seatID": 1, "extendedSeatID": "acc-1", "status": "A", "dspID": 17},
+                    {"seatID": 2, "extendedSeatID": "acc-1", "status": "D", "dspID": 99},
+                ]
+            }
+        )
+        client._http = mock_http
+
+        matches = await client.resolve_dsp_ids_for_seat_ids(["acc-1"])
+
+        assert len(matches) == 1
+        assert matches[0].dsp_id == 17
+
+    @pytest.mark.asyncio
+    async def test_resolve_dsp_ids_no_match_returns_empty(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response({"seats": []})
+        client._http = mock_http
+
+        matches = await client.resolve_dsp_ids_for_seat_ids(["unknown-seat"])
+
+        assert matches == []
+
+    @pytest.mark.asyncio
+    async def test_resolve_dsp_ids_empty_input_short_circuits(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
+        mock_http = AsyncMock()
+        client._http = mock_http
+
+        matches = await client.resolve_dsp_ids_for_seat_ids([])
+
+        assert matches == []
+        mock_http.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_resolve_dsp_ids_joins_multiple_seat_ids(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response({"seats": []})
+        client._http = mock_http
+
+        await client.resolve_dsp_ids_for_seat_ids(["acc-1", "acc-2"])
+
+        assert mock_http.get.call_args[1]["params"] == {"seatIDs": "acc-1,acc-2"}
+
     # --- clone_deal() ---
 
     @pytest.mark.asyncio
