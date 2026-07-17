@@ -113,6 +113,19 @@ def _create_ssp_client(name: str, settings: Any) -> Any:
             api_key=settings.index_exchange_api_key,
         )
 
+    elif name_lower == "deals_api_mcp":
+        from .ssp_deals_api_mcp_client import DealsAPIMCPClient
+
+        if not settings.deals_api_mcp_url:
+            logger.warning("deals_api_mcp configured but DEALS_API_MCP_URL not set")
+            return None
+
+        return DealsAPIMCPClient(
+            mcp_url=settings.deals_api_mcp_url,
+            api_key=settings.deals_api_mcp_key,
+            seller_origin=settings.deals_api_mcp_seller_origin,
+        )
+
     else:
         logger.warning(
             "Unknown SSP '%s'. To add support, create a client in ssp_factory.py "
