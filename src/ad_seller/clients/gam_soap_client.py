@@ -232,9 +232,7 @@ class GAMSoapClient:
             try:
                 order["externalOrderId"] = int(external_order_id)
             except (ValueError, TypeError):
-                order["notes"] = (
-                    f"{order.get('notes', '')} [deal_id:{external_order_id}]".strip()
-                )
+                order["notes"] = f"{order.get('notes', '')} [deal_id:{external_order_id}]".strip()
 
         result = order_service.createOrders([order])
         order_data = result[0]
@@ -747,7 +745,7 @@ class GAMSoapClient:
             d = getattr(dt, "date", None)
             if d is None:
                 return str(dt)
-            return f"{getattr(d, 'year', '')-0:04d}-{getattr(d, 'month', ''):02d}-{getattr(d, 'day', ''):02d}"
+            return f"{getattr(d, 'year', '') - 0:04d}-{getattr(d, 'month', ''):02d}-{getattr(d, 'day', ''):02d}"
 
         return {
             "id": str(getattr(o, "id", "")),
@@ -778,9 +776,7 @@ class GAMSoapClient:
                 "id": str(getattr(li, "id", "")),
                 "name": getattr(li, "name", ""),
                 "status": str(getattr(li, "status", "")),
-                "impressions_goal": getattr(
-                    getattr(li, "primaryGoal", None), "units", -1
-                ),
+                "impressions_goal": getattr(getattr(li, "primaryGoal", None), "units", -1),
                 "cost_type": str(getattr(li, "costType", "CPM")),
             }
             for li in (getattr(result, "results", None) or [])
@@ -848,9 +844,7 @@ class GAMSoapClient:
 
         downloader = self._client.GetDataDownloader(version=self.api_version)
         buf = io.BytesIO()
-        downloader.DownloadReportToFile(
-            job_id, "CSV_EXCEL", buf, use_gzip_compression=False
-        )
+        downloader.DownloadReportToFile(job_id, "CSV_EXCEL", buf, use_gzip_compression=False)
         buf.seek(0)
         lines = buf.read().decode("utf-8").splitlines()
 

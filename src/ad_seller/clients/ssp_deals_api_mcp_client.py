@@ -42,7 +42,11 @@ _SELLER_STATUS_MAP: dict[int, SSPDealStatus] = {
 }
 
 _SELLER_STATUS_LABEL: dict[int, str] = {
-    0: "Active", 1: "Paused", 2: "Pending", 4: "Complete", 5: "Archived",
+    0: "Active",
+    1: "Paused",
+    2: "Pending",
+    4: "Complete",
+    5: "Archived",
 }
 
 
@@ -90,11 +94,11 @@ class DealsAPIMCPClient(SSPClient):
         now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         args: dict[str, Any] = {
-            "name":       getattr(request, "name", None) or "Untitled Deal",
-            "origin":     self._seller_origin,
-            "seller":     getattr(request, "advertiser", None) or self.ssp_name,
-            "dealFloor":  getattr(request, "cpm", None) or 1.0,
-            "startDate":  getattr(request, "start_date", None) or now_iso,
+            "name": getattr(request, "name", None) or "Untitled Deal",
+            "origin": self._seller_origin,
+            "seller": getattr(request, "advertiser", None) or self.ssp_name,
+            "dealFloor": getattr(request, "cpm", None) or 1.0,
+            "startDate": getattr(request, "start_date", None) or now_iso,
         }
 
         if getattr(request, "end_date", None):
@@ -135,7 +139,6 @@ class DealsAPIMCPClient(SSPClient):
     ) -> SSPDeal:
         """Clone by fetching the source deal and creating a new one with overrides."""
         source_raw = await self._mcp_client.call_tool("deals_status", {"dealId": source_deal_id})
-        source = self._parse_deal(source_raw)
 
         # Build create args from source deal's terms, apply overrides
         source_deal = source_raw.get("deal", {}) if isinstance(source_raw, dict) else {}
@@ -143,9 +146,9 @@ class DealsAPIMCPClient(SSPClient):
         now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         args: dict[str, Any] = {
-            "name":      f"Copy of {source_deal.get('name', source_deal_id)}",
-            "origin":    self._seller_origin,
-            "seller":    source_deal.get("seller", self.ssp_name),
+            "name": f"Copy of {source_deal.get('name', source_deal_id)}",
+            "origin": self._seller_origin,
+            "seller": source_deal.get("seller", self.ssp_name),
             "dealFloor": terms.get("dealFloor", 1.0),
             "startDate": terms.get("startDate", now_iso),
         }

@@ -78,9 +78,7 @@ class QuoteHistoryStore:
         }
 
         # Store by quote_id
-        await self._storage.set(
-            f"quote_history:{quote_id}", record
-        )
+        await self._storage.set(f"quote_history:{quote_id}", record)
 
         # Maintain a buyer+product index for fast lookup
         index_key = f"quote_history_index:{buyer_id}:{product_id}"
@@ -183,7 +181,7 @@ class QuoteHistoryStore:
                     reason=(
                         f"Proposed CPM ${proposed_cpm:.2f} matches quote "
                         f"{quote['quote_id']} (${quoted_cpm:.2f}, "
-                        f"{relative_diff*100:.1f}% difference)."
+                        f"{relative_diff * 100:.1f}% difference)."
                     ),
                 )
 
