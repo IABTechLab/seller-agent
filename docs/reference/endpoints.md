@@ -6,7 +6,7 @@
 Routes registered on the FastAPI application
 (`ad_seller.interfaces.api.main:app`), enumerated from the router table.
 
-**Total: 84 endpoints**
+**Total: 85 endpoints**
 
 | Method | Path | Handler |
 | --- | --- | --- |
@@ -80,6 +80,7 @@ Routes registered on the FastAPI application
 | `PUT` | `/packages/{package_id}` | `update_package` |
 | `POST` | `/pricing` | `get_pricing` |
 | `GET` | `/products` | `list_products` |
+| `POST` | `/products/avails` | `check_avails` |
 | `GET` | `/products/{product_id}` | `get_product` |
 | `POST` | `/proposals` | `submit_proposal` |
 | `POST` | `/proposals/{proposal_id}/counter` | `counter_proposal` |

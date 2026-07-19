@@ -19,6 +19,8 @@ from ....services import catalog_service, quote_service
 from .. import contract_mappers as cm
 from .. import deps
 from ..schemas import (
+    AvailsRequest,
+    AvailsResponse,
     DiscoveryRequest,
     InventoryTypeOverride,
     InventoryTypeOverrideResponse,
@@ -46,6 +48,38 @@ async def list_products(
     return cm.products_to_list_response(
         list(catalog["products"].values()), limit=limit, offset=offset
     )
+
+
+@router.post("/products/avails", response_model=AvailsResponse, tags=["Products"])
+async def check_avails(request: AvailsRequest) -> AvailsResponse:
+    """OpenDirect availability check for a product (camelCase wire shape).
+
+    Called by the buyer agent's OpenDirect client (``check_avails``).
+    Availability is derived honestly from the cached static catalog:
+    requested impressions come from ``requestedImpressions``, else are
+    budget-derived at the product CPM, else fall back to the product's
+    ``minimum_impressions``; ``maximum_impressions`` (when set) caps
+    availability. ``deliveryConfidence`` is always null (no forecast data
+    source) and products with neither ``base_cpm`` nor ``floor_cpm`` are a
+    422 — the reference implementation never fabricates numbers. The
+    request's ``targeting`` field is accepted but not used for filtering.
+    See :func:`ad_seller.services.catalog_service.check_avails` for the
+    full policy.
+    """
+    catalog = deps.get_product_catalog()
+    product = catalog["products"].get(request.product_id)
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Product '{request.product_id}' not found",
+        )
+
+    result = catalog_service.check_avails(
+        product,
+        requested_impressions=request.requested_impressions,
+        budget=request.budget,
+    )
+    return AvailsResponse(**result)
 
 
 @router.get("/products/{product_id}", tags=["Products"])

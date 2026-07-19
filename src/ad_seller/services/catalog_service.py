@@ -217,6 +217,89 @@ def reset_catalog_cache() -> None:
     _CATALOG_CACHE = None
 
 
+def check_avails(
+    product: Any,
+    requested_impressions: Optional[int] = None,
+    budget: Optional[float] = None,
+) -> dict[str, Any]:
+    """Compute OpenDirect avails for a product from catalog data only.
+
+    Honest-availability policy (reference implementation — no fabricated
+    numbers):
+
+    - Requested impressions: ``requested_impressions`` if given; else derived
+      from ``budget`` at the product's CPM (``int(budget / cpm * 1000)``);
+      else the product's ``minimum_impressions``.
+    - ``available_impressions``: if ``maximum_impressions`` is None the
+      product declares no capacity cap, so the requested impressions are
+      reported as available (floored at 0). Otherwise
+      ``min(requested, maximum_impressions)``.
+    - ``estimated_cpm``: ``base_cpm``, falling back to ``floor_cpm``. If both
+      are None the product is unpriceable — HTTP 422 rather than a fabricated
+      price.
+    - ``total_cost``: ``available_impressions / 1000 * estimated_cpm``,
+      rounded to 2 decimals.
+    - ``guaranteed_impressions``: equals ``available_impressions`` when the
+      product supports PROGRAMMATIC_GUARANTEED, else None.
+    - ``delivery_confidence``: always None — the seller has no delivery
+      forecast data source and does not invent one.
+    - ``available_targeting``: sorted union of the keys of the product's
+      non-None targeting dicts (audience/content/ad_product); None when the
+      product declares no targeting dicts.
+
+    Raises ``HTTPException(422)`` for unpriceable products (mirroring how
+    ``quote_service`` expresses error semantics at the service layer).
+    """
+    from fastapi import HTTPException
+
+    cpm = product.base_cpm if product.base_cpm is not None else product.floor_cpm
+    if cpm is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Product '{product.product_id}' has no base_cpm or floor_cpm; "
+                "avails cannot be priced."
+            ),
+        )
+
+    if requested_impressions is not None:
+        requested = requested_impressions
+    elif budget is not None:
+        requested = int(budget / cpm * 1000)
+    else:
+        requested = product.minimum_impressions
+
+    requested = max(0, requested)
+    if product.maximum_impressions is None:
+        available = requested
+    else:
+        available = min(requested, product.maximum_impressions)
+
+    guaranteed = available if DealType.PROGRAMMATIC_GUARANTEED in product.supported_deal_types else None
+
+    targeting_dicts = [
+        product.audience_targeting,
+        product.content_targeting,
+        product.ad_product_targeting,
+    ]
+    present = [d for d in targeting_dicts if d is not None]
+    available_targeting: Optional[list[str]]
+    if present:
+        available_targeting = sorted({key for d in present for key in d})
+    else:
+        available_targeting = None
+
+    return {
+        "product_id": product.product_id,
+        "available_impressions": available,
+        "guaranteed_impressions": guaranteed,
+        "estimated_cpm": cpm,
+        "total_cost": round(available / 1000 * cpm, 2),
+        "delivery_confidence": None,  # no forecast data source — never fabricated
+        "available_targeting": available_targeting,
+    }
+
+
 async def override_inventory_type(
     product_id: str,
     inventory_type: str,

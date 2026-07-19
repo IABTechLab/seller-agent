@@ -8,9 +8,10 @@ are unchanged — these are the same Pydantic models the endpoints have
 always used.
 """
 
+from datetime import datetime, timezone
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 
 class PricingRequest(BaseModel):
@@ -80,6 +81,62 @@ class DealResponse(BaseModel):
     pricing_model: str
     openrtb_params: dict[str, Any]
     activation_instructions: dict[str, str]
+
+
+class AvailsRequest(BaseModel):
+    """OpenDirect availability check request (POST /products/avails).
+
+    Wire shape is camelCase, matching the buyer agent's OpenDirect client
+    (``AvailsRequest`` in the buyer's models). ``targeting`` is accepted
+    for wire compatibility but not used for filtering in this reference
+    implementation — the static catalog has no per-slice availability data.
+    """
+
+    product_id: str = Field(..., alias="productId")
+    start_date: datetime = Field(..., alias="startDate")
+    end_date: datetime = Field(..., alias="endDate")
+    requested_impressions: Optional[int] = Field(
+        default=None, alias="requestedImpressions", ge=0
+    )
+    budget: Optional[float] = None
+    targeting: Optional[dict[str, Any]] = None
+
+    model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def _end_after_start(self) -> "AvailsRequest":
+        start, end = self.start_date, self.end_date
+        # Normalize mixed naive/aware datetimes (treat naive as UTC) so the
+        # comparison never raises.
+        if (start.tzinfo is None) != (end.tzinfo is None):
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            if end.tzinfo is None:
+                end = end.replace(tzinfo=timezone.utc)
+        if end <= start:
+            raise ValueError("endDate must be after startDate")
+        return self
+
+
+class AvailsResponse(BaseModel):
+    """OpenDirect availability check response (camelCase wire shape).
+
+    ``deliveryConfidence`` is always null: the seller has no delivery
+    forecast data source, and the reference implementation does not
+    fabricate one.
+    """
+
+    product_id: str = Field(..., alias="productId")
+    available_impressions: int = Field(..., alias="availableImpressions")
+    guaranteed_impressions: Optional[int] = Field(default=None, alias="guaranteedImpressions")
+    estimated_cpm: float = Field(..., alias="estimatedCpm")
+    total_cost: float = Field(..., alias="totalCost")
+    delivery_confidence: Optional[float] = Field(
+        default=None, alias="deliveryConfidence", ge=0, le=100
+    )
+    available_targeting: Optional[list[str]] = Field(default=None, alias="availableTargeting")
+
+    model_config = {"populate_by_name": True}
 
 
 class DiscoveryRequest(BaseModel):
