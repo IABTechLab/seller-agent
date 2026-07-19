@@ -1,6 +1,6 @@
 # API Overview
 
-The Ad Seller System API exposes **58 endpoints** across **19 tags**. All endpoints are served from a single FastAPI application.
+The Ad Seller System API exposes **59 endpoints** across **19 tags**. All endpoints are served from a single FastAPI application.
 
 **Base URL:** `http://localhost:8000`
 **OpenAPI docs:** `http://localhost:8000/docs`
@@ -19,6 +19,7 @@ The Ad Seller System API exposes **58 endpoints** across **19 tags**. All endpoi
 | Method | Path | Summary |
 |--------|------|---------|
 | GET | `/products` | List all products in the catalog |
+| POST | `/products/avails` | OpenDirect availability check for a product (camelCase wire shape). Availability is derived from the catalog (`requestedImpressions`, else budget-derived at the product CPM, else `minimum_impressions`; capped by `maximum_impressions` when set); unpriceable products are a 422 and `deliveryConfidence` is always null — nothing is fabricated |
 | GET | `/products/{product_id}` | Get a specific product |
 
 ## Pricing
