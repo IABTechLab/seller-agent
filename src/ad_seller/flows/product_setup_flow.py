@@ -391,9 +391,9 @@ class ProductSetupFlow(Flow[ProductSetupState]):
 
         default_products = DEFAULT_PRODUCT_CONFIGS
 
-        for product_config in default_products:
+        for i, product_config in enumerate(default_products):
             product_def = ProductDefinition(
-                product_id=f"prod-{uuid.uuid4().hex[:8]}",
+                product_id=f"prod-{i + 1:03d}",
                 name=product_config["name"],
                 description=product_config.get("description"),
                 inventory_type=product_config["inventory_type"],

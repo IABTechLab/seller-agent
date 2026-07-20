@@ -6,7 +6,7 @@
 Tools exposed by the seller MCP server (`ad_seller.interfaces.mcp_server`),
 enumerated from the live FastMCP registry.
 
-**Total: 44 tools**
+**Total: 46 tools**
 
 | Tool | Description |
 | --- | --- |
@@ -23,6 +23,7 @@ enumerated from the live FastMCP registry.
 | `get_config` | Get current configuration summary (no secrets). |
 | `get_deal_lineage` | Get the lineage chain for a deal — parents and replacements. |
 | `get_deal_performance` | Get delivery and performance metrics for a deal. |
+| `get_gam_delivery_report` | Pull a delivery report from Google Ad Manager for one or more orders. |
 | `get_inbound_queue` | Get everything waiting for publisher action: pending approvals, unresolved |
 | `get_pricing` | Calculate tiered pricing for a product based on buyer identity. |
 | `get_rate_card` | Get the current rate card (base CPMs by inventory type). |
@@ -35,6 +36,7 @@ enumerated from the live FastMCP registry.
 | `list_buyer_agents` | List registered buyer agents and their trust levels. |
 | `list_configurable_flows` | Introspect current automation config: approval gates, guard conditions, |
 | `list_curators` | List registered curators (Agent Range is pre-registered). |
+| `list_gam_orders` | List orders from Google Ad Manager (GAM). |
 | `list_inventory` | List raw inventory from the ad server (before product mapping). |
 | `list_orders` | List orders and their current states. |
 | `list_packages` | List packages in the media kit. These are what buyers browse. |

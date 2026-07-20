@@ -134,7 +134,7 @@ Seller operators manage the agent registry through these endpoints:
 | `/registry/agents` | GET | List registered agents (filterable by type and trust status) |
 | `/registry/agents/{agent_id}` | GET | Get details for a specific agent |
 | `/registry/agents/{agent_id}/trust` | PUT | Update an agent's trust status |
-| `/registry/discover` | POST | Discover an agent by URL (fetches their agent card) |
+| `/registry/agents/discover` | POST | Discover an agent by URL (fetches their agent card) |
 
 ## See Also
 

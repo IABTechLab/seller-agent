@@ -84,6 +84,7 @@ nav:
       - Setup Overview: guides/publisher-setup.md
       - Configuration: guides/configuration.md
       - Inventory Sync: guides/inventory-sync.md
+      - GAM Delivery Reporting: guides/gam-reporting.md
       - Media Kit: guides/media-kit.md
       - Pricing & Access Tiers: guides/pricing-rules.md
       - Approval & HITL: guides/approval-rules.md

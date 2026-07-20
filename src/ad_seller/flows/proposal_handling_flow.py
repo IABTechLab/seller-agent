@@ -27,6 +27,7 @@ from ..models.buyer_identity import BuyerContext
 from ..models.flow_state import (
     ExecutionStatus,
     ProposalEvaluation,
+    ProposalReviewOutput,
     SellerFlowState,
 )
 from ..models.ucp import AudienceCapability, SignalType
@@ -419,17 +420,13 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         crew = create_proposal_review_crew(self.state.proposal_data)
 
         try:
-            result = crew.kickoff()
+            result = await crew.kickoff_async()
 
-            # Parse crew recommendation
-            result_text = str(result).lower()
-
-            if "accept" in result_text:
-                self.state.recommendation = "accept"
-            elif "counter" in result_text:
-                self.state.recommendation = "counter"
+            review: Optional[ProposalReviewOutput] = result.pydantic
+            if review is not None:
+                self.state.recommendation = review.decision.value
             else:
-                self.state.recommendation = "reject"
+                self._fallback_evaluation()
 
             # Emit proposal.evaluated event
             await emit_event(
@@ -655,6 +652,44 @@ class ProposalHandlingFlow(Flow[ProposalState]):
 
         # If pending approval, include state snapshot for the API to create
         # an ApprovalRequest with (handle_proposal is sync, storage is async)
+        if self.state.status == ExecutionStatus.PENDING_APPROVAL:
+            result["pending_approval"] = True
+            result["flow_id"] = self.state.flow_id
+            result["_flow_state_snapshot"] = self.state.model_dump(mode="json")
+
+        return result
+
+    async def handle_proposal_async(
+        self,
+        proposal_id: str,
+        proposal_data: dict[str, Any],
+        buyer_context: Optional[BuyerContext] = None,
+        products: Optional[dict] = None,
+    ) -> dict[str, Any]:
+        """Async version of handle_proposal using kickoff_async().
+
+        Use this from async FastAPI handlers to avoid blocking the event loop
+        with the synchronous kickoff() call.
+        """
+        self.state.proposal_id = proposal_id
+        self.state.proposal_data = proposal_data
+        self.state.buyer_context = buyer_context
+        if products:
+            self.state.products = products
+
+        await self.kickoff_async()
+
+        result = {
+            "proposal_id": proposal_id,
+            "recommendation": self.state.recommendation,
+            "status": self.state.status.value,
+            "evaluation": self.state.evaluation.model_dump() if self.state.evaluation else None,
+            "counter_terms": self.state.counter_terms,
+            "upsell_suggestions": self.state.upsell_suggestions,
+            "errors": self.state.errors,
+            "warnings": self.state.warnings,
+        }
+
         if self.state.status == ExecutionStatus.PENDING_APPROVAL:
             result["pending_approval"] = True
             result["flow_id"] = self.state.flow_id

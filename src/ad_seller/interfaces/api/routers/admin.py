@@ -7,8 +7,9 @@ lifecycle, supply-chain self-description, rate card, and inventory sync."""
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from .. import deps
 from ..schemas import (
     CreateApiKeyRequest,
     RateCardEntry,
@@ -358,3 +359,51 @@ async def get_sync_watermark():
         return {"last_sync_at": None, "message": "No sync has been performed yet."}
 
     return watermark
+
+
+# =============================================================================
+# GAM Reporting (seller-internal; main PR #12 surface in the router layer)
+# =============================================================================
+
+
+@router.get("/gam/orders", tags=["Reporting"])
+async def gam_list_orders(
+    limit: int = 50,
+    agent_created_only: bool = False,
+    _auth=Depends(deps._get_optional_api_key_record),
+) -> dict:
+    """List recent GAM orders directly from the ad server.
+
+    Args:
+        limit: Maximum number of orders to return (default 50)
+        agent_created_only: If true, return only orders created by the agent
+            (deals whose stored record carries a gam_order_id link)
+
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
+    """
+    from ....services import gam_reporting_service
+
+    return await gam_reporting_service.list_gam_orders(
+        limit=limit, agent_created_only=agent_created_only
+    )
+
+
+@router.get("/gam/report", tags=["Reporting"])
+async def gam_delivery_report(
+    order_ids: str,
+    days: int = 30,
+    _auth=Depends(deps._get_optional_api_key_record),
+) -> dict:
+    """Pull a delivery report from GAM by order ID(s).
+
+    Args:
+        order_ids: Comma-separated numeric GAM order IDs
+        days: Look-back window in days (default 30)
+
+    Returns order metadata, line items, and delivery data (impressions,
+    clicks, revenue). Requires GAM_ENABLED=true, GAM_NETWORK_CODE,
+    GAM_JSON_KEY_PATH in .env.
+    """
+    from ....services import gam_reporting_service
+
+    return await gam_reporting_service.get_gam_delivery_report(order_ids, days=days)

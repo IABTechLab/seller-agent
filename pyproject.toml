@@ -19,7 +19,10 @@ classifiers = [
 ]
 
 dependencies = [
-    "crewai[anthropic,bedrock]>=1.14.4,<2.0.0",
+    # openai/gemini extras from PR #28 don't exist on crewai>=1.15 — the OpenAI
+    # SDK is a core crewai dependency and the Gemini extra is named google-genai
+    # (adopted from origin/fix/crewai-google-genai-extra).
+    "crewai[anthropic,bedrock,google-genai]>=1.14.4,<2.0.0",
     "crewai-tools>=1.14.0,<2.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",

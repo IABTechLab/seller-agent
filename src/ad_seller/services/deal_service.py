@@ -349,9 +349,15 @@ async def get_deal(deal_id: str) -> dict[str, Any]:
 async def get_deal_performance(deal_id: str) -> dict[str, Any]:
     """Return delivery stats for a deal.
 
-    Placeholder performance data — real stats come from ad server
-    integration in a future phase.
+    Provides performance feedback for buyer SPO (Supply Path Optimization).
+
+    If GAM is configured and the deal has a linked ``gam_order_id`` (set when
+    the deal is trafficked into GAM), returns real delivery data from the ad
+    server via ``GAMSoapClient.get_delivery_report`` (main PR #12 wiring,
+    re-grounded in the service layer — bead ar-j8hl). Otherwise returns
+    placeholder stats.
     """
+    from ..config import get_settings
     from ..storage.factory import get_storage
 
     storage = await get_storage()
@@ -363,8 +369,68 @@ async def get_deal_performance(deal_id: str) -> dict[str, Any]:
             detail={"error": "deal_not_found", "message": f"Deal '{deal_id}' not found."},
         )
 
-    # Placeholder performance data — real stats come from ad server integration
     now = datetime.utcnow().isoformat() + "Z"
+    settings = get_settings()
+
+    # Real path: GAM configured + deal was trafficked into GAM
+    gam_order_id = deal.get("gam_order_id") or (deal.get("metadata") or {}).get("gam_order_id")
+    if (
+        settings.gam_enabled
+        and settings.gam_network_code
+        and settings.gam_json_key_path
+        and gam_order_id
+    ):
+        try:
+            from ..clients.gam_soap_client import GAMSoapClient
+
+            client = GAMSoapClient()
+            client.connect()
+            report = client.get_delivery_report([str(gam_order_id)], days=30)
+            client.disconnect()
+
+            summary = report.get("summary", {})
+            impressions_served = summary.get("impressions", 0)
+            impressions_available = 0
+            for order in report.get("orders", []):
+                for li in order.get("line_items", []):
+                    goal = li.get("impressions_goal", 0)
+                    if goal and goal > 0:
+                        impressions_available += goal
+
+            fill_rate = (
+                round(impressions_served / impressions_available * 100, 1)
+                if impressions_available
+                else 0.0
+            )
+            revenue = summary.get("revenue_usd", 0.0)
+            avg_cpm = round(revenue / impressions_served * 1000, 2) if impressions_served else 0.0
+            pacing = (
+                "not_started"
+                if impressions_served == 0
+                else "on_track"
+                if fill_rate >= 40
+                else "behind"
+            )
+
+            return {
+                "deal_id": deal_id,
+                "impressions_available": impressions_available,
+                "impressions_served": impressions_served,
+                "fill_rate": fill_rate,
+                "win_rate": 0.0,
+                "avg_cpm_actual": avg_cpm,
+                "delivery_pacing": pacing,
+                "last_updated": now,
+            }
+        except Exception:
+            logger.exception(
+                "GAM delivery report failed for deal %s (order %s) — "
+                "falling back to placeholder stats",
+                deal_id,
+                gam_order_id,
+            )
+
+    # Fallback: placeholder stats (GAM not configured or order not yet trafficked)
     return {
         "deal_id": deal_id,
         "impressions_available": 1000000,
