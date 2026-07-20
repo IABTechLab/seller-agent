@@ -422,6 +422,21 @@ class GAMAdServerClient(AdServerClient):
                 currency=currency,
             )
 
+            # 5. Write gam_order_id back to the stored deal record so the
+            # performance endpoint can serve real delivery data for this deal
+            # (main PR #12 parity — bead ar-j8hl). Best-effort: a storage
+            # hiccup must never fail the booking itself.
+            try:
+                from ..storage.factory import get_storage
+
+                storage = await get_storage()
+                stored = await storage.get_deal(deal_id)
+                if stored is not None:
+                    stored["gam_order_id"] = order.id
+                    await storage.set_deal(deal_id, stored)
+            except Exception:  # noqa: BLE001 — best-effort linkage only
+                pass
+
             return BookingResult(
                 order=order,
                 line_items=[line_item],
