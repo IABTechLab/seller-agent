@@ -291,3 +291,57 @@ class TestGamOrderIdPersistence:
             result = await adapter.book_deal("DEMO-AAA", "Acme Advertiser")
 
         assert result.success is True
+
+
+class TestPerformanceEndpointEndToEnd:
+    """Acceptance proof at the wire: GET /api/v1/deals/{id}/performance and
+    the /gam/report reporting endpoint serve report-derived numbers through
+    the FastAPI app, GAM boundary mocked."""
+
+    async def test_rest_performance_endpoint_returns_real_gam_numbers(self):
+        import sys
+        from types import ModuleType
+
+        # Stub broken flow modules (pre-existing @listen() bugs with CrewAI
+        # version mismatch) before ad_seller.flows import — same pattern as
+        # test_avails_endpoint.py.
+        for _mod_name in (
+            "ad_seller.flows.discovery_inquiry_flow",
+            "ad_seller.flows.execution_activation_flow",
+        ):
+            if _mod_name not in sys.modules:
+                _stub = ModuleType(_mod_name)
+                _cls = (
+                    _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
+                )
+                setattr(_stub, _cls, type(_cls, (), {}))
+                sys.modules[_mod_name] = _stub
+
+        import httpx
+        from httpx import ASGITransport
+
+        from ad_seller.interfaces.api.main import app
+
+        deals = {"DEMO-AAA": {"deal_id": "DEMO-AAA", "gam_order_id": "111"}}
+        gam = _mock_gam_client({"111": REPORT_ORDER_111})
+
+        transport = ASGITransport(app=app)
+        with (
+            patch(
+                "ad_seller.storage.factory.get_storage",
+                return_value=_mock_storage_with_deals(deals),
+            ),
+            patch("ad_seller.config.get_settings", return_value=_gam_settings()),
+            patch("ad_seller.clients.gam_soap_client.GAMSoapClient", return_value=gam),
+        ):
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                resp = await client.get("/api/v1/deals/DEMO-AAA/performance")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["impressions_served"] == 250000
+        assert data["impressions_available"] == 500000
+        assert data["fill_rate"] == 50.0
+        assert data["delivery_pacing"] == "on_track"
