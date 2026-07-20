@@ -7,9 +7,10 @@ Evaluates incoming proposals, validates against products,
 and recommends accept/counter/reject decisions.
 """
 
-from crewai import LLM, Agent
+from crewai import Agent
 
 from ...config import get_settings
+from ...llm import build_llm
 
 
 def create_proposal_review_agent() -> Agent:
@@ -27,7 +28,7 @@ def create_proposal_review_agent() -> Agent:
     """
     settings = get_settings()
 
-    llm = LLM(
+    llm = build_llm(
         model=settings.default_llm_model,
         temperature=0.3,
         max_tokens=settings.llm_max_tokens,

@@ -135,6 +135,36 @@ class ProposalEvaluation(BaseModel):
     upsell_opportunities: list[str] = Field(default_factory=list)
 
 
+class ProposalDecision(str, Enum):
+    """Final decision on a proposal, as returned by the review crew."""
+
+    ACCEPT = "accept"
+    COUNTER = "counter"
+    REJECT = "reject"
+
+
+class ProposalReviewOutput(BaseModel):
+    """Structured final decision from the proposal-review crew."""
+
+    decision: ProposalDecision = Field(
+        description="Final recommendation: accept, counter, or reject"
+    )
+    rationale: str = Field(description="Brief explanation of why this decision was reached")
+    counter_price_cpm: Optional[float] = Field(
+        default=None, description="Counter-offer CPM, only if decision is counter"
+    )
+    counter_terms: Optional[str] = Field(
+        default=None, description="Full counter-terms detail, only if decision is counter"
+    )
+    rejection_reason: Optional[str] = Field(
+        default=None, description="Reason and alternatives, only if decision is reject"
+    )
+    audience_summary: str = Field(description="Audience validation summary")
+    upsell_opportunities: list[str] = Field(
+        default_factory=list, description="Prioritized upsell opportunities"
+    )
+
+
 class PricingDecision(BaseModel):
     """Pricing decision for a deal."""
 

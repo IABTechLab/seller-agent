@@ -34,7 +34,7 @@ GAM_ENABLED=true
 GAM_NETWORK_CODE=12345678
 GAM_JSON_KEY_PATH=/path/to/service-account.json
 GAM_APPLICATION_NAME=AdSellerSystem   # Optional, default: AdSellerSystem
-GAM_API_VERSION=v202411               # Optional, default: v202411
+GAM_API_VERSION=v202505               # Optional, default: v202505
 ```
 
 ### Sync Process

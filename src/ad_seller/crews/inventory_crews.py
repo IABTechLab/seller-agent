@@ -25,6 +25,7 @@ from ..agents.level3 import (
     create_upsell_agent,
 )
 from ..config import get_settings
+from ..models.flow_state import ProposalReviewOutput
 from ..tools.audience import (
     AudienceCapabilityTool,
     AudienceValidationTool,
@@ -412,12 +413,13 @@ Synthesize all inputs and provide:
 - If Reject: Clear explanation and alternatives
 - Audience coverage impact on delivery confidence
 - Upsell opportunities to pursue""",
-        expected_output="""Final proposal recommendation with:
-- Decision (Accept/Counter/Reject)
-- Counter-terms if applicable (including audience modifications)
-- Rejection reason and alternatives if applicable
-- Audience validation summary
-- Prioritized upsell opportunities""",
+        expected_output="""A structured proposal decision with:
+- decision: accept, counter, or reject
+- rationale: brief explanation
+- counter_price_cpm and counter_terms if countering
+- rejection_reason if rejecting
+- audience_summary
+- upsell_opportunities""",
         agent=proposal_review_agent,
         context=[
             pricing_check_task,
@@ -425,6 +427,7 @@ Synthesize all inputs and provide:
             audience_validation_task,
             upsell_task,
         ],
+        output_pydantic=ProposalReviewOutput,
     )
 
     return Crew(

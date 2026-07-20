@@ -7,9 +7,10 @@ Manages native advertising inventory including in-feed placements,
 content recommendations, and sponsored content.
 """
 
-from crewai import LLM, Agent
+from crewai import Agent
 
 from ...config import get_settings
+from ...llm import build_llm
 
 
 def create_native_inventory_agent() -> Agent:
@@ -27,7 +28,7 @@ def create_native_inventory_agent() -> Agent:
     """
     settings = get_settings()
 
-    llm = LLM(
+    llm = build_llm(
         model=settings.default_llm_model,
         temperature=0.5,
         max_tokens=settings.llm_max_tokens,

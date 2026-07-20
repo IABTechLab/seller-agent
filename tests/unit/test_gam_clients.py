@@ -264,7 +264,7 @@ class TestGAMClientIntegration:
         )
         assert client.network_code == "12345678"
         assert client.credentials_path == "/path/to/creds.json"
-        assert client.api_version == "v202411"
+        assert client.api_version == "v202505"
         assert client._client is None  # Not connected yet
 
     def test_rest_client_requires_connection(self):
