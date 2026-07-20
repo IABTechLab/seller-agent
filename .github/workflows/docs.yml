@@ -25,11 +25,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install -e ".[docs]"
-
-      - name: Generate OpenAPI JSON
-        run: python scripts/generate_openapi.py
+      # Docs deploys must not install the app: it depends on the private
+      # iab-agentic-primitives, which CI cannot clone. The OpenAPI JSON is a
+      # committed artifact regenerated locally via scripts/generate_openapi.py.
+      - name: Install docs toolchain
+        run: pip install "mkdocs-material>=9.5.0" "mkdocs-mermaid2-plugin>=1.1.0"
 
       - name: Deploy to GitHub Pages
         run: mkdocs gh-deploy --force
