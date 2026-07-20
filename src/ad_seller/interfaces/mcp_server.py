@@ -600,6 +600,46 @@ async def get_deal_performance(deal_id: str) -> str:
 
 
 @mcp.tool()
+async def list_gam_orders(limit: int = 50, agent_created_only: bool = False) -> str:
+    """List orders from Google Ad Manager (GAM).
+
+    Args:
+        limit: Maximum number of orders to return (default 50)
+        agent_created_only: If True, return only orders created by the agent
+            (linked to an OpenDirect deal_id). Use this to see campaigns the
+            agent has booked, separated from manually created orders.
+
+    Returns order id, name, status, and whether the order was agent-created.
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
+    """
+    from ..services import gam_reporting_service
+
+    return await _service_json(
+        gam_reporting_service.list_gam_orders(
+            limit=limit, agent_created_only=agent_created_only
+        )
+    )
+
+
+@mcp.tool()
+async def get_gam_delivery_report(order_ids: str, days: int = 30) -> str:
+    """Pull a delivery report from Google Ad Manager for one or more orders.
+
+    Args:
+        order_ids: Comma-separated numeric GAM order IDs (e.g. '54058762,54058882')
+        days: Look-back window in days (default 30)
+
+    Returns order metadata, line items, and delivery data (impressions, clicks, revenue).
+    Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
+    """
+    from ..services import gam_reporting_service
+
+    return await _service_json(
+        gam_reporting_service.get_gam_delivery_report(order_ids, days=days)
+    )
+
+
+@mcp.tool()
 async def push_deal_to_buyers(deal_id: str, buyer_urls: str) -> str:
     """Push a deal to buyer endpoints via IAB Deals API v1.0.
     Pass buyer_urls as comma-separated list."""
