@@ -4,8 +4,9 @@
 """Unit tests for the OpenDirect avails endpoint — POST /products/avails.
 
 The buyer agent's OpenDirect client calls ``POST /products/avails``
-(``check_avails``) with a camelCase wire body. The response is the
-camelCase ``AvailsResponse`` shape the buyer expects: availability is
+(``check_avails``) with a spec-lowercase wire body (OpenDirect 2.1
+attribute names; Tier-1 rename, bead ar-kzi0). The response is the
+``AvailsResponse`` shape the buyer expects: availability is
 derived honestly from the product catalog (``maximum_impressions`` /
 ``minimum_impressions`` / CPMs) with no fabricated data —
 ``deliveryConfidence`` is always null and unpriceable products are a 422,
@@ -71,11 +72,11 @@ def _catalog_with(product):
 
 
 def _body(**fields):
-    """A valid camelCase AvailsRequest body (as the buyer client sends it)."""
+    """A valid AvailsRequest body (spec-lowercase, as the buyer client sends it)."""
     body = {
-        "productId": "ctv-premium-sports",
-        "startDate": "2026-08-01T00:00:00Z",
-        "endDate": "2026-08-31T00:00:00Z",
+        "productid": "ctv-premium-sports",
+        "startdate": "2026-08-01T00:00:00Z",
+        "enddate": "2026-08-31T00:00:00Z",
     }
     body.update(fields)
     return body
@@ -103,7 +104,7 @@ def _patch_catalog(catalog):
 
 class TestAvailsHappyPath:
     async def test_requested_impressions_all_fields(self, client):
-        """Happy path: camelCase response with all fields, PG product."""
+        """Happy path: full response, PG product."""
         with _patch_catalog(_catalog_with(_make_product())):
             resp = await client.post(
                 "/products/avails",
@@ -112,8 +113,9 @@ class TestAvailsHappyPath:
 
         assert resp.status_code == 200
         data = resp.json()
-        # Exact camelCase wire keys the buyer's AvailsResponse parses.
-        assert data["productId"] == "ctv-premium-sports"
+        # Exact wire keys the buyer's AvailsResponse parses (spec-lowercase
+        # productid; extension fields keep camelCase pending Tier 2).
+        assert data["productid"] == "ctv-premium-sports"
         assert data["availableImpressions"] == 500000
         # PG in supported_deal_types → guaranteed equals available.
         assert data["guaranteedImpressions"] == 500000
@@ -241,7 +243,7 @@ class TestAvailsErrors:
         with _patch_catalog(_mock_catalog({})):
             resp = await client.post(
                 "/products/avails",
-                json=_body(productId="prod-does-not-exist"),
+                json=_body(productid="prod-does-not-exist"),
             )
 
         assert resp.status_code == 404
@@ -252,8 +254,8 @@ class TestAvailsErrors:
             resp = await client.post(
                 "/products/avails",
                 json=_body(
-                    startDate="2026-08-31T00:00:00Z",
-                    endDate="2026-08-01T00:00:00Z",
+                    startdate="2026-08-31T00:00:00Z",
+                    enddate="2026-08-01T00:00:00Z",
                 ),
             )
 
@@ -264,8 +266,8 @@ class TestAvailsErrors:
             resp = await client.post(
                 "/products/avails",
                 json=_body(
-                    startDate="2026-08-01T00:00:00Z",
-                    endDate="2026-08-01T00:00:00Z",
+                    startdate="2026-08-01T00:00:00Z",
+                    enddate="2026-08-01T00:00:00Z",
                 ),
             )
 

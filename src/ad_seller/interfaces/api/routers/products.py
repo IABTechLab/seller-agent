@@ -52,7 +52,7 @@ async def list_products(
 
 @router.post("/products/avails", response_model=AvailsResponse, tags=["Products"])
 async def check_avails(request: AvailsRequest) -> AvailsResponse:
-    """OpenDirect availability check for a product (camelCase wire shape).
+    """OpenDirect availability check for a product (spec-lowercase wire names).
 
     Called by the buyer agent's OpenDirect client (``check_avails``).
     Availability is derived honestly from the cached static catalog:

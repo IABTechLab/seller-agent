@@ -86,15 +86,19 @@ class DealResponse(BaseModel):
 class AvailsRequest(BaseModel):
     """OpenDirect availability check request (POST /products/avails).
 
-    Wire shape is camelCase, matching the buyer agent's OpenDirect client
-    (``AvailsRequest`` in the buyer's models). ``targeting`` is accepted
-    for wire compatibility but not used for filtering in this reference
+    Spec-named fields use the OpenDirect 2.1 all-lowercase wire names
+    (``productid``/``startdate``/``enddate``), matching the buyer agent's
+    OpenDirect client (``AvailsRequest`` in the buyer's models; coordinated
+    Tier-1 rename, bead ar-kzi0). Non-spec extension fields
+    (``requestedImpressions``/``budget``/``targeting``) are unchanged
+    pending the Tier-2 restructure. ``targeting`` is accepted for wire
+    compatibility but not used for filtering in this reference
     implementation — the static catalog has no per-slice availability data.
     """
 
-    product_id: str = Field(..., alias="productId")
-    start_date: datetime = Field(..., alias="startDate")
-    end_date: datetime = Field(..., alias="endDate")
+    product_id: str = Field(..., alias="productid")
+    start_date: datetime = Field(..., alias="startdate")
+    end_date: datetime = Field(..., alias="enddate")
     requested_impressions: Optional[int] = Field(
         default=None, alias="requestedImpressions", ge=0
     )
@@ -114,19 +118,22 @@ class AvailsRequest(BaseModel):
             if end.tzinfo is None:
                 end = end.replace(tzinfo=timezone.utc)
         if end <= start:
-            raise ValueError("endDate must be after startDate")
+            raise ValueError("enddate must be after startdate")
         return self
 
 
 class AvailsResponse(BaseModel):
-    """OpenDirect availability check response (camelCase wire shape).
+    """OpenDirect availability check response.
 
+    ``productid`` follows the OpenDirect 2.1 spec-lowercase wire name
+    (coordinated Tier-1 rename, bead ar-kzi0); the non-spec extension
+    fields keep their camelCase names pending the Tier-2 restructure.
     ``deliveryConfidence`` is always null: the seller has no delivery
     forecast data source, and the reference implementation does not
     fabricate one.
     """
 
-    product_id: str = Field(..., alias="productId")
+    product_id: str = Field(..., alias="productid")
     available_impressions: int = Field(..., alias="availableImpressions")
     guaranteed_impressions: Optional[int] = Field(default=None, alias="guaranteedImpressions")
     estimated_cpm: float = Field(..., alias="estimatedCpm")
