@@ -109,7 +109,7 @@ Add the seller agent to Claude (desktop or web) and the setup wizard walks you t
 {
   "mcpServers": {
     "seller-agent": {
-      "url": "http://localhost:8000/mcp",
+      "url": "http://localhost:8000/mcp/",
       "headers": { "Authorization": "Bearer <your-operator-key>" }
     }
   }
