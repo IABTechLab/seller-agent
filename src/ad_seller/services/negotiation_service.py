@@ -43,6 +43,11 @@ async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, A
     Product data now comes from the single cached catalog source (EP-3.3)
     instead of running ProductSetupFlow per request. Returns the response
     payload dict (status may be ``pending_approval`` with an approval_id).
+
+    The crew evaluation runs via ``handle_proposal_async`` so the blocking
+    ``kickoff()`` never stalls the event loop, and a flow failure degrades
+    to a structured reject/failed payload instead of a raw 500 (main
+    PR #29 / buyer-booking-workflow hardening, ported to the service layer).
     """
     from ..flows import ProposalHandlingFlow
 
@@ -58,13 +63,22 @@ async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, A
         "buyer_id": request.buyer_id,
     }
 
-    flow = ProposalHandlingFlow()
-    result = flow.handle_proposal(
-        proposal_id=proposal_id,
-        proposal_data=proposal_data,
-        buyer_context=buyer_context,
-        products=catalog["products"],
-    )
+    try:
+        flow = ProposalHandlingFlow()
+        result = await flow.handle_proposal_async(
+            proposal_id=proposal_id,
+            proposal_data=proposal_data,
+            buyer_context=buyer_context,
+            products=catalog["products"],
+        )
+    except Exception as exc:  # noqa: BLE001 — degrade to a structured failure
+        logger.exception("ProposalHandlingFlow failed for %s: %s", proposal_id, exc)
+        return {
+            "proposal_id": proposal_id,
+            "recommendation": "reject",
+            "status": "failed",
+            "errors": [f"Proposal evaluation error: {exc}"],
+        }
 
     # Verify pricing against quote history (Layer 4 — CPM hallucination defense)
     from ..storage.factory import get_storage
@@ -113,8 +127,8 @@ async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, A
 
     return {
         "proposal_id": proposal_id,
-        "recommendation": result["recommendation"],
-        "status": result["status"],
+        "recommendation": result.get("recommendation") or "reject",
+        "status": result.get("status", "failed"),
         "counter_terms": result.get("counter_terms"),
         "approval_id": None,
         "pricing_verified": pricing_verified,
