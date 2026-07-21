@@ -1,8 +1,8 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Below-floor openers must COUNTER at the floor, not terminally REJECT
-(bead ar-nj9m).
+"""ALL below-floor openers must COUNTER at the floor, not terminally REJECT
+(bead ar-nj9m, universalized by bead ar-v4os).
 
 The live S2 proof (docs/reports/S2_NEGOTIATION_LIVE_PROOF in agent_range)
 showed the buyer's Stage 3.5 only fires when its target is below the
@@ -10,20 +10,21 @@ seller's floor — and its opening proposal equals that target. The seller
 rejected every below-floor opener with no counter, so live negotiation
 could structurally never converge.
 
-Fixed policy (pinned here):
+Policy (pinned here; Aidan-approved spec change per bead ar-v4os removed
+ar-nj9m's 0.75x deep-lowball walk-away threshold):
 
-- A below-floor offer within ``LOWBALL_COUNTER_FLOOR_RATIO`` of the floor
-  is countered AT the floor — the seller invites the buyer up to its
-  minimum viable price. Expected live shape: buyer opens 25, floor 28 →
-  counter 28; buyer accepts 28.
-- Deeper lowballs (below ratio × floor) remain walk-away REJECTs — the
-  pre-existing, test-pinned walk-away behavior is preserved.
+- EVERY below-floor offer, no matter how low, is countered AT the floor —
+  the seller invites the buyer up to its minimum viable price. Expected
+  live shape: buyer opens 25, floor 28 → counter 28; buyer accepts 28.
+  Extreme lowballs (10 vs floor 80; 1 vs floor 28) counter identically.
+- Nonpositive offers are not valid prices and are rejected.
 - Bounded: repeated identical lowballs terminate within the strategy's
   round bound (counter → … → final_offer → reject), no counter loops.
 - Offers >= floor keep their existing accept/counter semantics unchanged.
-- Both the crew path and the deterministic fallback produce the counter,
-  and the persisted NegotiationHistory records the counter round so the
-  buyer's next message continues the same negotiation (ar-alut intact).
+- Both the crew path and the deterministic fallback produce the counter
+  (a crew "reject" of any below-floor offer upgrades to counter), and the
+  persisted NegotiationHistory records the counter round so the buyer's
+  next message continues the same negotiation (ar-alut intact).
 """
 
 import os
@@ -53,10 +54,7 @@ for _mod_name in _broken_flows:
 import httpx  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
 
-from ad_seller.engines.negotiation_engine import (  # noqa: E402
-    LOWBALL_COUNTER_FLOOR_RATIO,
-    NegotiationEngine,
-)
+from ad_seller.engines.negotiation_engine import NegotiationEngine  # noqa: E402
 from ad_seller.engines.pricing_rules_engine import PricingRulesEngine  # noqa: E402
 from ad_seller.engines.yield_optimizer import YieldOptimizer  # noqa: E402
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # noqa: E402
@@ -211,9 +209,9 @@ class TestLowballCounterPolicy:
         history = engine.record_round(history, rnd2)
         assert history.status == "accepted"
 
-    def test_deep_lowball_still_rejects(self, engine, agency_buyer):
-        """Offers below ratio × floor stay walk-away REJECTs (pre-existing,
-        test-pinned behavior preserved)."""
+    def test_extreme_lowball_10_vs_80_counters_at_floor(self, engine, agency_buyer):
+        """Spec change per bead ar-v4os (was test_deep_lowball_still_rejects):
+        even a $10 offer against an $80 floor counters at the floor."""
         history = engine.start_negotiation(
             proposal_id="p1",
             product_id="prod1",
@@ -221,28 +219,24 @@ class TestLowballCounterPolicy:
             base_price=100.0,
             floor_price=80.0,
         )
-        # Just under the counterable boundary
-        below_boundary = 80.0 * LOWBALL_COUNTER_FLOOR_RATIO - 0.01
-        rnd = engine.evaluate_buyer_offer(
-            history, buyer_price=below_boundary, buyer_context=agency_buyer
-        )
-        assert rnd.action == NegotiationAction.REJECT
-        assert "below floor" in rnd.rationale.lower()
-
-    def test_boundary_offer_is_countered(self, engine, agency_buyer):
-        """An offer exactly at ratio × floor is countered at the floor."""
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=agency_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
-        rnd = engine.evaluate_buyer_offer(
-            history, buyer_price=80.0 * LOWBALL_COUNTER_FLOOR_RATIO, buyer_context=agency_buyer
-        )
+        rnd = engine.evaluate_buyer_offer(history, buyer_price=10.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.COUNTER
         assert rnd.seller_price == 80.0
+
+    def test_extreme_lowball_1_vs_28_counters_at_floor(self, engine, agency_buyer):
+        """Spec change per bead ar-v4os (was test_boundary_offer_is_countered,
+        which pinned the removed 0.75x threshold): a $1 offer against a $28
+        floor counters at the floor."""
+        history = engine.start_negotiation(
+            proposal_id="p1",
+            product_id="ctv-premium",
+            buyer_context=agency_buyer,
+            base_price=35.0,
+            floor_price=28.0,
+        )
+        rnd = engine.evaluate_buyer_offer(history, buyer_price=1.0, buyer_context=agency_buyer)
+        assert rnd.action == NegotiationAction.COUNTER
+        assert rnd.seller_price == 28.0
 
     def test_at_or_above_floor_semantics_unchanged(self, engine, agency_buyer):
         """Offers >= floor keep the existing gap-split counter semantics —
@@ -324,6 +318,36 @@ class TestLowballRoundBound:
         rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=public_buyer)
         assert rnd.action == NegotiationAction.FINAL_OFFER
         assert rnd.seller_price == 80.0
+
+    def test_repeated_extreme_lowball_terminates_within_bound(self, engine, public_buyer):
+        """Repeated $10-vs-$80-floor extreme lowballs (bead ar-v4os) follow
+        the same bounded shape: counter at floor, FINAL_OFFER at floor on
+        the last round, then reject on exhaustion — no counter loop."""
+        history = engine.start_negotiation(
+            proposal_id="p1",
+            product_id="prod1",
+            buyer_context=public_buyer,
+            base_price=100.0,
+            floor_price=80.0,
+        )
+        max_rounds = history.limits.max_rounds
+        actions = []
+        for _ in range(max_rounds + 1):
+            rnd = engine.evaluate_buyer_offer(
+                history, buyer_price=10.0, buyer_context=public_buyer
+            )
+            history = engine.record_round(history, rnd)
+            actions.append(rnd.action)
+            if rnd.action == NegotiationAction.REJECT:
+                break
+
+        assert actions[-1] == NegotiationAction.REJECT
+        assert history.status == "rejected"
+        assert len(actions) <= max_rounds + 1
+        # Last allowed round was a FINAL_OFFER; every counter held the floor
+        assert actions[-2] == NegotiationAction.FINAL_OFFER
+        for rnd in history.rounds[:-1]:
+            assert rnd.seller_price == 80.0
 
     def test_floor_counter_can_still_be_accepted_after_final_offer(self, engine, public_buyer):
         """After the final floor offer the buyer meeting it still ACCEPTs."""
@@ -426,8 +450,11 @@ class TestFlowPathsProduceCounter:
         assert history is not None
         assert history["status"] == "active"
 
-    def test_crew_reject_of_deep_lowball_stays_rejected(self):
-        """Deep lowballs (< ratio × floor) keep the crew's reject."""
+    def test_crew_reject_of_deep_lowball_upgrades_to_counter(self):
+        """Spec change per bead ar-v4os (was
+        test_crew_reject_of_deep_lowball_stays_rejected): a crew reject of
+        ANY below-floor offer — even $10 against a $28 floor — upgrades to
+        a counter at the floor."""
         from ad_seller.models.flow_state import ProposalDecision, ProposalReviewOutput
 
         review = ProposalReviewOutput(
@@ -438,7 +465,12 @@ class TestFlowPathsProduceCounter:
         )
         result = _run_flow(review, price=10.0)
 
-        assert result["recommendation"] == "reject"
+        assert result["recommendation"] == "counter"
+        assert result["counter_terms"] is not None
+        assert result["counter_terms"]["proposed_price"] == 28.0
+        history = result.get("_negotiation_history")
+        assert history is not None
+        assert history["status"] == "active"
 
     def test_crew_accept_unchanged(self):
         """>= floor crew accepts stay accepted (existing semantics pinned)."""

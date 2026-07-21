@@ -29,13 +29,6 @@ from .yield_optimizer import YieldOptimizer
 
 logger = logging.getLogger(__name__)
 
-# Below-floor offers at or above this fraction of the floor are countered AT
-# the floor — the seller invites the buyer up to its minimum viable price
-# instead of terminally rejecting (bead ar-nj9m: a terminal reject on the
-# buyer's below-floor opener made live negotiation structurally unable to
-# converge). Deeper lowballs remain walk-away rejects.
-LOWBALL_COUNTER_FLOOR_RATIO = 0.75
-
 
 class NegotiationEngine:
     """Stateless engine for multi-round negotiation.
@@ -130,12 +123,12 @@ class NegotiationEngine:
 
         Logic:
         1. If buyer_price >= base_price → ACCEPT
-        2. If buyer_price < floor_price * LOWBALL_COUNTER_FLOOR_RATIO →
-           REJECT (walk-away; the offer is not credible)
+        2. If buyer_price <= 0 → REJECT (not a valid offer)
         3. If max_rounds exceeded → REJECT (walk-away)
-        3.5 If buyer_price < floor_price (but credible) → COUNTER at the
-           floor — invite the buyer up (bead ar-nj9m); FINAL_OFFER on the
-           strategy's last round
+        3.5 If buyer_price < floor_price → COUNTER at the floor — invite
+           the buyer up (beads ar-nj9m, ar-v4os: ALL below-floor offers
+           counter at the floor, no walk-away threshold); FINAL_OFFER on
+           the strategy's last round
         4. If cumulative concession would exceed total_cap → FINAL_OFFER
         5. Otherwise → COUNTER with gap-split, capped by per_round_cap
 
@@ -166,11 +159,11 @@ class NegotiationEngine:
                 rationale="Buyer price meets or exceeds seller target. Deal accepted.",
             )
 
-        # 2. Reject non-credible lowballs (well below floor). Credible
-        #    below-floor offers are countered at the floor in 3.5 instead of
-        #    terminally rejected (bead ar-nj9m).
+        # 2. Reject nonpositive offers — not a valid price to negotiate.
+        #    Every VALID below-floor offer is countered at the floor in 3.5
+        #    (bead ar-v4os: no deep-lowball walk-away threshold).
         below_floor = buyer_price < history.floor_price
-        if below_floor and not self.is_counterable_lowball(buyer_price, history.floor_price):
+        if buyer_price <= 0:
             return NegotiationRound(
                 round_number=round_number,
                 buyer_price=buyer_price,
@@ -179,8 +172,8 @@ class NegotiationEngine:
                 concession_pct=0.0,
                 cumulative_concession_pct=cumulative_concession,
                 rationale=(
-                    f"Buyer price ${buyer_price:.2f} is below floor "
-                    f"${history.floor_price:.2f}. Cannot negotiate."
+                    f"Buyer price ${buyer_price:.2f} is not a valid offer. "
+                    f"Cannot negotiate."
                 ),
             )
 
@@ -200,10 +193,11 @@ class NegotiationEngine:
                 ),
             )
 
-        # 3.5 Credible below-floor offer: counter AT the floor — the seller's
-        #     minimum viable price — inviting the buyer up (bead ar-nj9m).
-        #     The floor is firm, so the strategy's last round is a
-        #     FINAL_OFFER; round bounding stays with check 3 above.
+        # 3.5 Below-floor offer: counter AT the floor — the seller's minimum
+        #     viable price — inviting the buyer up (bead ar-nj9m; ar-v4os
+        #     made this universal for ALL below-floor offers). The floor is
+        #     firm, so the strategy's last round is a FINAL_OFFER; round
+        #     bounding stays with check 3 above.
         if below_floor:
             floor_counter = round(history.floor_price, 2)
             this_round_concession = (
@@ -365,23 +359,6 @@ class NegotiationEngine:
                 suggestions.append(pkg["package_id"])
 
         return suggestions[:5]  # Top 5 alternatives
-
-    @staticmethod
-    def is_counterable_lowball(buyer_price: float, floor_price: float) -> bool:
-        """Whether a below-floor offer is credible enough to counter at the floor.
-
-        Offers at or above ``LOWBALL_COUNTER_FLOOR_RATIO`` x floor are
-        countered at the floor; deeper lowballs stay walk-away rejects
-        (bead ar-nj9m). Single policy home, shared by the REST rounds path
-        (``evaluate_buyer_offer``) and the proposal flow's crew-reject
-        normalization.
-        """
-        if floor_price <= 0 or buyer_price <= 0:
-            return False
-        return (
-            buyer_price < floor_price
-            and buyer_price >= floor_price * LOWBALL_COUNTER_FLOOR_RATIO
-        )
 
     # =========================================================================
     # Private helpers

@@ -104,9 +104,17 @@ class TestConcessionLimits:
 
 
 class TestWalkAway:
-    """Walk-away triggers when buyer price is below floor or max rounds exceeded."""
+    """Walk-away triggers only on round exhaustion; below-floor offers counter.
 
-    def test_reject_below_floor(self, engine, agency_buyer):
+    Amended per bead ar-v4os (Aidan-approved spec change, 2026-07-21):
+    every below-floor offer is countered at the floor — there is no deep-
+    lowball walk-away threshold. Rejection happens only when rounds are
+    exhausted (or the offer is not a valid positive price).
+    """
+
+    def test_below_floor_counters_at_floor(self, engine, agency_buyer):
+        """Spec change per bead ar-v4os (was test_reject_below_floor):
+        a below-floor offer counters at exactly the floor, never rejects."""
         history = engine.start_negotiation(
             proposal_id="p1",
             product_id="prod1",
@@ -115,8 +123,8 @@ class TestWalkAway:
             floor_price=80.0,
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=50.0, buyer_context=agency_buyer)
-        assert rnd.action == NegotiationAction.REJECT
-        assert "below floor" in rnd.rationale.lower()
+        assert rnd.action == NegotiationAction.COUNTER
+        assert rnd.seller_price == 80.0
 
     def test_reject_after_max_rounds(self, engine, public_buyer):
         history = engine.start_negotiation(
@@ -250,7 +258,11 @@ class TestMultiRoundConcession:
         history = engine.record_round(history, rnd)
         assert history.status == "accepted"
 
-    def test_record_round_updates_status_on_reject(self, engine, agency_buyer):
+    def test_record_round_keeps_active_on_below_floor_counter(self, engine, agency_buyer):
+        """Spec change per bead ar-v4os (was
+        test_record_round_updates_status_on_reject): a deep lowball is now
+        countered at the floor, so recording the round keeps the
+        negotiation active — the buyer's next message continues it."""
         history = engine.start_negotiation(
             proposal_id="p1",
             product_id="prod1",
@@ -259,8 +271,10 @@ class TestMultiRoundConcession:
             floor_price=80.0,
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=10.0, buyer_context=agency_buyer)
+        assert rnd.action == NegotiationAction.COUNTER
+        assert rnd.seller_price == 80.0
         history = engine.record_round(history, rnd)
-        assert history.status == "rejected"
+        assert history.status == "active"
 
 
 class TestAlternativePackages:
