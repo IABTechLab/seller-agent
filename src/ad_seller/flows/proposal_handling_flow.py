@@ -12,6 +12,9 @@ This flow handles:
 - Triggering upsell opportunities
 """
 
+import asyncio
+import logging
+import time
 import uuid
 from datetime import datetime
 from typing import Any, Optional
@@ -31,6 +34,13 @@ from ..models.flow_state import (
     SellerFlowState,
 )
 from ..models.ucp import AudienceCapability, SignalType
+
+logger = logging.getLogger(__name__)
+
+
+class ProposalCrewTimeBudgetExceeded(Exception):
+    """Raised when the proposal-review crew blows the configured time budget
+    (``proposal_flow_time_budget_seconds``, bead ar-fg58)."""
 
 
 class ProposalState(SellerFlowState):
@@ -419,9 +429,102 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                 f"Requested {requested:,} impressions but only {available:,} available"
             )
 
+    def _crew_time_budget(self) -> float:
+        """Configured crew time budget in seconds; <= 0 disables the bound."""
+        return float(
+            getattr(self._settings, "proposal_flow_time_budget_seconds", 0.0) or 0.0
+        )
+
+    async def _run_crew_within_budget(self, crew: Any) -> Any:
+        """Run the review crew bounded by the configured time budget (ar-fg58).
+
+        Raises :class:`ProposalCrewTimeBudgetExceeded` when the budget is hit.
+        The over-budget crew task is NOT awaited further — see
+        :meth:`_abandon_crew_task` for the honest cancellation story.
+        """
+        budget = self._crew_time_budget()
+        if budget <= 0:
+            return await crew.kickoff_async()
+
+        crew_task = asyncio.create_task(crew.kickoff_async())
+        try:
+            # shield() so the timeout does not cancel crew_task itself: the
+            # underlying work is a worker thread that cannot be interrupted,
+            # and keeping the task alive lets us LOG when the orphaned crew
+            # eventually finishes (Bug J: orphaned burn was invisible).
+            return await asyncio.wait_for(asyncio.shield(crew_task), timeout=budget)
+        except (asyncio.TimeoutError, TimeoutError):
+            self._abandon_crew_task(crew_task, budget)
+            raise ProposalCrewTimeBudgetExceeded(
+                f"proposal review crew exceeded the {budget:g}s time budget"
+            ) from None
+
+    def _abandon_crew_task(self, crew_task: "asyncio.Task", budget: float) -> None:
+        """Abandon an over-budget crew task as cleanly as the framework allows.
+
+        True cancellation is NOT possible: CrewAI's ``kickoff_async`` runs the
+        synchronous ``kickoff()`` in a worker thread (``asyncio.to_thread``)
+        and exposes no stop/cancel API, and Python threads cannot be
+        interrupted. Cancelling the asyncio task would only detach the thread
+        invisibly, so instead the task is left to finish in the background
+        with a done-callback that logs completion and swallows the discarded
+        result/exception. Residual burn (honest): the in-flight LLM tasks run
+        to completion server-side; the budget bounds request latency, not the
+        already-started crew's token spend.
+        """
+        proposal_id = self.state.proposal_id
+        flow_id = self.state.flow_id
+        abandoned_at = time.monotonic()
+        logger.warning(
+            "Abandoning proposal-review crew for %s (flow %s): exceeded the "
+            "%.1fs time budget; deterministic fallback evaluation will answer "
+            "the request. The crew keeps running in a worker thread (CrewAI "
+            "has no cancellation API) and its result will be discarded.",
+            proposal_id,
+            flow_id,
+            budget,
+        )
+
+        def _log_orphan_done(task: "asyncio.Task") -> None:
+            extra = time.monotonic() - abandoned_at
+            if task.cancelled():
+                logger.warning(
+                    "Orphaned proposal-review crew for %s was cancelled "
+                    "%.1fs after abandonment.",
+                    proposal_id,
+                    extra,
+                )
+                return
+            exc = task.exception()
+            if exc is not None:
+                logger.warning(
+                    "Orphaned proposal-review crew for %s failed %.1fs after "
+                    "abandonment (result already discarded): %s",
+                    proposal_id,
+                    extra,
+                    exc,
+                )
+            else:
+                logger.warning(
+                    "Orphaned proposal-review crew for %s finished %.1fs after "
+                    "abandonment; its result was discarded (orphaned LLM burn, "
+                    "bead ar-fg58 / Bug J).",
+                    proposal_id,
+                    extra,
+                )
+
+        crew_task.add_done_callback(_log_orphan_done)
+
     @listen(check_availability)
     async def run_crew_evaluation(self) -> None:
-        """Run the proposal review crew for detailed evaluation."""
+        """Run the proposal review crew for detailed evaluation.
+
+        The crew runs under the configured time budget (bead ar-fg58): a
+        wire buyer times out in ~30s while a real LLM crew was measured at
+        ~10m46s, so past the budget the flow falls back to the SAME
+        deterministic rule-based evaluation already used when the crew
+        fails, and the request answers within wire timeouts.
+        """
         if self.state.status == ExecutionStatus.FAILED:
             return
 
@@ -429,7 +532,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         crew = create_proposal_review_crew(self.state.proposal_data)
 
         try:
-            result = await crew.kickoff_async()
+            result = await self._run_crew_within_budget(crew)
 
             review: Optional[ProposalReviewOutput] = result.pydantic
             if review is not None:
@@ -452,6 +555,12 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                     else None,
                 },
             )
+
+        except ProposalCrewTimeBudgetExceeded as e:
+            # Budget exceeded (ar-fg58): deterministic fallback answers the
+            # request within wire timeouts; the abandoned crew is logged.
+            self.state.warnings.append(f"Crew evaluation exceeded time budget: {e}")
+            self._fallback_evaluation()
 
         except Exception as e:
             self.state.warnings.append(f"Crew evaluation failed: {e}")
