@@ -31,6 +31,11 @@ app = typer.Typer(
 console = Console()
 
 
+def _fmt_cpm(value) -> str:
+    """Format a CPM for display; unpriced products show 'on request'."""
+    return f"${value:.2f}" if value is not None else "on request"
+
+
 @app.command()
 def init(
     organization_name: str = typer.Option(
@@ -64,7 +69,7 @@ def init(
             product.product_id,
             product.name,
             product.inventory_type,
-            f"${product.base_cpm:.2f}",
+            _fmt_cpm(product.base_cpm),
         )
 
     console.print(table)
@@ -91,8 +96,8 @@ def catalog():
             product.product_id,
             product.name,
             product.inventory_type,
-            f"${product.base_cpm:.2f}",
-            f"${product.floor_cpm:.2f}",
+            _fmt_cpm(product.base_cpm),
+            _fmt_cpm(product.floor_cpm),
             deal_types,
         )
 
@@ -141,12 +146,20 @@ def price(
     )
 
     # Pricing via the SAME quote_service the REST /pricing route uses.
-    pricing = quote_service.get_pricing(
-        product_id=product_id,
-        product=product,
-        buyer_context=context,
-        volume=volume,
-    )
+    # Unpriced products (no base/floor CPM) surface the honest 422 as a
+    # readable CLI message rather than a traceback.
+    from fastapi import HTTPException
+
+    try:
+        pricing = quote_service.get_pricing(
+            product_id=product_id,
+            product=product,
+            buyer_context=context,
+            volume=volume,
+        )
+    except HTTPException as exc:
+        console.print(f"[red]{exc.detail}[/red]")
+        raise typer.Exit(1)
 
     console.print(Panel(f"Pricing for [cyan]{product.name}[/cyan]", title="Pricing"))
     console.print(f"Buyer Tier: [yellow]{context.effective_tier.value}[/yellow]")

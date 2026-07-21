@@ -308,6 +308,7 @@ class MediaKitService:
         all_tags: set[str] = set()
         total_base = 0.0
         min_floor = float("inf")
+        priced_count = 0
 
         for prod in products:
             placement = PackagePlacement(
@@ -320,14 +321,27 @@ class MediaKitService:
             placements.append(placement)
             all_ad_formats.update(placement.ad_formats)
             all_device_types.update(placement.device_types)
-            total_base += prod.base_cpm
-            min_floor = min(min_floor, prod.floor_cpm)
+
+            # Honest blended pricing: base_cpm falling back to floor_cpm;
+            # deliberately unpriced products contribute no invented price.
+            cpm = prod.base_cpm if prod.base_cpm is not None else prod.floor_cpm
+            if cpm is not None:
+                total_base += cpm
+                priced_count += 1
+            if prod.floor_cpm is not None:
+                min_floor = min(min_floor, prod.floor_cpm)
 
             # Merge content targeting if present
             if prod.content_targeting and "cat" in prod.content_targeting:
                 all_cat.update(prod.content_targeting["cat"])
 
-        blended_price = round(total_base / len(products), 2)
+        if priced_count == 0:
+            # Every product is unpriced — the package cannot be priced
+            # honestly, so no package is assembled.
+            logger.info("Dynamic package '%s' not assembled: no priced products", name)
+            return None
+
+        blended_price = round(total_base / priced_count, 2)
 
         package = Package(
             package_id=f"pkg-{uuid.uuid4().hex[:8]}",

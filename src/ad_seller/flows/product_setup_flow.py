@@ -387,21 +387,14 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         # Canonical default product data lives in services.catalog_service
         # (single catalog source — EP-3.1/EP-3.3). Deferred import so the
         # flow module keeps its import graph unchanged at import time.
-        from ..services.catalog_service import DEFAULT_PRODUCT_CONFIGS
+        from ..services.catalog_service import DEFAULT_PRODUCT_CONFIGS, product_from_config
 
         default_products = DEFAULT_PRODUCT_CONFIGS
 
         for i, product_config in enumerate(default_products):
-            product_def = ProductDefinition(
-                product_id=f"prod-{i + 1:03d}",
-                name=product_config["name"],
-                description=product_config.get("description"),
-                inventory_type=product_config["inventory_type"],
-                supported_deal_types=product_config["supported_deal_types"],
-                supported_pricing_models=product_config["supported_pricing_models"],
-                base_cpm=product_config["base_cpm"],
-                floor_cpm=product_config["floor_cpm"],
-            )
+            # Shared config→product mapping (ar-92f8): enrichment fields
+            # (caps, targeting, deliberate unpricing) flow through here too.
+            product_def = product_from_config(product_config, f"prod-{i + 1:03d}")
 
             self.state.products[product_def.product_id] = product_def
             self.state.created_products.append(product_def.product_id)

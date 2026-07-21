@@ -8,10 +8,13 @@ from .audience import (
     AudienceValidationTool,
     CoverageCalculatorTool,
 )
+from .catalog import CatalogAvailsTool
 
 __all__ = [
     # Audience tools
     "AudienceValidationTool",
     "AudienceCapabilityTool",
     "CoverageCalculatorTool",
+    # Catalog tools
+    "CatalogAvailsTool",
 ]

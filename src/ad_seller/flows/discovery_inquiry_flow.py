@@ -111,8 +111,11 @@ class DiscoveryInquiryFlow(Flow[DiscoveryState]):
                 "deal_types": [dt.value for dt in product.supported_deal_types],
             }
 
-            # Add pricing based on tier
-            if tier_config.show_exact_price:
+            # Add pricing based on tier. Deliberately unpriced products
+            # (no base_cpm) report "pricing on request" — never invented.
+            if product.base_cpm is None:
+                product_info["pricing"] = "on request"
+            elif tier_config.show_exact_price:
                 product_info["price"] = product.base_cpm
                 product_info["currency"] = product.currency
             else:
@@ -154,7 +157,10 @@ class DiscoveryInquiryFlow(Flow[DiscoveryState]):
                 "name": product.name,
             }
 
-            if tier_config.show_exact_price:
+            if product.base_cpm is None:
+                # Deliberately unpriced product — pricing on request only.
+                price_info["pricing"] = "on request"
+            elif tier_config.show_exact_price:
                 # Apply tier discount
                 discounted_price = product.base_cpm * (1 - tier_config.tier_discount)
                 price_info["price"] = round(discounted_price, 2)
