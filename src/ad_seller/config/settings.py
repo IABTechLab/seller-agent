@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Optional
 
 from dotenv import find_dotenv
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Find .env file by searching up from current working directory
@@ -68,6 +69,24 @@ class Settings(BaseSettings):
     crew_memory_enabled: bool = True
     crew_verbose: bool = True
     crew_max_iterations: int = 15
+
+    # Proposal-flow time budget (bead ar-fg58). POST /proposals runs the
+    # proposal-review crew in-request; a real LLM crew was measured at
+    # ~10m46s while wire buyers time out at ~30s (NegotiationClient default;
+    # made configurable by ar-vc4m), so every negotiation died at round 0.
+    # The crew gets this many seconds; past the budget the flow falls back
+    # to the existing deterministic rule-based evaluation (the same path
+    # used when the LLM fails) so the request answers within wire timeouts.
+    # <= 0 disables the bound (pre-ar-fg58 unbounded behavior, e.g. for
+    # non-wire deployments where the crew's depth matters more than latency).
+    # Env: PROPOSAL_FLOW_TIME_BUDGET (documented) or the field name.
+    proposal_flow_time_budget_seconds: float = Field(
+        default=20.0,
+        validation_alias=AliasChoices(
+            "proposal_flow_time_budget",
+            "proposal_flow_time_budget_seconds",
+        ),
+    )
 
     # Seller Identity
     seller_organization_id: Optional[str] = None
