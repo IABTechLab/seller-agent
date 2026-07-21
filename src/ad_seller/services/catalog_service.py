@@ -32,6 +32,12 @@ logger = logging.getLogger(__name__)
 # Canonical default product list. Keeping the data here (instead of in the
 # flow) avoids importing CrewAI plus the OpenDirect client chain just to
 # read the catalog.
+#
+# ar-92f8: the defaults declare realistic capacity caps
+# (``maximum_impressions``), audience/content targeting dicts, and ONE
+# deliberately unpriced product (no ``base_cpm``/``floor_cpm``) so the
+# avails capping, availableTargeting, and 422-unpriceable paths exercise
+# on the wire — not only against synthetic test products.
 DEFAULT_PRODUCT_CONFIGS: list[dict[str, Any]] = [
     {
         "name": "Premium Display - Homepage",
@@ -44,6 +50,9 @@ DEFAULT_PRODUCT_CONFIGS: list[dict[str, Any]] = [
             DealType.PREFERRED_DEAL,
         ],
         "supported_pricing_models": [PricingModel.CPM],
+        # Homepage is a finite placement: ~5M monthly impressions.
+        "maximum_impressions": 5_000_000,
+        "content_targeting": {"section": ["homepage"]},
     },
     {
         "name": "Standard Display - ROS",
@@ -74,6 +83,16 @@ DEFAULT_PRODUCT_CONFIGS: list[dict[str, Any]] = [
         "floor_cpm": 28.0,
         "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
         "supported_pricing_models": [PricingModel.CPM],
+        # Premium streaming supply is capacity-constrained: ~20M monthly.
+        "maximum_impressions": 20_000_000,
+        "audience_targeting": {
+            "demo": ["A18-49", "A25-54"],
+            "geo": ["US"],
+        },
+        "content_targeting": {
+            "genre": ["drama", "comedy", "sports", "news"],
+            "content_rating": ["TV-PG", "TV-14"],
+        },
     },
     {
         "name": "Mobile App Rewarded Video",
@@ -102,6 +121,8 @@ DEFAULT_PRODUCT_CONFIGS: list[dict[str, Any]] = [
         "floor_cpm": 40.0,
         "supported_deal_types": [DealType.PROGRAMMATIC_GUARANTEED],
         "supported_pricing_models": [PricingModel.CPM],
+        # Primetime spot load is finite: ~12M impressions per flight.
+        "maximum_impressions": 12_000_000,
     },
     {
         "name": "NBCU Cable Network :30 (Bravo/USA)",
@@ -149,6 +170,11 @@ DEFAULT_PRODUCT_CONFIGS: list[dict[str, Any]] = [
             DealType.PRIVATE_AUCTION,
         ],
         "supported_pricing_models": [PricingModel.CPM],
+        "audience_targeting": {
+            "geo": ["US"],
+            "household_income": ["75k-100k", "100k+"],
+            "presence_of_children": ["true", "false"],
+        },
     },
     # Linear TV — Reseller/SSP (PubMatic/Magnite)
     {
@@ -162,6 +188,21 @@ DEFAULT_PRODUCT_CONFIGS: list[dict[str, Any]] = [
             DealType.PRIVATE_AUCTION,
         ],
         "supported_pricing_models": [PricingModel.CPM],
+        "audience_targeting": {"demo": ["A25-54"], "daypart": ["primetime"]},
+    },
+    # Deliberately UNPRICED (no base_cpm/floor_cpm): pricing is on request,
+    # so avails/quotes for it exercise the honest 422-unpriceable path on
+    # the wire (never a fabricated price).
+    {
+        "name": "Digital Out-of-Home — Times Square Spectacular",
+        "description": (
+            "Iconic Times Square digital billboard takeover; "
+            "pricing on request only"
+        ),
+        "inventory_type": "dooh",
+        "supported_deal_types": [DealType.PREFERRED_DEAL],
+        "supported_pricing_models": [PricingModel.CPM],
+        "content_targeting": {"venue": ["times_square"], "format": ["billboard"]},
     },
 ]
 
@@ -170,26 +211,43 @@ DEFAULT_PRODUCT_CONFIGS: list[dict[str, Any]] = [
 _CATALOG_CACHE: Optional[dict[str, Any]] = None
 
 
+def product_from_config(cfg: dict[str, Any], product_id: str) -> Any:
+    """Build a ``ProductDefinition`` from one default-config entry.
+
+    The ONE config→product mapping, shared by
+    :func:`build_static_product_catalog` and
+    ``ProductSetupFlow.create_default_products`` so enrichment fields
+    (caps, targeting, deliberate unpricing — ar-92f8) cannot silently
+    diverge between the two consumers.
+    """
+    from ..models.flow_state import ProductDefinition
+
+    return ProductDefinition(
+        product_id=product_id,
+        name=cfg["name"],
+        description=cfg.get("description"),
+        inventory_type=cfg["inventory_type"],
+        supported_deal_types=cfg["supported_deal_types"],
+        supported_pricing_models=cfg["supported_pricing_models"],
+        base_cpm=cfg.get("base_cpm"),
+        floor_cpm=cfg.get("floor_cpm"),
+        audience_targeting=cfg.get("audience_targeting"),
+        content_targeting=cfg.get("content_targeting"),
+        ad_product_targeting=cfg.get("ad_product_targeting"),
+        minimum_impressions=cfg.get("minimum_impressions", 10000),
+        maximum_impressions=cfg.get("maximum_impressions"),
+    )
+
+
 def build_static_product_catalog() -> dict[str, Any]:
     """Build a fresh catalog dict from ``DEFAULT_PRODUCT_CONFIGS`` (uncached).
 
     Returns ``{"products": {product_id: ProductDefinition}, "inventory_types": [...]}``
     with newly generated product IDs.
     """
-    from ..models.flow_state import ProductDefinition
-
     products: dict[str, Any] = {}
     for cfg in DEFAULT_PRODUCT_CONFIGS:
-        product_def = ProductDefinition(
-            product_id=f"prod-{uuid.uuid4().hex[:8]}",
-            name=cfg["name"],
-            description=cfg.get("description"),
-            inventory_type=cfg["inventory_type"],
-            supported_deal_types=cfg["supported_deal_types"],
-            supported_pricing_models=cfg["supported_pricing_models"],
-            base_cpm=cfg["base_cpm"],
-            floor_cpm=cfg["floor_cpm"],
-        )
+        product_def = product_from_config(cfg, f"prod-{uuid.uuid4().hex[:8]}")
         products[product_def.product_id] = product_def
 
     inventory_types = sorted({p.inventory_type for p in products.values()})

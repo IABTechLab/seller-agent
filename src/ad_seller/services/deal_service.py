@@ -524,14 +524,17 @@ async def create_deal_from_template(
             },
         )
 
-    # Calculate price
+    # Calculate price. Honest pricing: base_cpm falling back to floor_cpm;
+    # unpriced products are a 422, never a fabricated price (ar-92f8).
+    from . import catalog_service
+
     config = TieredPricingConfig(seller_organization_id="default")
     engine = PricingRulesEngine(config)
     deal_type_enum = deal_type_map[deal_type_str]
 
     decision = engine.calculate_price(
         product_id=request.product_id,
-        base_price=product.base_cpm,
+        base_price=catalog_service.priceable_cpm(product),
         buyer_context=buyer_context,
         deal_type=deal_type_enum,
         volume=request.impressions or 0,
@@ -1162,12 +1165,15 @@ async def create_curated_deal(request: Any, catalog: dict[str, Any]) -> dict[str
             },
         )
 
-    # Get base price from product catalog
+    # Get base price from product catalog. A known-but-unpriced product
+    # (no base/floor CPM) is a 422 — never a fabricated price (ar-92f8).
     base_cpm = 12.0  # Default
     if request.product_id:
         product = catalog["products"].get(request.product_id)
         if product:
-            base_cpm = product.base_cpm
+            from . import catalog_service
+
+            base_cpm = catalog_service.priceable_cpm(product)
 
     # Calculate curated pricing
     curated_deal = registry.create_curated_deal(
