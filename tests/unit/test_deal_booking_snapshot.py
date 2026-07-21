@@ -3,7 +3,7 @@
 
 """Seller-side dual content-type acceptance + frozen plan snapshot at booking.
 
-Implements bead ar-y6ki (proposal §5.1 Step 2 + §5.6 + §6 row 14b).
+Implements (proposal §5.1 Step 2 + §5.6 + §6 row 14b).
 
 Coverage:
 - POST /api/v1/deals accepts the legacy UCP content-type

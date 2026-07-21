@@ -29,7 +29,7 @@ def _build_audience_filter(
     - 400 when `audience_id` is set without `audience_type` (no corpus to
       search in).
 
-    Per bead ar-2wxa scope: agentic per-segment filtering is §11's
+    Per scope: agentic per-segment filtering is §11's
     territory; agentic+id collapses to "package supports agentic" at this
     stage and the filter accepts the param without error so existing buyer
     code doesn't have to special-case the type.
@@ -132,7 +132,7 @@ async def search_media_kit(
 ):
     """Search packages by keyword. Authenticated buyers get richer results.
 
-    Per proposal §5.7 + bead ar-2wxa, the scoring corpus now includes
+    Per proposal §5.7, the scoring corpus now includes
     `audience_capabilities.standard_segment_ids` +
     `audience_capabilities.contextual_segment_ids` alongside keywords/tags
     -- a query mentioning a known IAB segment ID ranks packages that
@@ -183,7 +183,7 @@ async def list_packages(
 ):
     """List packages with tier-gated view.
 
-    Audience filter (proposal §5.7 + bead ar-2wxa):
+    Audience filter (proposal §5.7):
 
     - `audience_type`: one of `standard` | `contextual` | `agentic`.
     - `audience_id`: taxonomy ID for standard/contextual; URI for agentic.

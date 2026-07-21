@@ -7,7 +7,7 @@ Route paths are written in full (no router prefixes) so BOTH url
 conventions keep working exactly as before — unprefixed legacy routes
 and /api/v1 routes. Endpoint registration order within each router file
 matches the original order in main.py; consolidating the conventions and
-fixing route shadowing is a later bead (EP-8.4).
+fixing route shadowing is later work (EP-8.4).
 """
 
 from . import (  # noqa: F401

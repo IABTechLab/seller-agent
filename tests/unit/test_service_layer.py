@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Unit tests for the extracted service layer (EP-3.1 / bead ar-6u86).
+"""Unit tests for the extracted service layer (EP-3.1).
 
 One happy path + at least one edge case per service:
 catalog_service, quote_service, deal_service, order_service,

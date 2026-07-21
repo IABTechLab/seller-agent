@@ -126,7 +126,7 @@ class NegotiationEngine:
         2. If buyer_price <= 0 → REJECT (not a valid offer)
         3. If max_rounds exceeded → REJECT (walk-away)
         3.5 If buyer_price < floor_price → COUNTER at the floor — invite
-           the buyer up (beads ar-nj9m, ar-v4os: ALL below-floor offers
+           the buyer up (ALL below-floor offers
            counter at the floor, no walk-away threshold); FINAL_OFFER on
            the strategy's last round
         4. If cumulative concession would exceed total_cap → FINAL_OFFER
@@ -161,7 +161,7 @@ class NegotiationEngine:
 
         # 2. Reject nonpositive offers — not a valid price to negotiate.
         #    Every VALID below-floor offer is countered at the floor in 3.5
-        #    (bead ar-v4os: no deep-lowball walk-away threshold).
+        # (no deep-lowball walk-away threshold).
         below_floor = buyer_price < history.floor_price
         if buyer_price <= 0:
             return NegotiationRound(
@@ -194,8 +194,8 @@ class NegotiationEngine:
             )
 
         # 3.5 Below-floor offer: counter AT the floor — the seller's minimum
-        #     viable price — inviting the buyer up (bead ar-nj9m; ar-v4os
-        #     made this universal for ALL below-floor offers). The floor is
+        # viable price — inviting the buyer up (this policy is
+        #     universal for ALL below-floor offers). The floor is
         #     firm, so the strategy's last round is a FINAL_OFFER; round
         #     bounding stays with check 3 above.
         if below_floor:

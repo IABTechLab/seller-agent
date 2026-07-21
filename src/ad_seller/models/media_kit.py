@@ -86,7 +86,7 @@ class Package(BaseModel):
     # Typed audience capability declaration -- replaces the flat
     # `audience_segment_ids: list[str]` field. Carries standard segments,
     # contextual-as-audience-intent, and optional agentic capabilities.
-    # See proposal §5.7 / bead ar-roi5.
+    # See proposal §5.7.
     audience_capabilities: AudienceCapabilities = Field(default_factory=AudienceCapabilities)
 
     # AdCOM-aligned inventory classification (canonical)

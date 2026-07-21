@@ -14,7 +14,7 @@ Per proposal §5.1 Step 2 (snapshot honor policy):
 call to retrieve the frozen plan and emit a structured warning when the
 seller's *current* capabilities are weaker than what was promised at booking.
 
-Bead: ar-sn8f (proposal §5.1 Step 2 + §6 row 11).
+See proposal §5.1 Step 2 + §6 row 11.
 """
 
 from __future__ import annotations

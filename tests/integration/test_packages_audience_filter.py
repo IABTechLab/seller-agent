@@ -2,7 +2,7 @@
 # Donated to IAB Tech Lab
 
 """Integration tests for `GET /packages` audience filter and `POST /media-kit/search`
-audience corpus (proposal §5.7 + §6 row 10, bead ar-2wxa).
+audience corpus (proposal §5.7 + §6 row 10).
 
 Drives the FastAPI app via httpx + ASGITransport, with the global storage
 patched to an in-memory backend that we seed per-test. Mirrors the pattern

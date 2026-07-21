@@ -1,5 +1,4 @@
 > **V2 — Feature Complete**
-> 51/51 tasks closed. See [PROGRESS.md](.beads/PROGRESS.md) for full roadmap.
 
 # IAB Tech Lab — Seller Agent
 

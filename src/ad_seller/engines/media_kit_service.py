@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Audience filter (proposal §5.7 + §6 row 10, bead ar-2wxa)
+# Audience filter (proposal §5.7 + §6 row 10)
 # =============================================================================
 #
 # A typed filter object covering the three audience types described in
@@ -48,7 +48,7 @@ AudienceType = Literal["standard", "contextual", "agentic"]
 class AudienceFilter(BaseModel):
     """Filter packages by their declared `audience_capabilities`.
 
-    Semantics (per bead ar-2wxa):
+    Semantics:
 
     - When `audience_type` AND `audience_id` are both set, a package matches
       iff its `audience_capabilities.<type>_segment_ids` contains the ID
@@ -143,7 +143,7 @@ class AudienceFilter(BaseModel):
         return self.audience_id in caps.contextual_segment_ids
 
     def _matches_agentic(self, caps) -> bool:
-        # Per ar-2wxa scope: agentic per-segment matching requires §11's
+        # Out of scope here: agentic per-segment matching requires §11's
         # /agentic-audience/match endpoint. Until then, agentic filtering
         # collapses to the "supported" predicate -- the package declares
         # agentic capabilities at all. taxonomy_version, when set, gates on
@@ -382,7 +382,7 @@ class MediaKitService:
 
         Tokenizes query and matches against name, description, tags,
         content category IDs, AND audience capability segment IDs (proposal
-        §5.7 + bead ar-2wxa). Featured items get a score boost.
+        §5.7). Featured items get a score boost.
 
         When `audience_filter` is provided, scoring is restricted to packages
         that match the filter -- non-matching packages drop out of results
@@ -523,7 +523,7 @@ class MediaKitService:
 
         Corpus includes name, description, tags, content categories, ad
         formats, AND audience capability segment IDs (standard + contextual)
-        per proposal §5.7 + bead ar-2wxa. A query mentioning a known IAB
+        per proposal §5.7. A query mentioning a known IAB
         audience or content segment ID therefore ranks packages that declare
         that segment higher than packages that don't.
 

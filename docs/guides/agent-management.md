@@ -373,5 +373,5 @@ is found in any registry, it receives `registered` trust status.
     - Webhook notifications for new agent registrations
     - API key rotation support
 
-    See [PROGRESS.md](https://github.com/IABTechLab/seller-agent/blob/main/.beads/PROGRESS.md) for roadmap status.
+    These improvements are planned for a future release.
     - OAuth 2.0 client credentials flow (in addition to API keys)

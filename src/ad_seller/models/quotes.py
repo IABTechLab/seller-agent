@@ -7,7 +7,7 @@ Implements the two-phase quote-then-book flow:
 - Phase 1: Buyer requests non-binding pricing quotes from sellers
 - Phase 2: Buyer books a deal by referencing an accepted quote
 
-See: docs/api/deal-creation-api-contract.md (bead: ar-mkj)
+See: docs/api/deal-creation-api-contract.md
 """
 
 from enum import Enum
@@ -113,7 +113,7 @@ class QuoteTerms(BaseModel):
 class QuoteAvailability(BaseModel):
     """Availability info in a quote response.
 
-    Honest-availability policy (ar-f0ky, mirroring the avails endpoint):
+    Honest-availability policy (mirroring the avails endpoint):
     ``inventory_available`` is derived from the product's declared capacity
     vs the requested volume (see ``quote_service.create_quote``);
     ``estimated_fill_rate`` and ``competing_demand`` have no data source in

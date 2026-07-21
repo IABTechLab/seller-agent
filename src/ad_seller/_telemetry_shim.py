@@ -1,4 +1,4 @@
-"""Telemetry / shutdown shim for crewai 1.14.6 (ar-r82f.21).
+"""Telemetry / shutdown shim for crewai 1.14.6.
 
 Sets opt-out env vars *before* any crewai / chromadb / posthog / opentelemetry
 import path runs, so their constructors take the disabled branch instead of

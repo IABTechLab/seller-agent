@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Unit tests for Change Request Management (seller-ju5)."""
+"""Unit tests for Change Request Management."""
 
 import sys
 from types import ModuleType

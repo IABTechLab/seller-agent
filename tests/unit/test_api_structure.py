@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Structural guards for the EP-3.1 decomposition (bead ar-6u86).
+"""Structural guards for the EP-3.1 decomposition.
 
 Asserts that:
 1. interfaces/api/main.py stays a slim app-assembly module (< 400 lines).

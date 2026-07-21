@@ -13,7 +13,7 @@ deployment coupling we explicitly do not want.
 Same shape, same validation rules, same JSON output. If the wire spec
 changes, both sides update independently to match.
 
-Bead: ar-roi5 (proposal §5.7, §6 row 8).
+See proposal §5.7, §6 row 8.
 """
 
 from __future__ import annotations

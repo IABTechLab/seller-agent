@@ -61,7 +61,7 @@ def _mock_catalog(products_dict):
     """Build the dict shape returned by `_get_static_product_catalog`.
 
     Quote endpoint switched from `ProductSetupFlow.kickoff()` to the cached
-    static catalog (ar-uwad / ar-0vtg). Tests patch the catalog accessor
+    static catalog. Tests patch the catalog accessor
     rather than the flow class.
     """
     inventory_types = sorted({p.inventory_type for p in products_dict.values()})

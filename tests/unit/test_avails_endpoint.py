@@ -5,7 +5,7 @@
 
 The buyer agent's OpenDirect client calls ``POST /products/avails``
 (``check_avails``) with a spec-lowercase wire body (OpenDirect 2.1
-attribute names; Tier-1 rename, bead ar-kzi0). The response is the
+attribute names; Tier-1 rename). The response is the
 ``AvailsResponse`` shape the buyer expects: availability is
 derived honestly from the product catalog (``maximum_impressions`` /
 ``minimum_impressions`` / CPMs) with no fabricated data —

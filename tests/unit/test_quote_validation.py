@@ -6,8 +6,6 @@
 Tests that when a buyer submits a proposal with a CPM, the seller
 cross-references against quotes it previously issued and flags
 proposals with unverified pricing.
-
-Bead: ar-hm9l (child of epic ar-rrgw)
 """
 
 import time

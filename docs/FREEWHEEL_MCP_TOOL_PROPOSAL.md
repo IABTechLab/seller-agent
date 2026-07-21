@@ -2,7 +2,6 @@
 > - Phase 1 (Read-Only): ✅ Complete
 > - Phase 2 (PD/PA Deal Booking): ✅ Complete
 > - Phase 3 (PG Cross-MCP): ✅ Auth implemented — SH + BC via OAuth 2.1 PKCE (`/mcp/oauth`)
-> - See `.beads/PROGRESS.md` for current status
 
 # FreeWheel Dual-MCP Integration — Seller Agent Architecture & Tool Requirements
 

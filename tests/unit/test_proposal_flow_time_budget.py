@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Proposal-flow time budget (bead ar-fg58).
+"""Proposal-flow time budget.
 
 S2 live proof 2026-07-21: the seller answers ``POST /proposals`` with a
 synchronous LLM crew measured at ~10m46s, while wire buyers time out in
@@ -13,7 +13,7 @@ time budget (``proposal_flow_time_budget_seconds``, env
 ``PROPOSAL_FLOW_TIME_BUDGET``). When the budget is exceeded the flow falls
 back to the EXISTING deterministic rule-based evaluation (the same path
 already used when the LLM fails), the request returns within the budget,
-and the ar-alut persistence invariants hold (proposal + negotiation
+and the persistence invariants hold (proposal + negotiation
 history persisted; cold REST continuation works). The abandoned crew task
 is detached and logged — CrewAI offers no true cancellation.
 """
@@ -222,7 +222,7 @@ def client():
 class TestBudgetSetting:
     def test_default_budget_is_wire_compatible(self, monkeypatch):
         """Default must be tens of seconds — under the buyer's 30s default
-        NegotiationClient timeout (ar-vc4m makes that configurable)."""
+        NegotiationClient timeout (configurable on the buyer side)."""
         monkeypatch.delenv("PROPOSAL_FLOW_TIME_BUDGET", raising=False)
         monkeypatch.delenv("PROPOSAL_FLOW_TIME_BUDGET_SECONDS", raising=False)
         settings = Settings(_env_file=None, anthropic_api_key="test-key")
@@ -266,7 +266,7 @@ class TestBudgetFallback:
         assert result["recommendation"] == "counter"
         assert result["status"] == "counter_pending"
         # The fallback produced real counter terms via the NegotiationEngine
-        # and exposed the NegotiationHistory for persistence (ar-alut).
+        # and exposed the NegotiationHistory for persistence.
         assert result["counter_terms"] is not None
         assert result.get("_negotiation_history") is not None
         assert any("time budget" in w for w in result["warnings"])
@@ -318,7 +318,7 @@ class TestCrewPathUnchanged:
         assert mock_emit.await_count >= 1  # proposal.evaluated still emitted
 
     async def test_zero_budget_disables_bound(self):
-        """budget <= 0 disables the bound (pre-ar-fg58 unbounded behavior)."""
+        """budget <= 0 disables the bound (the previous unbounded behavior)."""
         result, _ = await _run_flow(budget=0, crew=_slow_crew(0.3))
         # The slow crew ran to completion (returns pydantic None -> fallback
         # via the EXISTING review-is-None path, not the budget path).
@@ -345,7 +345,7 @@ class TestFallbackPersistence:
     ):
         """End-to-end with the REAL flow and a slow crew: POST /proposals
         answers within budget with a deterministic decision, persists the
-        proposal + product (ar-alut invariants — exactly as the crew path
+        proposal + product (persistence invariants — exactly as the crew path
         does), and POST /api/v1/negotiations/messages works cold afterward."""
         catalog = _make_catalog(
             {"ctv-premium-sports": _make_product(base_cpm=35.0, floor_cpm=20.0)}
@@ -394,13 +394,13 @@ class TestFallbackPersistence:
                 # Deterministic fallback: above-floor price is accepted.
                 assert body["recommendation"] == "accept"
 
-                # ar-alut invariants: proposal + product pricing persisted so
+                # Persistence invariants: proposal + product pricing persisted so
                 # the negotiation surface is reachable cold.
                 assert f"proposal:{proposal_id}" in mock_storage._store
                 assert "product:ctv-premium-sports" in mock_storage._store
 
                 # Cold continuation: a counter on the REST surface opens a
-                # negotiation off the stored proposal (was a 404 pre-ar-alut).
+                # negotiation off the stored proposal (was previously a 404).
                 resp = await c.post(
                     "/api/v1/negotiations/messages",
                     json={

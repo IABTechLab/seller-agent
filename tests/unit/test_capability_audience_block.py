@@ -3,7 +3,7 @@
 
 """Unit tests for the `audience_capabilities` block on capability discovery.
 
-Covers proposal §5.7 layer 1 + §6 row 9 (bead ar-2sip):
+Covers proposal §5.7 layer 1 + §6 row 9:
 
 - The capability discovery response (`GET /.well-known/agent.json`) carries
   the new `audience_capabilities` block.
@@ -403,7 +403,7 @@ class TestAgentCardEndpointEmitsBlock:
         ):
             resp = await client.get("/.well-known/agent.json")
         body = resp.json()
-        # Shape sanity -- these existed before this bead.
+        # Shape sanity -- these existed before this change.
         assert "name" in body
         assert "url" in body
         assert "version" in body

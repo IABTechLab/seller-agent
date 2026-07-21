@@ -23,7 +23,7 @@ def pytest_sessionfinish(session, exitstatus):
 
 
 def pytest_unconfigure(config):
-    """Hard-exit after pytest has finished all reporting (ar-r82f.21).
+    """Hard-exit after pytest has finished all reporting.
 
     Even with ``_telemetry_shim.py`` setting every documented opt-out env
     var at import time, transitive deps (chromadb/posthog/opentelemetry)

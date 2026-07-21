@@ -4,7 +4,7 @@
 """Regression tests: GET /api/v1/deals/{id}/performance must return REAL
 GAM-report-derived delivery data, not a hardcoded placeholder.
 
-Background (bead ar-j8hl): main's PR #12 wired GAMSoapClient.get_delivery_report
+Background: main's PR #12 wired GAMSoapClient.get_delivery_report
 into get_deal_performance; the integration/v2 service-layer refactor regressed
 the endpoint to a placeholder that returns the same fabricated numbers
 (1,000,000 available / 0 served) for every deal, while the published
@@ -109,7 +109,7 @@ class TestDealPerformanceRealGAMData:
         assert perf_b["impressions_served"] == 100000
         assert perf_a["impressions_served"] != perf_b["impressions_served"], (
             "Distinct deals returned identical delivery stats — "
-            "placeholder regression (ar-j8hl)"
+            "placeholder regression"
         )
 
     async def test_performance_fields_derive_from_gam_report(self):

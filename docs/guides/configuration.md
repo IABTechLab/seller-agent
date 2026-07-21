@@ -341,4 +341,4 @@ OPENDIRECT_BASE_URL=http://localhost:3000
     - Secret management integration (AWS Secrets Manager, HashiCorp Vault)
     - FreeWheel ad server integration
 
-    See [PROGRESS.md](https://github.com/IABTechLab/seller-agent/blob/main/.beads/PROGRESS.md) for roadmap status.
+    These improvements are planned for a future release.

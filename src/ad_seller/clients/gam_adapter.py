@@ -424,7 +424,7 @@ class GAMAdServerClient(AdServerClient):
 
             # 5. Write gam_order_id back to the stored deal record so the
             # performance endpoint can serve real delivery data for this deal
-            # (main PR #12 parity — bead ar-j8hl). Best-effort: a storage
+            # (main PR #12 parity). Best-effort: a storage
             # hiccup must never fail the booking itself.
             try:
                 from ..storage.factory import get_storage

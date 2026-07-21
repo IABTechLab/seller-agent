@@ -128,7 +128,7 @@ async def post_negotiation_message(
 
     # The seller keys negotiations by proposal_id; negotiation_id doubles as
     # that key for continuation, and quote-led opens key off the quote_id
-    # (the service resolves the stored quote to its product — bead ar-alut).
+    # (the service resolves the stored quote to its product).
     proposal_id = message.proposal_id or message.negotiation_id or message.quote_id
     if proposal_id is None:  # unreachable: the shared model requires one key
         raise HTTPException(
@@ -151,8 +151,7 @@ async def post_negotiation_message(
 
     # accept / reject — terminal moves off the recorded history; the price
     # engine is not run (it stays untouched). The move is PERSISTED onto the
-    # stored negotiation so downstream booking sees the agreed state
-    # (bead ar-alut).
+    # stored negotiation so downstream booking sees the agreed state.
     status_data = await negotiation_service.apply_terminal_action(
         proposal_id, message.action.value, buyer_price
     )

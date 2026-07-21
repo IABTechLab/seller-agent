@@ -2,7 +2,7 @@
 # Donated to IAB Tech Lab
 
 """Unit tests for the audience filter on `/packages` and the audience corpus
-in `/media-kit/search` scoring (proposal §5.7 + §6 row 10, bead ar-2wxa).
+in `/media-kit/search` scoring (proposal §5.7 + §6 row 10).
 
 Service-level coverage (no HTTP):
 
@@ -11,7 +11,7 @@ Service-level coverage (no HTTP):
 - `MediaKitService.search_packages` ranks audience-matching packages higher
   via the expanded corpus.
 - Backward compat: callers that don't pass `audience_filter` see the same
-  behavior they did before this bead.
+  behavior they did before this change.
 
 HTTP-level coverage for the endpoint surface lives in
 `test_packages_audience_filter_endpoint.py` (integration) -- this file
@@ -187,7 +187,7 @@ class TestAudienceFilterPredicate:
         assert f.matches(pkg_without) is False
 
     def test_agentic_with_id_still_supported_predicate(self):
-        """Per ar-2wxa: agentic per-segment matching is §11; type-only gate."""
+        """Agentic per-segment matching is §11; type-only gate."""
         f = AudienceFilter(audience_type="agentic", audience_id="emb://example.com/x")
         pkg_with = Package(
             **_make_package(

@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Order Workflow State Machine (seller-awh).
+"""Order Workflow State Machine.
 
 Replaces the linear ExecutionStatus enum with a formal state machine that
 supports configurable transitions, guard conditions, and a full audit log

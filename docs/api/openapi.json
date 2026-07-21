@@ -3074,7 +3074,7 @@
           "Media Kit"
         ],
         "summary": "Search Media Kit",
-        "description": "Search packages by keyword. Authenticated buyers get richer results.\n\nPer proposal \u00a75.7 + bead ar-2wxa, the scoring corpus now includes\n`audience_capabilities.standard_segment_ids` +\n`audience_capabilities.contextual_segment_ids` alongside keywords/tags\n-- a query mentioning a known IAB segment ID ranks packages that\ndeclare it higher than packages that don't.\n\nThe optional `audience_filter` body field restricts results to packages\nthat match its type/id/version triple, parallel to `GET /packages`.",
+        "description": "Search packages by keyword. Authenticated buyers get richer results.\n\nPer proposal \u00a75.7, the scoring corpus now includes\n`audience_capabilities.standard_segment_ids` +\n`audience_capabilities.contextual_segment_ids` alongside keywords/tags\n-- a query mentioning a known IAB segment ID ranks packages that\ndeclare it higher than packages that don't.\n\nThe optional `audience_filter` body field restricts results to packages\nthat match its type/id/version triple, parallel to `GET /packages`.",
         "operationId": "search_media_kit_media_kit_search_post",
         "parameters": [
           {
@@ -3148,7 +3148,7 @@
           "Packages"
         ],
         "summary": "List Packages",
-        "description": "List packages with tier-gated view.\n\nAudience filter (proposal \u00a75.7 + bead ar-2wxa):\n\n- `audience_type`: one of `standard` | `contextual` | `agentic`.\n- `audience_id`: taxonomy ID for standard/contextual; URI for agentic.\n  Requires `audience_type` to disambiguate which capability list to\n  search.\n- `audience_taxonomy_version`: optional version constraint; when unset\n  the seller's lock-file version is authoritative.\n\nEmpty results return `[]`, not 404 -- matches the existing behavior for\nlayer/featured filters.",
+        "description": "List packages with tier-gated view.\n\nAudience filter (proposal \u00a75.7):\n\n- `audience_type`: one of `standard` | `contextual` | `agentic`.\n- `audience_id`: taxonomy ID for standard/contextual; URI for agentic.\n  Requires `audience_type` to disambiguate which capability list to\n  search.\n- `audience_taxonomy_version`: optional version constraint; when unset\n  the seller's lock-file version is authoritative.\n\nEmpty results return `[]`, not 404 -- matches the existing behavior for\nlayer/featured filters.",
         "operationId": "list_packages_packages_get",
         "parameters": [
           {
@@ -5093,7 +5093,7 @@
         },
         "type": "object",
         "title": "AudienceFilterModel",
-        "description": "Optional audience filter sub-object on `POST /media-kit/search`.\n\nMirrors the query-param triple on `GET /packages`: type + id + version.\nWhen present, search results are restricted to packages whose\n`audience_capabilities` match. See proposal \u00a75.7 + bead ar-2wxa."
+        "description": "Optional audience filter sub-object on `POST /media-kit/search`.\n\nMirrors the query-param triple on `GET /packages`: type + id + version.\nWhen present, search results are restricted to packages whose\n`audience_capabilities` match. See proposal \u00a75.7."
       },
       "AvailsRequest": {
         "properties": {
@@ -5154,7 +5154,7 @@
           "enddate"
         ],
         "title": "AvailsRequest",
-        "description": "OpenDirect availability check request (POST /products/avails).\n\nSpec-named fields use the OpenDirect 2.1 all-lowercase wire names\n(``productid``/``startdate``/``enddate``), matching the buyer agent's\nOpenDirect client (``AvailsRequest`` in the buyer's models; coordinated\nTier-1 rename, bead ar-kzi0). Non-spec extension fields\n(``requestedImpressions``/``budget``/``targeting``) are unchanged\npending the Tier-2 restructure. ``targeting`` is accepted for wire\ncompatibility but not used for filtering in this reference\nimplementation \u2014 the static catalog has no per-slice availability data."
+        "description": "OpenDirect availability check request (POST /products/avails).\n\nSpec-named fields use the OpenDirect 2.1 all-lowercase wire names\n(``productid``/``startdate``/``enddate``), matching the buyer agent's\nOpenDirect client (``AvailsRequest`` in the buyer's models; coordinated\nTier-1 rename). Non-spec extension fields\n(``requestedImpressions``/``budget``/``targeting``) are unchanged\npending the Tier-2 restructure. ``targeting`` is accepted for wire\ncompatibility but not used for filtering in this reference\nimplementation \u2014 the static catalog has no per-slice availability data."
       },
       "AvailsResponse": {
         "properties": {
@@ -5221,7 +5221,7 @@
           "totalCost"
         ],
         "title": "AvailsResponse",
-        "description": "OpenDirect availability check response.\n\n``productid`` follows the OpenDirect 2.1 spec-lowercase wire name\n(coordinated Tier-1 rename, bead ar-kzi0); the non-spec extension\nfields keep their camelCase names pending the Tier-2 restructure.\n``deliveryConfidence`` is always null: the seller has no delivery\nforecast data source, and the reference implementation does not\nfabricate one."
+        "description": "OpenDirect availability check response.\n\n``productid`` follows the OpenDirect 2.1 spec-lowercase wire name\n(coordinated Tier-1 rename); the non-spec extension\nfields keep their camelCase names pending the Tier-2 restructure.\n``deliveryConfidence`` is always null: the seller has no delivery\nforecast data source, and the reference implementation does not\nfabricate one."
       },
       "BulkDealOperation": {
         "properties": {

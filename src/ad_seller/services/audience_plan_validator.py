@@ -21,7 +21,7 @@ The buyer's orchestrator catches this, applies degradation, and retries.
 This module produces the structured `unsupported` list; the API layer
 turns it into the 400 response.
 
-Bead: ar-sn8f (proposal §5.7 layer 3 + §6 row 11).
+See proposal §5.7 layer 3 + §6 row 11.
 """
 
 from __future__ import annotations

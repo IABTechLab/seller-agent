@@ -2,7 +2,7 @@
 # Donated to IAB Tech Lab
 
 """ALL below-floor openers must COUNTER at the floor, not terminally REJECT
-(bead ar-nj9m, universalized by bead ar-v4os).
+(universalized by).
 
 The live S2 proof (docs/reports/S2_NEGOTIATION_LIVE_PROOF in agent_range)
 showed the buyer's Stage 3.5 only fires when its target is below the
@@ -10,8 +10,8 @@ seller's floor — and its opening proposal equals that target. The seller
 rejected every below-floor opener with no counter, so live negotiation
 could structurally never converge.
 
-Policy (pinned here; Aidan-approved spec change per bead ar-v4os removed
-ar-nj9m's 0.75x deep-lowball walk-away threshold):
+Policy (pinned here; approved spec change that removed the former
+0.75x deep-lowball walk-away threshold):
 
 - EVERY below-floor offer, no matter how low, is countered AT the floor —
   the seller invites the buyer up to its minimum viable price. Expected
@@ -24,7 +24,7 @@ ar-nj9m's 0.75x deep-lowball walk-away threshold):
 - Both the crew path and the deterministic fallback produce the counter
   (a crew "reject" of any below-floor offer upgrades to counter), and the
   persisted NegotiationHistory records the counter round so the buyer's
-  next message continues the same negotiation (ar-alut intact).
+  next message continues the same negotiation (continuation intact).
 """
 
 import os
@@ -210,7 +210,7 @@ class TestLowballCounterPolicy:
         assert history.status == "accepted"
 
     def test_extreme_lowball_10_vs_80_counters_at_floor(self, engine, agency_buyer):
-        """Spec change per bead ar-v4os (was test_deep_lowball_still_rejects):
+        """Spec change per (was test_deep_lowball_still_rejects):
         even a $10 offer against an $80 floor counters at the floor."""
         history = engine.start_negotiation(
             proposal_id="p1",
@@ -224,7 +224,7 @@ class TestLowballCounterPolicy:
         assert rnd.seller_price == 80.0
 
     def test_extreme_lowball_1_vs_28_counters_at_floor(self, engine, agency_buyer):
-        """Spec change per bead ar-v4os (was test_boundary_offer_is_countered,
+        """Spec change per (was test_boundary_offer_is_countered,
         which pinned the removed 0.75x threshold): a $1 offer against a $28
         floor counters at the floor."""
         history = engine.start_negotiation(
@@ -320,7 +320,7 @@ class TestLowballRoundBound:
         assert rnd.seller_price == 80.0
 
     def test_repeated_extreme_lowball_terminates_within_bound(self, engine, public_buyer):
-        """Repeated $10-vs-$80-floor extreme lowballs (bead ar-v4os) follow
+        """Repeated $10-vs-$80-floor extreme lowballs follow
         the same bounded shape: counter at floor, FINAL_OFFER at floor on
         the last round, then reject on exhaustion — no counter loop."""
         history = engine.start_negotiation(
@@ -451,7 +451,7 @@ class TestFlowPathsProduceCounter:
         assert history["status"] == "active"
 
     def test_crew_reject_of_deep_lowball_upgrades_to_counter(self):
-        """Spec change per bead ar-v4os (was
+        """Spec change per (was
         test_crew_reject_of_deep_lowball_stays_rejected): a crew reject of
         ANY below-floor offer — even $10 against a $28 floor — upgrades to
         a counter at the floor."""

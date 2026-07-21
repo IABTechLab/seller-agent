@@ -18,7 +18,7 @@ and leaves `agentic_capabilities` null. A package selling content adjacency
 declares `contextual_segment_ids`. A package supporting advertiser
 first-party activation declares `agentic_capabilities` -- the premium tier.
 
-See proposal §5.7 and bead ar-roi5.
+See proposal §5.7 and.
 """
 
 from __future__ import annotations
@@ -364,7 +364,7 @@ def build_capability_audience_block(
     - `max_refs_per_role` = (1 / 3 / 0 / 0)
     - `taxonomy_lock_hashes` ALWAYS read from the lock file (never hard-coded)
 
-    The kwargs let future beads (§10, §11) flip individual flags without
+    The kwargs let future work (§10, §11) flip individual flags without
     changing the call sites that build the agent card.
     """
 

@@ -90,7 +90,7 @@ async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, A
     # Persist the proposal (and its product pricing) so the REST negotiation
     # surface is reachable cold — without this, POST /api/v1/negotiations/
     # messages 404'd ("Proposal not found") on every fresh negotiation
-    # (bead ar-alut).
+    #.
     await storage.set_proposal(
         proposal_id,
         {
@@ -108,7 +108,7 @@ async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, A
 
     # If the flow opened a NegotiationHistory for its counter, persist it so
     # the buyer's next round continues the SAME negotiation (same id, same
-    # round numbering) instead of silently starting over (bead ar-alut).
+    # round numbering) instead of silently starting over.
     flow_history = result.pop("_negotiation_history", None)
     if flow_history:
         await storage.set_negotiation(proposal_id, flow_history)
@@ -193,7 +193,7 @@ async def counter_proposal(
             )
     else:
         # Look up the negotiation subject: a stored proposal, or — quote-led
-        # (bead ar-alut) — a stored quote keyed by the same id.
+        # — a stored quote keyed by the same id.
         proposal_data = await storage.get_proposal(proposal_id)
         if proposal_data:
             product_id = proposal_data.get("product_id", "")
@@ -207,7 +207,7 @@ async def counter_proposal(
         if not product_data:
             # Cold fallback: products are catalog-sourced (EP-3.3) and were
             # historically never written to storage — read the live catalog
-            # before giving up (bead ar-alut).
+            # before giving up.
             from .catalog_service import get_static_product_catalog, serialize_product
 
             product = get_static_product_catalog()["products"].get(product_id)
@@ -289,7 +289,7 @@ async def apply_terminal_action(
 
     Without this, a buyer 'accept' produced an accepted-looking response
     while the STORED history stayed active — so booking could never see
-    the agreed state (bead ar-alut). The price engine is not run: accept
+    the agreed state. The price engine is not run: accept
     strikes at the seller's last stated price; reject is a walk-away.
 
     No-ops (returning current status) when no stored negotiation exists or

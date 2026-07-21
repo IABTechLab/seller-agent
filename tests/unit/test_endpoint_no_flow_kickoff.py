@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Regression tests for ar-yet5: endpoints must not call sync ProductSetupFlow.kickoff().
+"""Regression tests: endpoints must not call sync ProductSetupFlow.kickoff().
 
 In CrewAI 1.10.1, `Flow.kickoff()` is synchronous and returns `None`.
 `await flow.kickoff()` raises `TypeError: object NoneType can't be used in
@@ -15,7 +15,7 @@ The hermetic POST /packages/sync test additionally exercises one of the
 six previously-broken endpoints end-to-end with a mocked flow.
 
 Read endpoints (`GET /products`, `GET /products/{id}`, `GET /.well-known/agent.json`)
-were separately fixed by ar-uwad to read from a static catalog instead of
+were separately fixed to read from a static catalog instead of
 running the flow at all; the same kickoff-call guard applies to them.
 """
 
@@ -66,7 +66,7 @@ def _fail_if_flow_kickoff_called(monkeypatch):
     def _boom(*args, **kwargs):
         raise AssertionError(
             "ProductSetupFlow.kickoff() was called from a read endpoint. "
-            "Read endpoints must use the cached static catalog (see ar-uwad)."
+            "Read endpoints must use the cached static catalog."
         )
 
     # Patch on the class so any code path that constructs ProductSetupFlow
@@ -160,7 +160,7 @@ async def test_endpoints_do_not_invoke_flow_kickoff(client):
 async def test_create_quote_returns_200_without_flow_kickoff(client):
     """`POST /api/v1/quotes` returns 200 and does NOT invoke ProductSetupFlow.
 
-    Regression for ar-0vtg: this endpoint used to call
+    Regression: this endpoint used to call
     `await ProductSetupFlow().kickoff()` per request to load the product
     catalog, which hangs in OpenDirect MCP session.initialize(). The
     autouse `_fail_if_flow_kickoff_called` fixture trips an AssertionError
@@ -219,7 +219,7 @@ async def test_create_quote_validates_deal_type(client):
 
 
 # =============================================================================
-# ar-yet5: Flow-kickoff write endpoints must use kickoff_async(), not kickoff()
+# Flow-kickoff write endpoints must use kickoff_async(), not kickoff()
 #
 # In CrewAI 1.10.1 Flow.kickoff() is synchronous and returns None.
 # Awaiting None raises TypeError: object NoneType can't be used in 'await'.
@@ -233,7 +233,7 @@ async def test_create_quote_validates_deal_type(client):
 async def test_packages_sync_does_not_return_typeerror_500():
     """`POST /packages/sync` must not crash with TypeError from awaiting kickoff().
 
-    Regression for ar-yet5: this endpoint called `await flow.kickoff()` which
+    Regression: this endpoint called `await flow.kickoff()` which
     returns None in CrewAI 1.10.1 and crashes.  Fix: `await flow.kickoff_async()`.
 
     We mock ProductSetupFlow so the test is hermetic (no real flow execution).

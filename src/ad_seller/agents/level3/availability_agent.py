@@ -5,7 +5,7 @@
 
 Reports inventory availability grounded in the product catalog's declared
 data via the :class:`~ad_seller.tools.CatalogAvailsTool` — the same
-calculation as the seller's avails endpoint and the quote path (ar-f0ky).
+calculation as the seller's avails endpoint and the quote path.
 The agent's old free-hand forecasting persona (its tools were removed in
 4b97d31) could only invent numbers; it now follows the honest-availability
 policy: every figure comes from the tool, and anything without a data

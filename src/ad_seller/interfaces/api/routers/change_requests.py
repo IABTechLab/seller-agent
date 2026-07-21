@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Change request endpoints (seller-ju5)."""
+"""Change request endpoints."""
 
 from typing import Optional
 

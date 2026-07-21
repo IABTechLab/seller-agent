@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Unit tests for the Order Workflow State Machine (seller-awh)."""
+"""Unit tests for the Order Workflow State Machine."""
 
 import pytest
 

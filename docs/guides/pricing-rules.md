@@ -240,4 +240,4 @@ When enabled:
     - Time-bound rules (valid_from / valid_to)
     - Rule priority management
 
-    See [PROGRESS.md](https://github.com/IABTechLab/seller-agent/blob/main/.beads/PROGRESS.md) for roadmap status.
+    These improvements are planned for a future release.

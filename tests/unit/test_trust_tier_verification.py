@@ -420,7 +420,7 @@ class TestTrustVerificationStore:
 
 
 # =============================================================================
-# Price-moving path: POST /proposals/{proposal_id}/counter (the bead's gap)
+# Price-moving path: POST /proposals/{proposal_id}/counter (the gap under test)
 # =============================================================================
 
 

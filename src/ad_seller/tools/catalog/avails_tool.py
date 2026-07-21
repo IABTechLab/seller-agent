@@ -5,7 +5,7 @@
 
 Wraps :func:`ad_seller.services.catalog_service.check_avails`, the same
 calculation behind ``POST /products/avails`` and the quote path's
-``QuoteAvailability`` (ar-f0ky). Every number in the output is derived
+``QuoteAvailability``. Every number in the output is derived
 from the product catalog's declared data (capacity caps, CPMs, targeting
 dicts); anything without a data source (fill rates, demand levels,
 delivery confidence) is reported as unavailable rather than invented.

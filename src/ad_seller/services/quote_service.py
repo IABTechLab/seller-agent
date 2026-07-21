@@ -137,7 +137,7 @@ async def create_quote(
         )
 
     # Ground availability in declared catalog capacity — the same
-    # calculation as POST /products/avails (ar-f0ky). Also enforces the
+    # calculation as POST /products/avails. Also enforces the
     # honest-pricing policy: products with neither base_cpm nor floor_cpm
     # are a 422 here too, never a fabricated price.
     from . import catalog_service

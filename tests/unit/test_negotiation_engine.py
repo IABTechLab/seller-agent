@@ -106,14 +106,14 @@ class TestConcessionLimits:
 class TestWalkAway:
     """Walk-away triggers only on round exhaustion; below-floor offers counter.
 
-    Amended per bead ar-v4os (Aidan-approved spec change, 2026-07-21):
+    Amended per (Aidan-approved spec change, 2026-07-21):
     every below-floor offer is countered at the floor — there is no deep-
     lowball walk-away threshold. Rejection happens only when rounds are
     exhausted (or the offer is not a valid positive price).
     """
 
     def test_below_floor_counters_at_floor(self, engine, agency_buyer):
-        """Spec change per bead ar-v4os (was test_reject_below_floor):
+        """Spec change per (was test_reject_below_floor):
         a below-floor offer counters at exactly the floor, never rejects."""
         history = engine.start_negotiation(
             proposal_id="p1",
@@ -259,7 +259,7 @@ class TestMultiRoundConcession:
         assert history.status == "accepted"
 
     def test_record_round_keeps_active_on_below_floor_counter(self, engine, agency_buyer):
-        """Spec change per bead ar-v4os (was
+        """Spec change per (was
         test_record_round_updates_status_on_reject): a deep lowball is now
         countered at the floor, so recording the round keeps the
         negotiation active — the buyer's next message continues it."""

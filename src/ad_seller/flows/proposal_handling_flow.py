@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 class ProposalCrewTimeBudgetExceeded(Exception):
     """Raised when the proposal-review crew blows the configured time budget
-    (``proposal_flow_time_budget_seconds``, bead ar-fg58)."""
+    (``proposal_flow_time_budget_seconds``)."""
 
 
 class ProposalState(SellerFlowState):
@@ -59,7 +59,7 @@ class ProposalState(SellerFlowState):
     counter_terms: Optional[dict[str, Any]] = None
 
     # NegotiationHistory (model_dump) opened for the counter, so callers can
-    # persist it instead of it dying with the flow instance (bead ar-alut).
+    # persist it instead of it dying with the flow instance.
     negotiation_history: Optional[dict[str, Any]] = None
 
     # Upsell opportunities
@@ -135,7 +135,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         This step validates whether the proposal's audience targeting can
         be fulfilled by the product's audience capabilities.
 
-        Per proposal §5.7 layer 3 (bead ar-sn8f): when the proposal carries a
+        Per proposal §5.7 layer 3: when the proposal carries a
         structured `audience_plan`, the static-taxonomy paths (standard /
         contextual) are HARD-REJECTED on zero overlap with the seller's
         aggregated segment IDs. Agentic match scores remain a SOFT WARN
@@ -240,7 +240,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         are wired in -- callers treat empty as 'seller has nothing in this
         dimension' and defer to the existing soft-warn UCP path.
 
-        Per proposal §5.7 layer 3 (bead ar-sn8f).
+        Per proposal §5.7 layer 3.
         """
 
         std: set[str] = set()
@@ -276,7 +276,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         the seller has no packages registered, which falls back to the
         existing soft-warn UCP path).
 
-        Per proposal §5.7 layer 3 (bead ar-sn8f). Agentic refs are NOT
+        Per proposal §5.7 layer 3. Agentic refs are NOT
         checked here -- low agentic match scores remain soft warnings since
         the score is opinion (mock-quality in Epic 1).
         """
@@ -407,7 +407,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             # Decision not made yet — synced when the crew/fallback decides.
             # (recommendation is REQUIRED on the model; omitting it made this
             # constructor raise and killed the whole evaluation chain cold —
-            # bead ar-alut.)
+            #.)
             recommendation="",
         )
 
@@ -436,7 +436,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         )
 
     async def _run_crew_within_budget(self, crew: Any) -> Any:
-        """Run the review crew bounded by the configured time budget (ar-fg58).
+        """Run the review crew bounded by the configured time budget.
 
         Raises :class:`ProposalCrewTimeBudgetExceeded` when the budget is hit.
         The over-budget crew task is NOT awaited further — see
@@ -508,7 +508,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                 logger.warning(
                     "Orphaned proposal-review crew for %s finished %.1fs after "
                     "abandonment; its result was discarded (orphaned LLM burn, "
-                    "bead ar-fg58 / Bug J).",
+                    " / Bug J).",
                     proposal_id,
                     extra,
                 )
@@ -519,7 +519,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
     async def run_crew_evaluation(self) -> None:
         """Run the proposal review crew for detailed evaluation.
 
-        The crew runs under the configured time budget (bead ar-fg58): a
+        The crew runs under the configured time budget: a
         wire buyer times out in ~30s while a real LLM crew was measured at
         ~10m46s, so past the budget the flow falls back to the SAME
         deterministic rule-based evaluation already used when the crew
@@ -557,7 +557,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             )
 
         except ProposalCrewTimeBudgetExceeded as e:
-            # Budget exceeded (ar-fg58): deterministic fallback answers the
+            # Budget exceeded: deterministic fallback answers the
             # request within wire timeouts; the abandoned crew is logged.
             self.state.warnings.append(f"Crew evaluation exceeded time budget: {e}")
             self._fallback_evaluation()
@@ -589,7 +589,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
     def _lowball_counter_applies(self) -> bool:
         """A rejected offer that is really a below-floor opener.
 
-        Policy (beads ar-nj9m, ar-v4os): EVERY valid below-floor offer is
+        Policy: EVERY valid below-floor offer is
         countered AT the floor instead of terminally rejected — there is
         no deep-lowball walk-away threshold. Applied to BOTH evaluators —
         a crew reject is normalized exactly like the deterministic
@@ -605,7 +605,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         """Generate counter terms using NegotiationEngine."""
         if self.state.recommendation == "reject" and self._lowball_counter_applies():
             # ANY below-floor opener must be invited up to the floor, not
-            # terminally rejected (beads ar-nj9m, ar-v4os) — whichever
+            # terminally rejected — whichever
             # evaluator (crew or fallback) said reject.
             self.state.recommendation = "counter"
             if self.state.evaluation:
@@ -649,7 +649,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         history = neg_engine.record_round(history, round_result)
 
         # Surface the history so the service layer can persist it — in memory
-        # only, the buyer's next round could never continue it (bead ar-alut).
+        # only, the buyer's next round could never continue it.
         self.state.negotiation_history = history.model_dump(mode="json")
 
         self.state.counter_terms = {

@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Change Request Management models (seller-ju5).
+"""Change Request Management models.
 
 Post-deal modification requests: flight date changes, impression adjustments,
 price modifications, creative swaps. Each change request tracks what changed,

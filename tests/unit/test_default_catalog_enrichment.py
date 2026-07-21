@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Default catalog enrichment (ar-92f8): caps, targeting, one unpriced product.
+"""Default catalog enrichment: caps, targeting, one unpriced product.
 
 ``DEFAULT_PRODUCT_CONFIGS`` used to declare every product uncapped,
 untargeted, and priced — so the avails capping, availableTargeting, and
@@ -13,7 +13,7 @@ never on the rig wire. These tests pin the enriched catalog DATA:
 - exactly ONE product is deliberately unpriced (no base_cpm/floor_cpm) so
   the 422-unpriceable path is live on the wire;
 - the enrichment flows through ``build_static_product_catalog`` into
-  ``ProductDefinition``s, and the avails + quote paths (ar-f0ky grounding)
+  ``ProductDefinition``s, and the avails + quote paths (honest-availability grounding)
   handle capped and unpriced products honestly.
 """
 
@@ -178,7 +178,7 @@ class TestEnrichedCatalogOnAvailsPath:
 
 
 class TestEnrichedCatalogOnQuotePath:
-    """Task interplay: ar-f0ky quote grounding must handle the enriched
+    """Task interplay: quote grounding must handle the enriched
     default products (caps and the unpriced product) honestly."""
 
     @pytest.fixture

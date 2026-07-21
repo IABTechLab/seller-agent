@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # flow) avoids importing CrewAI plus the OpenDirect client chain just to
 # read the catalog.
 #
-# ar-92f8: the defaults declare realistic capacity caps
+# the defaults declare realistic capacity caps
 # (``maximum_impressions``), audience/content targeting dicts, and ONE
 # deliberately unpriced product (no ``base_cpm``/``floor_cpm``) so the
 # avails capping, availableTargeting, and 422-unpriceable paths exercise
@@ -217,7 +217,7 @@ def product_from_config(cfg: dict[str, Any], product_id: str) -> Any:
     The ONE config→product mapping, shared by
     :func:`build_static_product_catalog` and
     ``ProductSetupFlow.create_default_products`` so enrichment fields
-    (caps, targeting, deliberate unpricing — ar-92f8) cannot silently
+    (caps, targeting, deliberate unpricing) cannot silently
     diverge between the two consumers.
     """
     from ..models.flow_state import ProductDefinition

@@ -7,7 +7,7 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 ### Added
 - MCP Streamable HTTP transport at `/mcp` (current MCP standard, protocol 2025-06-18) — resolves buyer agent 405 errors on MCP connection
 - Legacy HTTP+SSE transport kept at `/mcp-sse/sse` for backwards compatibility with older Claude Desktop / ChatGPT clients
-- FreeWheel OAuth 2.1 PKCE authentication integration (seller-91t):
+- FreeWheel OAuth 2.1 PKCE authentication integration:
   - Streaming Hub: interactive bootstrap via `ad-seller freewheel-login --provider sh`, then bearer auth to `/mcp/oauth`
   - Buyer Cloud: interactive bootstrap via `ad-seller freewheel-login --provider bc`, then bearer auth to `/mcp/oauth`
   - Legacy SH/BC login-tool credential paths removed (`streaming_hub_login`, `buyer_cloud_login`)

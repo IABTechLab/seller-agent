@@ -238,7 +238,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
             },
         )
 
-    # Honor ACCEPTED negotiation state on this quote (bead ar-alut): a
+    # Honor ACCEPTED negotiation state on this quote: a
     # quote-led negotiation is keyed by the quote_id; when it concluded
     # accepted, the booking strikes the AGREED price, not the stale quoted
     # price. A re-quote at the agreed price (the buyer's historical
@@ -263,7 +263,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
     # Pre-flight: if the buyer sent an audience_plan with this booking, validate
     # it against the seller's capability block. Per proposal §5.7 layer 3, any
     # unsupported part triggers a structured `audience_plan_unsupported` 400 so
-    # the buyer's degrade_plan_for_seller() can retry. (Bead ar-sn8f.)
+    # the buyer's degrade_plan_for_seller() can retry.
     if request.audience_plan:
         from ..models.audience_capabilities import build_capability_audience_block
         from .audience_plan_validator import validate_audience_plan
@@ -322,7 +322,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
         deal_data["audience_plan_snapshot"] = plan_snapshot
         deal_data["audience_match_summary"] = build_audience_match_summary(plan_snapshot)
 
-        # Forensic anchor hash log (proposal §5.1 Step 2 / bead 14b). Buyer
+        # Forensic anchor hash log (proposal §5.1 Step 2 / row 14b). Buyer
         # logs the same hash on its side via `ad_buyer.audience.booking`.
         plan_id = plan_snapshot.get("audience_plan_id") or ""
         booking_logger.info(
@@ -376,7 +376,7 @@ async def get_deal_performance(deal_id: str) -> dict[str, Any]:
     If GAM is configured and the deal has a linked ``gam_order_id`` (set when
     the deal is trafficked into GAM), returns real delivery data from the ad
     server via ``GAMSoapClient.get_delivery_report`` (main PR #12 wiring,
-    re-grounded in the service layer — bead ar-j8hl). Otherwise returns
+    re-grounded in the service layer). Otherwise returns
     placeholder stats.
     """
     from ..config import get_settings
@@ -547,7 +547,7 @@ async def create_deal_from_template(
         )
 
     # Calculate price. Honest pricing: base_cpm falling back to floor_cpm;
-    # unpriced products are a 422, never a fabricated price (ar-92f8).
+    # unpriced products are a 422, never a fabricated price.
     from . import catalog_service
 
     config = TieredPricingConfig(seller_organization_id="default")
@@ -1188,7 +1188,7 @@ async def create_curated_deal(request: Any, catalog: dict[str, Any]) -> dict[str
         )
 
     # Get base price from product catalog. A known-but-unpriced product
-    # (no base/floor CPM) is a 422 — never a fabricated price (ar-92f8).
+    # (no base/floor CPM) is a 422 — never a fabricated price.
     base_cpm = 12.0  # Default
     if request.product_id:
         product = catalog["products"].get(request.product_id)

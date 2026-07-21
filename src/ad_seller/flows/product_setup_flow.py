@@ -392,7 +392,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         default_products = DEFAULT_PRODUCT_CONFIGS
 
         for i, product_config in enumerate(default_products):
-            # Shared config→product mapping (ar-92f8): enrichment fields
+            # Shared config→product mapping: enrichment fields
             # (caps, targeting, deliberate unpricing) flow through here too.
             product_def = product_from_config(product_config, f"prod-{i + 1:03d}")
 

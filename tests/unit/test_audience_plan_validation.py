@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Unit tests for audience-plan validation pieces (bead ar-sn8f).
+"""Unit tests for audience-plan validation pieces.
 
 Covers proposal §5.7 layers 2-3 + §5.1 Step 2:
 
@@ -334,7 +334,7 @@ class TestValidateAudienceHardRejects:
         assert flow.state.status != ExecutionStatus.FAILED
 
     def test_low_agentic_match_does_not_hard_reject(self, flow_with_pkgs):
-        # Per bead ar-sn8f: agentic refs are SOFT WARN, not hard reject,
+        # Per: agentic refs are SOFT WARN, not hard reject,
         # because the score is opinion (mock-quality in Epic 1).
         flow = flow_with_pkgs
         flow.state.proposal_data = {
@@ -448,7 +448,7 @@ def http_client():
             ),
             "get_deal": staticmethod(lambda did: _async_return(store.get(f"deal:{did}"))),
             "set_deal": staticmethod(lambda did, data: _async_set(store, f"deal:{did}", data)),
-            # Booking consults negotiation state (bead ar-alut); none stored here.
+            # Booking consults negotiation state; none stored here.
             "get_negotiation": staticmethod(
                 lambda pid: _async_return(store.get(f"negotiation:{pid}"))
             ),

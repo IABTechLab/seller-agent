@@ -3,7 +3,7 @@
 
 """Unit tests for `POST /agentic-audience/match` (proposal §5.7 + §6 row 11).
 
-Covers bead ar-sn8f deliverable A:
+Covers deliverable A:
 
 - Happy path (seller advertises agentic): deterministic mock score returned
   with quality bucket and `agentic_supported_by_seller=True`.

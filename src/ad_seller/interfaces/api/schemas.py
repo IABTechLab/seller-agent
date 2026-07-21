@@ -89,7 +89,7 @@ class AvailsRequest(BaseModel):
     Spec-named fields use the OpenDirect 2.1 all-lowercase wire names
     (``productid``/``startdate``/``enddate``), matching the buyer agent's
     OpenDirect client (``AvailsRequest`` in the buyer's models; coordinated
-    Tier-1 rename, bead ar-kzi0). Non-spec extension fields
+    Tier-1 rename). Non-spec extension fields
     (``requestedImpressions``/``budget``/``targeting``) are unchanged
     pending the Tier-2 restructure. ``targeting`` is accepted for wire
     compatibility but not used for filtering in this reference
@@ -126,7 +126,7 @@ class AvailsResponse(BaseModel):
     """OpenDirect availability check response.
 
     ``productid`` follows the OpenDirect 2.1 spec-lowercase wire name
-    (coordinated Tier-1 rename, bead ar-kzi0); the non-spec extension
+    (coordinated Tier-1 rename); the non-spec extension
     fields keep their camelCase names pending the Tier-2 restructure.
     ``deliveryConfidence`` is always null: the seller has no delivery
     forecast data source, and the reference implementation does not
@@ -201,7 +201,7 @@ class AudienceFilterModel(BaseModel):
 
     Mirrors the query-param triple on `GET /packages`: type + id + version.
     When present, search results are restricted to packages whose
-    `audience_capabilities` match. See proposal §5.7 + bead ar-2wxa.
+    `audience_capabilities` match. See proposal §5.7.
     """
 
     audience_type: Optional[str] = None

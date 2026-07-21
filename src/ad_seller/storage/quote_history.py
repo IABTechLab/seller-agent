@@ -7,8 +7,6 @@ Records every quote the seller issues and provides verification
 against incoming buyer proposals. This is Layer 4 of the CPM
 hallucination fix — defense in depth that catches fabricated pricing
 even if buyer-side guards fail.
-
-Bead: ar-hm9l (child of epic ar-rrgw)
 """
 
 from datetime import datetime, timezone

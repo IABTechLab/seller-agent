@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Cold-start negotiation reachability (bead ar-alut).
+"""Cold-start negotiation reachability.
 
 The seller's REST negotiation surface was unreachable cold:
 

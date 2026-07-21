@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Quote availability is grounded in catalog data — never fabricated (ar-f0ky).
+"""Quote availability is grounded in catalog data — never fabricated.
 
 The quote path used to ship every quote with bare ``QuoteAvailability()``
 defaults: ``inventory_available=True``, ``estimated_fill_rate=0.95``,

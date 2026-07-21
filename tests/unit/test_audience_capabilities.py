@@ -12,8 +12,6 @@ Covers:
 - PublicPackageView excludes segment lists (capability metadata only)
 - AuthenticatedPackageView includes the full capability object
 - Round-trip via model_dump -> Package(**data)
-
-Bead: ar-roi5.
 """
 
 from __future__ import annotations
