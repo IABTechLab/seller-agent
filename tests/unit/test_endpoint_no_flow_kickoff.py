@@ -116,7 +116,7 @@ async def test_list_products_returns_200_with_products_key(client):
     assert "product_id" in p
     assert "name" in p
     assert "inventory_type" in p
-    assert "basePrice" in p
+    assert "base_cpm" in p
     assert "deal_types" in p
 
 
