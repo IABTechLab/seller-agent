@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# pre-commit hook: secret and internal-content guardrails.
+#
+#   1. gitleaks scan of staged changes (skipped with a warning if not installed)
+#   2. block any staged file under .beads/ (internal issue tracker — never public)
+#   3. block ${VAR:-default} env/compose fallbacks whose default looks like a
+#      real secret (use ${VAR:?} fail-fast or an obvious placeholder instead)
+#
+# Policy details: CONTRIBUTING.md ("Repository hygiene policy").
+
+set -euo pipefail
+
+fail() {
+  echo "" >&2
+  echo "COMMIT REJECTED by .githooks/pre-commit:" >&2
+  echo "  $1" >&2
+  echo "" >&2
+  echo "See CONTRIBUTING.md, section 'Repository hygiene policy'." >&2
+  exit 1
+}
+
+# ---------------------------------------------------------------- 1. gitleaks
+if command -v gitleaks >/dev/null 2>&1; then
+  if gitleaks git --help >/dev/null 2>&1; then
+    GL_CMD=(gitleaks git --pre-commit --staged --redact --no-banner)
+  else
+    GL_CMD=(gitleaks protect --staged --redact --no-banner)   # older gitleaks
+  fi
+  if ! OUT="$("${GL_CMD[@]}" 2>&1)"; then
+    echo "$OUT" >&2
+    fail "gitleaks found potential secrets in staged changes (see output above)"
+  fi
+else
+  echo "WARNING: gitleaks not installed — staged-secret scan skipped." >&2
+  echo "         Install it (e.g. 'brew install gitleaks') to enable local scanning;" >&2
+  echo "         CI runs gitleaks regardless (.github/workflows/hygiene.yml)." >&2
+fi
+
+# ------------------------------------------------- 2. .beads/ tracker content
+STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
+BEADS_STAGED="$(printf '%s\n' "$STAGED" | grep -E '^\.beads/' || true)"
+if [ -n "$BEADS_STAGED" ]; then
+  fail ".beads/ issue-tracker files are staged (internal, never committed here):
+$(printf '%s\n' "$BEADS_STAGED" | sed 's/^/    /')"
+fi
+
+# ------------------------------- 3. secret-like ${VAR:-default} fallback values
+# Heuristic: var name mentions secret/token/key/passw AND default is >=12 chars
+# with mixed case plus a digit or symbol. Obvious placeholders are allowed.
+VIOLATIONS=""
+ADDED_LINES="$(git diff --cached -U0 --no-color | grep -E '^\+[^+]' || true)"
+CANDIDATES="$(printf '%s\n' "$ADDED_LINES" | grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:-[^}]*\}' || true)"
+if [ -n "$CANDIDATES" ]; then
+  while IFS= read -r m; do
+    [ -n "$m" ] || continue
+    var="${m#\$\{}"; var="${var%%:-*}"
+    def="${m#*:-}";  def="${def%\}}"
+    printf '%s' "$var" | grep -qiE '(secret|token|key|passw)' || continue
+    if printf '%s' "$def" | grep -qiE '(change.?me|example|dummy|xxx|placeholder|sample|not-?a-?secret|dev-?only)'; then continue; fi
+    [ "${#def}" -ge 12 ] || continue
+    printf '%s' "$def" | grep -q '[a-z]' || continue
+    printf '%s' "$def" | grep -q '[A-Z]' || continue
+    printf '%s' "$def" | grep -qE '([0-9]|[^A-Za-z0-9])' || continue
+    VIOLATIONS="${VIOLATIONS}    ${m}
+"
+  done <<EOF
+$CANDIDATES
+EOF
+fi
+if [ -n "$VIOLATIONS" ]; then
+  fail "secret-like default value(s) in \${VAR:-default} fallback(s):
+${VIOLATIONS}  Never ship real credentials as fallback defaults. Use \${VAR:?} (fail-fast)
+  or an obvious placeholder like 'change-me-in-production'."
+fi
+
+exit 0

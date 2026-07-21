@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# commit-msg hook: reject internal tracker references and session URLs.
+#
+# This is a public repository. Commit messages must not contain:
+#   - "ar-XXXX" bead IDs (internal Agent Range issue tracker) — never allowed
+#   - "Claude-Session:" trailers (internal AI-session URLs)
+#   - "bead: <prefix>-XXXX" trailers, unless <prefix> is this repo's own
+#     public prefix (see ALLOWED_BEAD_PREFIXES below)
+#
+# Enforced in CI too: .github/workflows/hygiene.yml (commit-messages job).
+# Policy details: CONTRIBUTING.md ("Repository hygiene policy").
+
+set -euo pipefail
+
+MSG_FILE="$1"
+# Bead prefixes that may appear in "bead:" trailers in THIS repo (space-separated).
+ALLOWED_BEAD_PREFIXES="seller"
+
+# Ignore comment lines (git strips them before recording the message).
+MSG="$(grep -v '^#' "$MSG_FILE" || true)"
+
+fail() {
+  echo "" >&2
+  echo "COMMIT REJECTED by .githooks/commit-msg:" >&2
+  echo "  $1" >&2
+  echo "" >&2
+  echo "Policy (public repo): no internal tracker IDs (ar-*), no Claude-Session" >&2
+  echo "URLs, and 'bead:' trailers only for this repo's own public prefix" >&2
+  echo "(allowed: ${ALLOWED_BEAD_PREFIXES:-none}). Remove the offending line(s) and retry." >&2
+  echo "See CONTRIBUTING.md, section 'Repository hygiene policy'." >&2
+  exit 1
+}
+
+# 1. Internal ar- bead IDs — never allowed. (\b-equivalent boundaries, portable.)
+AR_RE='(^|[^[:alnum:]_])ar-[a-z0-9]{2,6}([^[:alnum:]_]|$)'
+if printf '%s\n' "$MSG" | grep -qE "$AR_RE"; then
+  BAD_LINE="$(printf '%s\n' "$MSG" | grep -E "$AR_RE" | head -1)"
+  fail "internal 'ar-' bead reference found: ${BAD_LINE}"
+fi
+
+# 2. Claude-Session trailers — never allowed.
+if printf '%s\n' "$MSG" | grep -q 'Claude-Session:'; then
+  fail "'Claude-Session:' trailer found (internal session URL)"
+fi
+
+# 3. bead: trailers — only this repo's own public prefix.
+BEAD_LINES="$(printf '%s\n' "$MSG" | grep -E '(^|[^[:alnum:]_])[Bb]ead: *[A-Za-z0-9]+-' || true)"
+if [ -n "$BEAD_LINES" ]; then
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    ref="$(printf '%s\n' "$line" | sed -E 's/.*[Bb]ead: *([A-Za-z0-9]+)-.*/\1/')"
+    ok=0
+    for p in $ALLOWED_BEAD_PREFIXES; do
+      if [ "$ref" = "$p" ]; then ok=1; fi
+    done
+    if [ "$ok" != "1" ]; then
+      fail "bead trailer with non-public prefix '${ref}-': ${line}"
+    fi
+  done <<EOF
+$BEAD_LINES
+EOF
+fi
+
+exit 0

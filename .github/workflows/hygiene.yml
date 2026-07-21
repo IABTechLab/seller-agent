@@ -1,0 +1,138 @@
+name: hygiene
+
+# Repository hygiene gates (see CONTRIBUTING.md, "Repository hygiene policy"):
+#   1. gitleaks — secret scan over the incoming push/PR commit range only
+#      (not full history), using a pinned binary download. No secrets or
+#      licenses required, so this stays green for fork PRs.
+#   2. commit-messages — rejects internal tracker references in commit
+#      messages: ar-* bead IDs, Claude-Session: trailers, and bead: trailers
+#      whose prefix is not this repo's own public prefix.
+#
+# Pre-policy handling (deliberate design choice): the checks are scoped to the
+# incoming range, so historical main commits are never re-scanned. Within the
+# range, merge commits and commits whose committer date predates the policy
+# introduction (2026-07-21 UTC) produce warnings instead of failures, so
+# long-lived branches and merges from pre-policy history cannot brick a PR.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: secret scan (gitleaks, changed range)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks (pinned)
+        run: |
+          set -euo pipefail
+          VERSION=8.24.3
+          curl -sSfL -o /tmp/gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          /tmp/gitleaks version
+
+      - name: Scan incoming commit range for secrets
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE" 2>/dev/null; then
+              RANGE="${BEFORE}..${{ github.sha }}"
+            else
+              # New branch or force-push: fall back to the head commit only.
+              RANGE="--max-count=1 ${{ github.sha }}"
+            fi
+          fi
+          echo "gitleaks range: $RANGE"
+          /tmp/gitleaks git --log-opts="$RANGE" --redact --no-banner .
+
+  commit-messages:
+    name: commit message policy (no internal tracker refs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit messages in incoming range
+        run: |
+          set -euo pipefail
+          ALLOWED_BEAD_PREFIXES="seller"
+          POLICY_EPOCH=1784592000   # 2026-07-21 00:00 UTC — policy introduction
+          AR_RE='(^|[^[:alnum:]_])ar-[a-z0-9]{2,6}([^[:alnum:]_]|$)'
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+            if [ -z "$BASE" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+              BASE=""   # new branch / force-push: check head commit only
+            fi
+          fi
+          if [ -n "$BASE" ]; then
+            COMMITS="$(git rev-list "${BASE}..${HEAD}")"
+          else
+            COMMITS="$HEAD"
+          fi
+          [ -n "$COMMITS" ] || { echo "no commits in range"; exit 0; }
+
+          FAILED=0
+          for sha in $COMMITS; do
+            MSG="$(git log -1 --format=%B "$sha")"
+            VIOL=""
+            if printf '%s\n' "$MSG" | grep -qE "$AR_RE"; then
+              VIOL="${VIOL}[internal ar- bead reference] "
+            fi
+            if printf '%s\n' "$MSG" | grep -q 'Claude-Session:'; then
+              VIOL="${VIOL}[Claude-Session trailer] "
+            fi
+            BEAD_LINES="$(printf '%s\n' "$MSG" | grep -E '(^|[^[:alnum:]_])[Bb]ead: *[A-Za-z0-9]+-' || true)"
+            if [ -n "$BEAD_LINES" ]; then
+              while IFS= read -r line; do
+                [ -n "$line" ] || continue
+                ref="$(printf '%s\n' "$line" | sed -E 's/.*[Bb]ead: *([A-Za-z0-9]+)-.*/\1/')"
+                ok=0
+                for p in $ALLOWED_BEAD_PREFIXES; do
+                  if [ "$ref" = "$p" ]; then ok=1; fi
+                done
+                if [ "$ok" != "1" ]; then
+                  VIOL="${VIOL}[bead trailer with non-public prefix '${ref}-'] "
+                fi
+              done < <(printf '%s\n' "$BEAD_LINES")
+            fi
+
+            if [ -n "$VIOL" ]; then
+              NPARENTS="$(git rev-list --parents -n 1 "$sha" | wc -w)"
+              CDATE="$(git log -1 --format=%ct "$sha")"
+              SUBJ="$(git log -1 --format=%s "$sha")"
+              if [ "$NPARENTS" -gt 2 ] || [ "$CDATE" -lt "$POLICY_EPOCH" ]; then
+                echo "::warning::commit ${sha} ('${SUBJ}') violates message policy ${VIOL}- warned only (merge or pre-policy commit)"
+              else
+                echo "::error::commit ${sha} ('${SUBJ}') violates message policy: ${VIOL}"
+                FAILED=1
+              fi
+            fi
+          done
+
+          if [ "$FAILED" = "1" ]; then
+            echo ""
+            echo "Commit message policy (CONTRIBUTING.md): no internal tracker IDs"
+            echo "(ar-*), no Claude-Session URLs, bead trailers only for prefix(es):"
+            echo "  ${ALLOWED_BEAD_PREFIXES}"
+            echo "Fix: reword the offending commits (git rebase -i / git commit --amend)."
+            exit 1
+          fi
+          echo "all commit messages in range pass the hygiene policy"
