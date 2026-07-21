@@ -13,11 +13,18 @@ deals-api-mcp tools used:
   - deals_update:  update mutable deal fields (blocked after deals_send)
   - deals_pause:   pause an active deal (propagates to provider)
   - deals_resume:  resume a paused deal (propagates to provider)
+
+Note on deal IDs:
+  SSPDeal.deal_id holds the internal UUID returned by deals-api-mcp (deal.id).
+  All MCP tools validate dealId as z.string().uuid() — they require this UUID.
+  The external IAB deal ID (externalDealId, e.g. "IAB-...") is available via
+  SSPDeal.raw["deal"]["externalDealId"] and is used for DSP activation only.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 from .freewheel_mcp_client import FreeWheelMCPClient
 from .ssp_base import (
@@ -55,10 +62,33 @@ class DealsAPIMCPClient(SSPClient):
 
     Wraps FreeWheelMCPClient for transport and maps structured IAB tool
     arguments to/from the generic SSPClient interface.
+
+    deals-api-mcp's TypeScript MCP SDK sets _initialized = true on the first
+    session and never resets it (close() does not clear the flag), so the server
+    supports exactly ONE session per process lifetime. To satisfy this constraint
+    we keep a class-level persistent background task that holds the MCP session
+    open for the entire process. __aenter__ starts it on first call and reuses
+    it on every subsequent call; __aexit__ is a no-op so the session is never
+    torn down between requests.
     """
 
     ssp_type: SSPType = SSPType.CUSTOM
     ssp_name: str = "IAB Deals MCP"
+
+    # ── Class-level persistent session ─────────────────────────────────────
+    _shared_mcp: ClassVar[Optional[FreeWheelMCPClient]] = None
+    _session_task: ClassVar[Optional[asyncio.Task]] = None
+    _session_ready: ClassVar[Optional[asyncio.Event]] = None
+    _session_done: ClassVar[Optional[asyncio.Event]] = None
+    _session_error: ClassVar[Optional[Exception]] = None
+    _session_url: ClassVar[Optional[str]] = None
+    _session_lock: ClassVar[Optional[asyncio.Lock]] = None
+
+    @classmethod
+    def _get_lock(cls) -> asyncio.Lock:
+        if cls._session_lock is None:
+            cls._session_lock = asyncio.Lock()
+        return cls._session_lock
 
     def __init__(
         self,
@@ -72,20 +102,87 @@ class DealsAPIMCPClient(SSPClient):
         self._mcp_url = mcp_url
         self._api_key = api_key
         self._seller_origin = seller_origin
-        self._mcp_client = FreeWheelMCPClient()
+        self._mcp_client = FreeWheelMCPClient()  # replaced with shared client in __aenter__
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
     async def connect(self) -> None:
         auth_params = {"api_key": self._api_key} if self._api_key else None
-        await self._mcp_client.connect(
-            url=self._mcp_url,
-            auth_params=auth_params,
-        )
+        await self._mcp_client.connect(url=self._mcp_url, auth_params=auth_params)
         logger.info("Connected to deals-api-mcp at %s", self._mcp_url)
 
     async def disconnect(self) -> None:
         await self._mcp_client.disconnect()
+
+    async def __aenter__(self) -> "DealsAPIMCPClient":
+        """Ensure the persistent class-level MCP session is running, then wire
+        self._mcp_client to it. Satisfies anyio's cancel-scope invariant by
+        running the full streamablehttp_client lifecycle inside a single
+        background asyncio Task.
+        """
+        cls = DealsAPIMCPClient
+        async with self._get_lock():
+            session_alive = (
+                cls._session_task is not None
+                and not cls._session_task.done()
+                and cls._session_url == self._mcp_url
+                and cls._shared_mcp is not None
+                and cls._shared_mcp._connected
+            )
+            if not session_alive:
+                await self._start_shared_session()
+
+        if cls._session_error:
+            raise cls._session_error
+
+        self._mcp_client = cls._shared_mcp  # type: ignore[assignment]
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        # Session is persistent — do not disconnect between requests.
+        # deals-api-mcp's TypeScript MCP SDK will reject a second initialize
+        # for the lifetime of the server process after any session termination.
+        pass
+
+    async def _start_shared_session(self) -> None:
+        """Start a new background task that holds the shared MCP session open."""
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamablehttp_client
+
+        cls = DealsAPIMCPClient
+        cls._session_ready = asyncio.Event()
+        cls._session_done = asyncio.Event()
+        cls._session_error = None
+        cls._shared_mcp = FreeWheelMCPClient()
+        cls._session_url = self._mcp_url
+
+        mcp_url = self._mcp_url
+        api_key = self._api_key
+        shared_mcp = cls._shared_mcp
+        ready = cls._session_ready
+        done = cls._session_done
+
+        async def _run_session() -> None:
+            try:
+                headers = {"x-api-key": api_key} if api_key else None
+                async with streamablehttp_client(mcp_url, headers=headers) as (read, write, _):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        shared_mcp._session = session
+                        shared_mcp._connected = True
+                        ready.set()
+                        logger.info("Persistent MCP session established at %s", mcp_url)
+                        await done.wait()  # holds connection open indefinitely
+            except Exception as exc:
+                cls._session_error = exc
+                if not ready.is_set():
+                    ready.set()
+            finally:
+                shared_mcp._connected = False
+                shared_mcp._session = None
+
+        cls._session_task = asyncio.create_task(_run_session())
+        await cls._session_ready.wait()
 
     # ── Deal Operations ────────────────────────────────────────────────────
 
@@ -169,9 +266,11 @@ class DealsAPIMCPClient(SSPClient):
 
         issues: list[str] = []
         if isinstance(raw, dict):
-            seats = raw.get("buyerSeats", [])
-            for seat in seats:
-                if isinstance(seat, dict) and seat.get("buyerStatusLabel") == "Rejected":
+            # deals_status returns labeled summaries under raw["status"]["buyerStatuses"]
+            # (not raw["buyerSeats"]) — each entry has "status" (label) and "seatId"
+            status_block = raw.get("status", {})
+            for seat in status_block.get("buyerStatuses", []):
+                if isinstance(seat, dict) and seat.get("status") == "Rejected":
                     issues.append(f"Buyer seat {seat.get('seatId', '?')} was rejected by provider")
 
         return SSPTroubleshootResult(
@@ -189,8 +288,8 @@ class DealsAPIMCPClient(SSPClient):
         if not isinstance(raw, dict):
             return SSPDeal(deal_id="unknown", ssp_type=self.ssp_type, ssp_name=self.ssp_name)
 
-        # deals_create wraps in {"success": true, "deal": {...}}
-        # deals_status wraps in {"deal": {...}, "buyerSeats": [...]}
+        # deals_create: {"success": true, "deal": {...}}
+        # deals_status: {"success": true, "deal": {...}, "status": {...}}
         deal = raw.get("deal", raw)
         if not isinstance(deal, dict):
             deal = raw
@@ -199,7 +298,10 @@ class DealsAPIMCPClient(SSPClient):
         seller_status_int = deal.get("sellerStatus")
 
         return SSPDeal(
-            deal_id=str(deal.get("externalDealId", deal.get("id", "unknown"))),
+            # Internal UUID is what all MCP tools accept (z.string().uuid()).
+            # externalDealId ("IAB-...") is for DSP activation only — available
+            # via SSPDeal.raw["deal"]["externalDealId"] when needed.
+            deal_id=str(deal.get("id", "unknown")),
             name=deal.get("name"),
             status=_SELLER_STATUS_MAP.get(seller_status_int, SSPDealStatus.CREATED),
             cpm=terms.get("dealFloor"),
@@ -211,6 +313,10 @@ class DealsAPIMCPClient(SSPClient):
 
     def _seller_status_label(self, raw: Any) -> str:
         if isinstance(raw, dict):
+            # deals_status provides a pre-labeled status block — prefer it
+            status_block = raw.get("status", {})
+            if isinstance(status_block, dict) and status_block.get("sellerStatus"):
+                return status_block["sellerStatus"]
             deal = raw.get("deal", raw)
             if isinstance(deal, dict):
                 code = deal.get("sellerStatus")
