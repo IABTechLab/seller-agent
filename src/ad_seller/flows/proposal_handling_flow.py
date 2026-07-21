@@ -586,9 +586,35 @@ class ProposalHandlingFlow(Flow[ProposalState]):
 
         self.state.evaluation.recommendation = self.state.recommendation
 
+    def _lowball_counter_applies(self) -> bool:
+        """A rejected offer that is really a counterable below-floor opener.
+
+        Policy home is the NegotiationEngine (bead ar-nj9m): below-floor
+        offers within LOWBALL_COUNTER_FLOOR_RATIO of the floor are countered
+        AT the floor instead of terminally rejected. Applied to BOTH
+        evaluators — a crew reject is normalized exactly like the
+        deterministic fallback's counter path.
+        """
+        from ..engines.negotiation_engine import NegotiationEngine
+
+        ev = self.state.evaluation
+        if ev is None or not ev.impressions_available or not ev.targeting_compatible:
+            return False
+        return NegotiationEngine.is_counterable_lowball(
+            ev.requested_price, ev.minimum_acceptable_price
+        )
+
     @listen(run_crew_evaluation)
     async def generate_counter_terms(self) -> None:
         """Generate counter terms using NegotiationEngine."""
+        if self.state.recommendation == "reject" and self._lowball_counter_applies():
+            # A below-floor-but-credible opener must be invited up to the
+            # floor, not terminally rejected (bead ar-nj9m) — whichever
+            # evaluator (crew or fallback) said reject.
+            self.state.recommendation = "counter"
+            if self.state.evaluation:
+                self.state.evaluation.recommendation = "counter"
+
         if self.state.recommendation != "counter":
             return
 
