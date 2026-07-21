@@ -350,16 +350,24 @@ Check:
     )
 
     availability_check_task = Task(
-        description=f"""Check availability for this proposal:
+        description=f"""Check availability for this proposal using the
+catalog_avails tool (declared catalog data only — never invent numbers):
 
 {proposal_data}
 
 Verify:
-- Can we deliver requested impressions?
-- Is inventory available for the flight dates?
-- Are there any targeting constraints that limit availability?
-- What is our confidence level in delivery?""",
-        expected_output="Availability assessment with delivery confidence",
+- Can we deliver the requested impressions within the product's declared
+  capacity cap and above its minimum deal size?
+- Is the product priceable (declared base or floor CPM)?
+- Do the product's declared targeting dimensions cover the proposal's
+  targeting requests?
+- For anything without a data source (fill rates, competing demand,
+  delivery forecasts), state that no data source exists.""",
+        expected_output=(
+            "Catalog-grounded availability assessment: deliverable vs "
+            "declared capacity, pricing floor status, targeting coverage, "
+            "and explicit data-gap notes"
+        ),
         agent=availability_agent,
     )
 

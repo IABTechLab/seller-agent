@@ -41,16 +41,21 @@ def get_pricing(
     buyer_context: Any,
     volume: int = 0,
 ) -> dict[str, Any]:
-    """Calculate tier/volume-adjusted pricing for a product."""
+    """Calculate tier/volume-adjusted pricing for a product.
+
+    Unpriced products (no base_cpm/floor_cpm) are a 422 — never a
+    fabricated price (see ``catalog_service.priceable_cpm``).
+    """
     from ..engines.pricing_rules_engine import PricingRulesEngine
     from ..models.pricing_tiers import TieredPricingConfig
+    from . import catalog_service
 
     config = TieredPricingConfig(seller_organization_id="default")
     engine = PricingRulesEngine(config)
 
     decision = engine.calculate_price(
         product_id=product_id,
-        base_price=product.base_cpm,
+        base_price=catalog_service.priceable_cpm(product),
         buyer_context=buyer_context,
         volume=volume,
     )
@@ -131,6 +136,26 @@ async def create_quote(
             },
         )
 
+    # Ground availability in declared catalog capacity — the same
+    # calculation as POST /products/avails (ar-f0ky). Also enforces the
+    # honest-pricing policy: products with neither base_cpm nor floor_cpm
+    # are a 422 here too, never a fabricated price.
+    from . import catalog_service
+
+    avails = catalog_service.check_avails(
+        product, requested_impressions=request.impressions
+    )
+    # Same requested-volume fallback as check_avails: explicit impressions,
+    # else the product's minimum deal size.
+    requested_volume = (
+        request.impressions
+        if request.impressions is not None
+        else product.minimum_impressions
+    )
+    availability = QuoteAvailability(
+        inventory_available=avails["available_impressions"] >= max(0, requested_volume),
+    )
+
     # Calculate price via PricingRulesEngine
     config = TieredPricingConfig(seller_organization_id="default")
     engine = PricingRulesEngine(config)
@@ -138,7 +163,9 @@ async def create_quote(
     deal_type_enum = deal_type_map[deal_type_str]
     decision = engine.calculate_price(
         product_id=request.product_id,
-        base_price=product.base_cpm,
+        # check_avails guarantees at least one CPM exists; fall back to the
+        # floor when the product declares no base rate (mirrors estimated_cpm).
+        base_price=avails["estimated_cpm"],
         buyer_context=buyer_context,
         deal_type=deal_type_enum,
         volume=request.impressions or 0,
@@ -191,7 +218,7 @@ async def create_quote(
             flight_end=flight_end,
             guaranteed=is_guaranteed,
         ),
-        availability=QuoteAvailability(),
+        availability=availability,
         deal_type=deal_type_str,
         buyer_tier=buyer_context.effective_tier.value,
         expires_at=expires_at.isoformat() + "Z",

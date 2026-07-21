@@ -217,6 +217,27 @@ def reset_catalog_cache() -> None:
     _CATALOG_CACHE = None
 
 
+def priceable_cpm(product: Any) -> float:
+    """The product's honest CPM: ``base_cpm`` falling back to ``floor_cpm``.
+
+    Products declaring neither are unpriceable — HTTP 422 rather than a
+    fabricated price (honest-availability policy; used by avails, quotes,
+    pricing, and deal templating).
+    """
+    from fastapi import HTTPException
+
+    cpm = product.base_cpm if product.base_cpm is not None else product.floor_cpm
+    if cpm is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Product '{product.product_id}' has no base_cpm or floor_cpm; "
+                "avails cannot be priced."
+            ),
+        )
+    return cpm
+
+
 def check_avails(
     product: Any,
     requested_impressions: Optional[int] = None,
@@ -250,17 +271,7 @@ def check_avails(
     Raises ``HTTPException(422)`` for unpriceable products (mirroring how
     ``quote_service`` expresses error semantics at the service layer).
     """
-    from fastapi import HTTPException
-
-    cpm = product.base_cpm if product.base_cpm is not None else product.floor_cpm
-    if cpm is None:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Product '{product.product_id}' has no base_cpm or floor_cpm; "
-                "avails cannot be priced."
-            ),
-        )
+    cpm = priceable_cpm(product)
 
     if requested_impressions is not None:
         requested = requested_impressions

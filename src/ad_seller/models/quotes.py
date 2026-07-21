@@ -111,11 +111,18 @@ class QuoteTerms(BaseModel):
 
 
 class QuoteAvailability(BaseModel):
-    """Availability info in a quote response."""
+    """Availability info in a quote response.
+
+    Honest-availability policy (ar-f0ky, mirroring the avails endpoint):
+    ``inventory_available`` is derived from the product's declared capacity
+    vs the requested volume (see ``quote_service.create_quote``);
+    ``estimated_fill_rate`` and ``competing_demand`` have no data source in
+    the reference implementation and stay ``None`` — never fabricated.
+    """
 
     inventory_available: bool = True
-    estimated_fill_rate: float = 0.95
-    competing_demand: str = "moderate"
+    estimated_fill_rate: Optional[float] = None
+    competing_demand: Optional[str] = None
 
 
 class QuoteResponse(BaseModel):
