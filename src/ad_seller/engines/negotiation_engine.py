@@ -29,6 +29,13 @@ from .yield_optimizer import YieldOptimizer
 
 logger = logging.getLogger(__name__)
 
+# Below-floor offers at or above this fraction of the floor are countered AT
+# the floor — the seller invites the buyer up to its minimum viable price
+# instead of terminally rejecting (bead ar-nj9m: a terminal reject on the
+# buyer's below-floor opener made live negotiation structurally unable to
+# converge). Deeper lowballs remain walk-away rejects.
+LOWBALL_COUNTER_FLOOR_RATIO = 0.75
+
 
 class NegotiationEngine:
     """Stateless engine for multi-round negotiation.
@@ -123,8 +130,12 @@ class NegotiationEngine:
 
         Logic:
         1. If buyer_price >= base_price → ACCEPT
-        2. If buyer_price < floor_price → REJECT (walk-away)
+        2. If buyer_price < floor_price * LOWBALL_COUNTER_FLOOR_RATIO →
+           REJECT (walk-away; the offer is not credible)
         3. If max_rounds exceeded → REJECT (walk-away)
+        3.5 If buyer_price < floor_price (but credible) → COUNTER at the
+           floor — invite the buyer up (bead ar-nj9m); FINAL_OFFER on the
+           strategy's last round
         4. If cumulative concession would exceed total_cap → FINAL_OFFER
         5. Otherwise → COUNTER with gap-split, capped by per_round_cap
 
@@ -155,8 +166,11 @@ class NegotiationEngine:
                 rationale="Buyer price meets or exceeds seller target. Deal accepted.",
             )
 
-        # 2. Reject if below absolute floor
-        if buyer_price < history.floor_price:
+        # 2. Reject non-credible lowballs (well below floor). Credible
+        #    below-floor offers are countered at the floor in 3.5 instead of
+        #    terminally rejected (bead ar-nj9m).
+        below_floor = buyer_price < history.floor_price
+        if below_floor and not self.is_counterable_lowball(buyer_price, history.floor_price):
             return NegotiationRound(
                 round_number=round_number,
                 buyer_price=buyer_price,
@@ -170,7 +184,8 @@ class NegotiationEngine:
                 ),
             )
 
-        # 3. Reject if max rounds exceeded
+        # 3. Reject if max rounds exceeded (bounds BOTH the gap-split path
+        #    and repeated below-floor counters — no counter loops)
         if round_number > limits.max_rounds:
             return NegotiationRound(
                 round_number=round_number,
@@ -182,6 +197,41 @@ class NegotiationEngine:
                 rationale=(
                     f"Maximum {limits.max_rounds} rounds reached. "
                     f"Negotiation concluded without agreement."
+                ),
+            )
+
+        # 3.5 Credible below-floor offer: counter AT the floor — the seller's
+        #     minimum viable price — inviting the buyer up (bead ar-nj9m).
+        #     The floor is firm, so the strategy's last round is a
+        #     FINAL_OFFER; round bounding stays with check 3 above.
+        if below_floor:
+            floor_counter = round(history.floor_price, 2)
+            this_round_concession = (
+                max(0.0, (history.base_price - floor_counter) / history.base_price)
+                if history.base_price > 0
+                else 0.0
+            )
+            incremental = max(0.0, this_round_concession - cumulative_concession)
+            is_last_round = round_number == limits.max_rounds
+            return NegotiationRound(
+                round_number=round_number,
+                buyer_price=buyer_price,
+                seller_price=floor_counter,
+                action=(
+                    NegotiationAction.FINAL_OFFER if is_last_round else NegotiationAction.COUNTER
+                ),
+                concession_pct=incremental,
+                cumulative_concession_pct=cumulative_concession + incremental,
+                rationale=(
+                    f"Final offer at our floor price ${floor_counter:.2f} CPM. "
+                    f"We cannot go lower."
+                    if is_last_round
+                    else (
+                        f"Buyer offer ${buyer_price:.2f} is below our floor. "
+                        f"Countering at the floor price ${floor_counter:.2f} CPM — "
+                        f"the minimum viable price for this inventory "
+                        f"(round {round_number}/{limits.max_rounds})."
+                    )
                 ),
             )
 
@@ -315,6 +365,23 @@ class NegotiationEngine:
                 suggestions.append(pkg["package_id"])
 
         return suggestions[:5]  # Top 5 alternatives
+
+    @staticmethod
+    def is_counterable_lowball(buyer_price: float, floor_price: float) -> bool:
+        """Whether a below-floor offer is credible enough to counter at the floor.
+
+        Offers at or above ``LOWBALL_COUNTER_FLOOR_RATIO`` x floor are
+        countered at the floor; deeper lowballs stay walk-away rejects
+        (bead ar-nj9m). Single policy home, shared by the REST rounds path
+        (``evaluate_buyer_offer``) and the proposal flow's crew-reject
+        normalization.
+        """
+        if floor_price <= 0 or buyer_price <= 0:
+            return False
+        return (
+            buyer_price < floor_price
+            and buyer_price >= floor_price * LOWBALL_COUNTER_FLOOR_RATIO
+        )
 
     # =========================================================================
     # Private helpers
