@@ -698,7 +698,7 @@ async def list_products():
     """
     catalog = _get_static_product_catalog()
     return {
-        "products": [_serialize_product_iab(p) for p in catalog["products"].values()],
+        "products": [_serialize_product(p) for p in catalog["products"].values()],
     }
 
 
@@ -713,7 +713,7 @@ async def get_product(product_id: str):
     product = catalog["products"].get(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return _serialize_product_iab(product)
+    return _serialize_product(product)
 
 
 class ProductSearchFilters(BaseModel):
