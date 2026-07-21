@@ -65,7 +65,6 @@ from ad_seller.models.negotiation import NegotiationAction  # noqa: E402
 from ad_seller.models.pricing_tiers import TieredPricingConfig  # noqa: E402
 from ad_seller.services import negotiation_service  # noqa: E402
 
-
 # =============================================================================
 # Fixtures / helpers
 # =============================================================================
