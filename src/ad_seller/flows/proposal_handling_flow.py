@@ -48,6 +48,10 @@ class ProposalState(SellerFlowState):
     # Counter proposal
     counter_terms: Optional[dict[str, Any]] = None
 
+    # NegotiationHistory (model_dump) opened for the counter, so callers can
+    # persist it instead of it dying with the flow instance (bead ar-alut).
+    negotiation_history: Optional[dict[str, Any]] = None
+
     # Upsell opportunities
     upsell_suggestions: list[dict[str, Any]] = []
 
@@ -390,6 +394,11 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             audience_gaps=audience_validation.get("gaps", []),
             ucp_similarity_score=audience_validation.get("similarity_score"),
             targeting_compatible=audience_validation.get("targeting_compatible", True),
+            # Decision not made yet — synced when the crew/fallback decides.
+            # (recommendation is REQUIRED on the model; omitting it made this
+            # constructor raise and killed the whole evaluation chain cold —
+            # bead ar-alut.)
+            recommendation="",
         )
 
     @listen(evaluate_pricing)
@@ -425,6 +434,8 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             review: Optional[ProposalReviewOutput] = result.pydantic
             if review is not None:
                 self.state.recommendation = review.decision.value
+                if self.state.evaluation:
+                    self.state.evaluation.recommendation = self.state.recommendation
             else:
                 self._fallback_evaluation()
 
@@ -463,6 +474,8 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             self.state.recommendation = "counter"
         else:
             self.state.recommendation = "reject"
+
+        self.state.evaluation.recommendation = self.state.recommendation
 
     @listen(run_crew_evaluation)
     async def generate_counter_terms(self) -> None:
@@ -503,6 +516,10 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             history, buyer_price, self.state.buyer_context
         )
         history = neg_engine.record_round(history, round_result)
+
+        # Surface the history so the service layer can persist it — in memory
+        # only, the buyer's next round could never continue it (bead ar-alut).
+        self.state.negotiation_history = history.model_dump(mode="json")
 
         self.state.counter_terms = {
             "proposed_price": round_result.seller_price,
@@ -650,6 +667,9 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             "warnings": self.state.warnings,
         }
 
+        if self.state.negotiation_history:
+            result["_negotiation_history"] = self.state.negotiation_history
+
         # If pending approval, include state snapshot for the API to create
         # an ApprovalRequest with (handle_proposal is sync, storage is async)
         if self.state.status == ExecutionStatus.PENDING_APPROVAL:
@@ -689,6 +709,9 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             "errors": self.state.errors,
             "warnings": self.state.warnings,
         }
+
+        if self.state.negotiation_history:
+            result["_negotiation_history"] = self.state.negotiation_history
 
         if self.state.status == ExecutionStatus.PENDING_APPROVAL:
             result["pending_approval"] = True

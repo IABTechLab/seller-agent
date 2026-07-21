@@ -448,6 +448,10 @@ def http_client():
             ),
             "get_deal": staticmethod(lambda did: _async_return(store.get(f"deal:{did}"))),
             "set_deal": staticmethod(lambda did, data: _async_set(store, f"deal:{did}", data)),
+            # Booking consults negotiation state (bead ar-alut); none stored here.
+            "get_negotiation": staticmethod(
+                lambda pid: _async_return(store.get(f"negotiation:{pid}"))
+            ),
             "_store": store,
         },
     )()

@@ -238,6 +238,28 @@ async def book_deal(request: Any) -> dict[str, Any]:
             },
         )
 
+    # Honor ACCEPTED negotiation state on this quote (bead ar-alut): a
+    # quote-led negotiation is keyed by the quote_id; when it concluded
+    # accepted, the booking strikes the AGREED price, not the stale quoted
+    # price. A re-quote at the agreed price (the buyer's historical
+    # workaround) carries no negotiation and books unchanged.
+    negotiation = await storage.get_negotiation(request.quote_id)
+    if negotiation and negotiation.get("status") == "accepted":
+        rounds = negotiation.get("rounds") or []
+        agreed_cpm = rounds[-1].get("seller_price") if rounds else None
+        if agreed_cpm is not None:
+            quote = {
+                **quote,
+                "pricing": {
+                    **quote["pricing"],
+                    "final_cpm": agreed_cpm,
+                    "rationale": (
+                        f"{quote['pricing'].get('rationale', '')} | Negotiated to "
+                        f"${agreed_cpm:.2f} CPM ({negotiation.get('negotiation_id')})"
+                    ).strip(" |"),
+                },
+            }
+
     # Pre-flight: if the buyer sent an audience_plan with this booking, validate
     # it against the seller's capability block. Per proposal §5.7 layer 3, any
     # unsupported part triggers a structured `audience_plan_unsupported` 400 so
