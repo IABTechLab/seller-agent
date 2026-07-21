@@ -6,16 +6,15 @@
 All tests mock FreeWheelMCPClient.call_tool so no live server is required.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ad_seller.clients.ssp_deals_api_mcp_client import (
-    DealsAPIMCPClient,
-    _SELLER_STATUS_MAP,
-)
 from ad_seller.clients.ssp_base import SSPDeal, SSPDealCreateRequest, SSPDealStatus, SSPType
-
+from ad_seller.clients.ssp_deals_api_mcp_client import (
+    _SELLER_STATUS_MAP,
+    DealsAPIMCPClient,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -168,7 +167,7 @@ class TestCreateDeal:
     async def test_uses_defaults_for_missing_optional_fields(self):
         self.client._mcp_client.call_tool.return_value = _deal_response()
 
-        deal = await self.client.create_deal(SSPDealCreateRequest())
+        await self.client.create_deal(SSPDealCreateRequest())
 
         call_args = self.client._mcp_client.call_tool.call_args
         _, args = call_args[0]
@@ -272,7 +271,7 @@ class TestCloneDeal:
 
         # clone_deal: (1) deals_status for source, (2) deals_create
         self.client._mcp_client.call_tool.side_effect = [source, new_deal]
-        deal = await self.client.clone_deal("src-uuid-1")
+        await self.client.clone_deal("src-uuid-1")
 
         create_call = self.client._mcp_client.call_tool.call_args_list[1]
         _, args = create_call[0]
