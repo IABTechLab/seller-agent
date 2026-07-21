@@ -210,7 +210,12 @@ class DealsAPIMCPClient(SSPClient):
             args["currency"] = request.currency
 
         raw = await self._mcp_client.call_tool("deals_create", args)
-        return self._parse_deal(raw)
+        deal = self._parse_deal(raw)
+        # deals-api-mcp has no dealType concept — echo back the requested type
+        # so callers aren't silently told every deal is PMP.
+        if getattr(request, "deal_type", None):
+            deal = deal.model_copy(update={"deal_type": request.deal_type})
+        return deal
 
     async def get_deal(self, deal_id: str) -> SSPDeal:
         raw = await self._mcp_client.call_tool("deals_status", {"dealId": deal_id})

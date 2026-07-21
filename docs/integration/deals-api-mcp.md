@@ -87,15 +87,6 @@ curl "http://localhost:8000/api/v1/deals/8b3f9cfe-7716-48e0-94bf-42fe44595928/ss
 
 Returns the deal's buyer seat statuses and any rejected seats flagged as primary issues.
 
-### List Configured SSPs
-
-```bash
-curl http://localhost:8000/api/v1/ssps \
-  -H "Authorization: Bearer <api_key>"
-```
-
-Confirms `deals_api_mcp` is registered and active.
-
 ## Status Mapping
 
 `deals-api-mcp` returns seller status as an integer (`sellerStatus`). The connector normalizes it:
