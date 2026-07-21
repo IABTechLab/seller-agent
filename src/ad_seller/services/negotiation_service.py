@@ -11,7 +11,8 @@ NegotiationEngine).
 
 import logging
 import uuid
-from typing import Any
+from datetime import datetime
+from typing import Any, Optional
 
 from fastapi import HTTPException
 
@@ -85,6 +86,32 @@ async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, A
     from ..storage.quote_history import QuoteHistoryStore
 
     storage = await get_storage()
+
+    # Persist the proposal (and its product pricing) so the REST negotiation
+    # surface is reachable cold — without this, POST /api/v1/negotiations/
+    # messages 404'd ("Proposal not found") on every fresh negotiation
+    # (bead ar-alut).
+    await storage.set_proposal(
+        proposal_id,
+        {
+            **proposal_data,
+            "proposal_id": proposal_id,
+            "recommendation": result.get("recommendation"),
+            "status": result.get("status"),
+        },
+    )
+    product = catalog["products"].get(request.product_id)
+    if product is not None:
+        from .catalog_service import serialize_product
+
+        await storage.set_product(request.product_id, serialize_product(product))
+
+    # If the flow opened a NegotiationHistory for its counter, persist it so
+    # the buyer's next round continues the SAME negotiation (same id, same
+    # round numbering) instead of silently starting over (bead ar-alut).
+    flow_history = result.pop("_negotiation_history", None)
+    if flow_history:
+        await storage.set_negotiation(proposal_id, flow_history)
     quote_history = QuoteHistoryStore(storage)
     verification = await quote_history.verify_pricing(
         buyer_id=buyer_context.get_pricing_key(),
@@ -165,15 +192,28 @@ async def counter_proposal(
                 detail=f"Negotiation is {history.status}, cannot counter",
             )
     else:
-        # Look up proposal to get product info
+        # Look up the negotiation subject: a stored proposal, or — quote-led
+        # (bead ar-alut) — a stored quote keyed by the same id.
         proposal_data = await storage.get_proposal(proposal_id)
-        if not proposal_data:
-            raise HTTPException(status_code=404, detail="Proposal not found")
+        if proposal_data:
+            product_id = proposal_data.get("product_id", "")
+        else:
+            quote_data = await storage.get_quote(proposal_id)
+            if not quote_data:
+                raise HTTPException(status_code=404, detail="Proposal not found")
+            product_id = (quote_data.get("product") or {}).get("product_id", "")
 
-        product_id = proposal_data.get("product_id", "")
         product_data = await storage.get_product(product_id)
         if not product_data:
-            raise HTTPException(status_code=404, detail="Product not found")
+            # Cold fallback: products are catalog-sourced (EP-3.3) and were
+            # historically never written to storage — read the live catalog
+            # before giving up (bead ar-alut).
+            from .catalog_service import get_static_product_catalog, serialize_product
+
+            product = get_static_product_catalog()["products"].get(product_id)
+            if product is None:
+                raise HTTPException(status_code=404, detail="Product not found")
+            product_data = serialize_product(product)
 
         history = neg_engine.start_negotiation(
             proposal_id=proposal_id,
@@ -238,6 +278,51 @@ async def counter_proposal(
         "status": history.status,
         "rounds_remaining": history.limits.max_rounds - round_result.round_number,
     }
+
+
+async def apply_terminal_action(
+    proposal_id: str,
+    action: str,
+    buyer_price: Optional[float] = None,
+) -> dict[str, Any]:
+    """Record a buyer's terminal accept/reject on the stored negotiation.
+
+    Without this, a buyer 'accept' produced an accepted-looking response
+    while the STORED history stayed active — so booking could never see
+    the agreed state (bead ar-alut). The price engine is not run: accept
+    strikes at the seller's last stated price; reject is a walk-away.
+
+    No-ops (returning current status) when no stored negotiation exists or
+    it is already terminal, preserving the read-only legacy behavior.
+    """
+    from ..models.negotiation import NegotiationAction, NegotiationHistory, NegotiationRound
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    data = await storage.get_negotiation(proposal_id)
+    if data:
+        history = NegotiationHistory(**data)
+        if history.status == "active" and action in ("accept", "reject"):
+            last = history.rounds[-1] if history.rounds else None
+            seller_price = last.seller_price if last else history.base_price
+            history.rounds.append(
+                NegotiationRound(
+                    round_number=len(history.rounds) + 1,
+                    buyer_price=buyer_price if buyer_price is not None else seller_price,
+                    seller_price=seller_price,
+                    action=NegotiationAction(action),
+                    rationale=(
+                        f"Buyer accepted at ${seller_price:.2f} CPM."
+                        if action == "accept"
+                        else "Buyer declined (walk-away)."
+                    ),
+                )
+            )
+            history.status = "accepted" if action == "accept" else "rejected"
+            history.completed_at = datetime.utcnow()
+            await storage.set_negotiation(proposal_id, history.model_dump(mode="json"))
+
+    return await get_negotiation_status(proposal_id)
 
 
 async def get_negotiation_status(proposal_id: str) -> dict[str, Any]:

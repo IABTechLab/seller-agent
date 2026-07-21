@@ -127,14 +127,15 @@ async def post_negotiation_message(
     )
 
     # The seller keys negotiations by proposal_id; negotiation_id doubles as
-    # that key for continuation. Quote-led negotiation is not yet served.
-    proposal_id = message.proposal_id or message.negotiation_id
-    if proposal_id is None:
+    # that key for continuation, and quote-led opens key off the quote_id
+    # (the service resolves the stored quote to its product — bead ar-alut).
+    proposal_id = message.proposal_id or message.negotiation_id or message.quote_id
+    if proposal_id is None:  # unreachable: the shared model requires one key
         raise HTTPException(
             status_code=400,
             detail=cm.unsupported_capability_detail(
-                [{"capability": "quote_led_negotiation", "path": "quote_id"}],
-                message="Negotiation requires proposal_id or negotiation_id.",
+                [{"capability": "negotiation_context", "path": "proposal_id"}],
+                message="Negotiation requires proposal_id, negotiation_id, or quote_id.",
             ),
         )
 
@@ -149,6 +150,10 @@ async def post_negotiation_message(
         return cm.negotiation_round_to_response(result)
 
     # accept / reject — terminal moves off the recorded history; the price
-    # engine is not run (it stays untouched).
-    status_data = await negotiation_service.get_negotiation_status(proposal_id)
+    # engine is not run (it stays untouched). The move is PERSISTED onto the
+    # stored negotiation so downstream booking sees the agreed state
+    # (bead ar-alut).
+    status_data = await negotiation_service.apply_terminal_action(
+        proposal_id, message.action.value, buyer_price
+    )
     return cm.terminal_round_response(status_data, message.action, buyer_price)
