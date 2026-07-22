@@ -68,15 +68,17 @@ class TestParseDeal:
         self.client = _make_client()
 
     def test_extracts_internal_uuid_as_deal_id(self):
-        # deal_id stores internal UUID (used by all MCP tools); externalDealId is for DSP only
+        # deal_id stores internal UUID (used by all MCP tools); external_deal_id is for DSP
         raw = _deal_response(internal_id="uuid-abc", deal_id="IAB-999", seller_status=0)
         deal = self.client._parse_deal(raw)
         assert deal.deal_id == "uuid-abc"
+        assert deal.external_deal_id == "IAB-999"
 
     def test_uses_internal_id_field(self):
         raw = {"success": True, "deal": {"id": "fallback-id", "sellerStatus": 2, "terms": {}}}
         deal = self.client._parse_deal(raw)
         assert deal.deal_id == "fallback-id"
+        assert deal.external_deal_id is None
 
     def test_maps_seller_status_0_to_active(self):
         deal = self.client._parse_deal(_deal_response(seller_status=0))
@@ -116,6 +118,7 @@ class TestParseDeal:
         raw = {"deal": {"id": "x", "externalDealId": "ext-x", "sellerStatus": 0}}
         deal = self.client._parse_deal(raw)
         assert deal.deal_id == "x"  # internal UUID
+        assert deal.external_deal_id == "ext-x"
         assert deal.cpm is None
 
     def test_ssp_name_and_type_always_set(self):
@@ -162,6 +165,7 @@ class TestCreateDeal:
         assert args["currency"] == "GBP"
         assert args["origin"] == "test.example.com"
         assert deal.deal_id == "new-uuid-1"  # internal UUID
+        assert deal.external_deal_id == "IAB-new-1"
 
     @pytest.mark.asyncio
     async def test_uses_defaults_for_missing_optional_fields(self):
@@ -201,6 +205,7 @@ class TestGetDeal:
             "deals_status", {"dealId": "uuid-42"}
         )
         assert deal.deal_id == "uuid-42"  # internal UUID returned by deals_status
+        assert deal.external_deal_id == "IAB-42"
 
 
 # ---------------------------------------------------------------------------
@@ -236,8 +241,10 @@ class TestListDeals:
         deals = await self.client.list_deals()
         assert len(deals) == 2
         assert deals[0].deal_id == "i1"  # internal UUID
+        assert deals[0].external_deal_id == "e1"
         assert deals[0].status == SSPDealStatus.ACTIVE
         assert deals[1].deal_id == "i2"  # internal UUID
+        assert deals[1].external_deal_id == "e2"
         assert deals[1].status == SSPDealStatus.PAUSED
 
     @pytest.mark.asyncio

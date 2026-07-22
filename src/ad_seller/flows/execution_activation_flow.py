@@ -297,6 +297,7 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
             self.state.execution_orders.setdefault(deal.deal_id, {})["ssp_deal"] = {
                 "ssp_name": ssp_result.ssp_name,
                 "ssp_deal_id": ssp_result.deal_id,
+                "external_deal_id": ssp_result.external_deal_id,
                 "ssp_status": ssp_result.status.value,
             }
 
@@ -305,7 +306,11 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
                 flow_id=self.state.flow_id,
                 flow_type=self.state.flow_type,
                 deal_id=self.state.deal_id,
-                payload={"ssp_name": ssp_result.ssp_name, "ssp_deal_id": ssp_result.deal_id},
+                payload={
+                    "ssp_name": ssp_result.ssp_name,
+                    "ssp_deal_id": ssp_result.deal_id,
+                    "external_deal_id": ssp_result.external_deal_id,
+                },
             )
 
         except Exception as e:

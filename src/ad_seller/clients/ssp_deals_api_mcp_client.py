@@ -17,8 +17,8 @@ deals-api-mcp tools used:
 Note on deal IDs:
   SSPDeal.deal_id holds the internal UUID returned by deals-api-mcp (deal.id).
   All MCP tools validate dealId as z.string().uuid() — they require this UUID.
-  The external IAB deal ID (externalDealId, e.g. "IAB-...") is available via
-  SSPDeal.raw["deal"]["externalDealId"] and is used for DSP activation only.
+  SSPDeal.external_deal_id holds the OpenRTB / IAB deal ID (externalDealId,
+  e.g. "IAB-...") used for DSP activation.
 """
 
 import asyncio
@@ -304,9 +304,9 @@ class DealsAPIMCPClient(SSPClient):
 
         return SSPDeal(
             # Internal UUID is what all MCP tools accept (z.string().uuid()).
-            # externalDealId ("IAB-...") is for DSP activation only — available
-            # via SSPDeal.raw["deal"]["externalDealId"] when needed.
+            # external_deal_id is the OpenRTB / IAB ID for DSP activation.
             deal_id=str(deal.get("id", "unknown")),
+            external_deal_id=deal.get("externalDealId"),
             name=deal.get("name"),
             status=_SELLER_STATUS_MAP.get(seller_status_int, SSPDealStatus.CREATED),
             cpm=terms.get("dealFloor"),

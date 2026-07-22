@@ -1028,6 +1028,7 @@ async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
 
     return {
         "deal_id": result.deal_id,
+        "external_deal_id": result.external_deal_id,
         "ssp": result.ssp_name,
         "ssp_type": result.ssp_type.value,
         "status": result.status.value,

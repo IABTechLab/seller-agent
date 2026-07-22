@@ -67,14 +67,15 @@ Response:
 ```json
 {
   "deal_id": "8b3f9cfe-7716-48e0-94bf-42fe44595928",
+  "external_deal_id": "IAB-Q3SPORTS001",
   "ssp": "IAB Deals MCP",
   "ssp_type": "custom",
   "status": "created",
-  "deal": { "name": "Q3 Sports Video", "cpm": 25.00, ... }
+  "deal": { "name": "Q3 Sports Video", "cpm": 25.00, "external_deal_id": "IAB-Q3SPORTS001", ... }
 }
 ```
 
-`deal_id` is always the internal UUID (e.g. `8b3f9cfe-...`). The IAB external ID (e.g. `"IAB-..."`) is stored in the SSP's database and is accessible from deals-api-mcp directly when needed for DSP activation.
+`deal_id` is the internal UUID (e.g. `8b3f9cfe-...`) required by MCP tools. `external_deal_id` is the OpenRTB / IAB deal ID (e.g. `"IAB-..."`) that DSPs need for activation — it is also present on the nested `deal` object and in `DEAL_SYNCED` event payloads.
 
 Omit `ssp_name` to let the seller agent route based on `SSP_ROUTING_RULES`.
 
