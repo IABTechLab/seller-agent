@@ -19,8 +19,18 @@ This module reconciles both into a single cached catalog source (EP-3.3):
 - ``get_static_product_catalog()`` is the cached accessor used by API
   endpoints (via the ``interfaces.api.main._get_static_product_catalog``
   compat delegator, which tests patch/reset).
+
+CSV mode (``AD_SERVER_TYPE=csv``): the catalog is built from the CSV
+inventory in ``CSV_DATA_DIR`` instead of the static defaults, so
+``GET /products`` (and everything else reading the catalog — avails,
+pricing, package resolution) reflects what the seller actually has.
+Product IDs come verbatim from the CSV ``id`` column: stable across
+calls within a process (single-cache design, issue #34) and
+deterministic across restarts, and identical to the ``product_id``s the
+sync flow stamps on SYNCED package placements.
 """
 
+import asyncio
 import logging
 import uuid
 from typing import Any, Optional
@@ -239,6 +249,145 @@ def product_from_config(cfg: dict[str, Any], product_id: str) -> Any:
     )
 
 
+def classify_inventory_type(item: Any) -> str:
+    """Classify an ad server inventory item into an inventory type string.
+
+    Canonical name-based classification, shared by the catalog builder and
+    ``ProductSetupFlow`` (which delegates here) so CSV-mode catalog
+    products and sync-seeded products can never diverge.
+    """
+    name_lower = item.name.lower() if hasattr(item, "name") else ""
+    if "ctv" in name_lower or "ott" in name_lower or "connected" in name_lower:
+        return "ctv"
+    if "video" in name_lower or "preroll" in name_lower or "midroll" in name_lower:
+        return "video"
+    if "native" in name_lower or "feed" in name_lower:
+        return "native"
+    if "app" in name_lower or "mobile" in name_lower:
+        return "mobile_app"
+    if (
+        "linear" in name_lower
+        or "broadcast" in name_lower
+        or "tv " in name_lower
+        or "cable" in name_lower
+    ):
+        return "linear_tv"
+    return "display"
+
+
+def infer_deal_types(inv_type: str) -> list[DealType]:
+    """Infer supported deal types from inventory type (canonical mapping)."""
+    return {
+        "display": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+        "video": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+        "ctv": [DealType.PROGRAMMATIC_GUARANTEED],
+        "mobile_app": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
+        "native": [DealType.PREFERRED_DEAL],
+        "linear_tv": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+    }.get(inv_type, [DealType.PREFERRED_DEAL])
+
+
+def product_from_inventory_item(item: Any) -> Any:
+    """Build a ``ProductDefinition`` from an ad server inventory item.
+
+    The ONE item→product mapping, shared by :func:`build_csv_product_catalog`
+    and ``ProductSetupFlow.sync_from_ad_server`` so the API catalog and the
+    flow's seeded products carry identical ids, pricing, and taxonomy.
+
+    ``product_id`` is the ad server item id verbatim (for CSV, the ``id``
+    column of ``inventory.csv``) — deterministic across process restarts.
+    """
+    from ..models.flow_state import ProductDefinition
+
+    raw = getattr(item, "raw", {}) or {}
+    floor = raw.get("floor_price_cpm", 10.0)
+    inv_type = classify_inventory_type(item)
+    return ProductDefinition(
+        product_id=item.id,
+        name=item.name,
+        description=raw.get("description", ""),
+        inventory_type=inv_type,
+        supported_deal_types=infer_deal_types(inv_type),
+        supported_pricing_models=[PricingModel.CPM],
+        base_cpm=floor,
+        floor_cpm=round(floor * 0.85, 2),
+    )
+
+
+def _run_blocking(coro: Any) -> Any:
+    """Run a coroutine to completion from sync code.
+
+    Works both outside any event loop (``asyncio.run``) and inside a
+    running loop (endpoint threads) by delegating to a fresh loop in a
+    worker thread. Only used for the one-time CSV catalog build.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
+def _csv_mode_active() -> bool:
+    """True when the configured ad server is the CSV adapter."""
+    try:
+        from ..config import get_settings
+
+        return get_settings().ad_server_type == "csv"
+    except Exception:  # pragma: no cover — settings unavailable in exotic envs
+        logger.warning("Could not resolve settings; serving default catalog")
+        return False
+
+
+def build_csv_product_catalog() -> dict[str, Any]:
+    """Build the product catalog from the CSV inventory (uncached).
+
+    Reads ``CSV_DATA_DIR`` through the same ``CSVAdServerClient`` used by
+    the sync flow (including connect-time schema validation), then maps
+    each inventory item through :func:`product_from_inventory_item`.
+
+    On any read/validation failure the default catalog is served instead
+    (mirroring the sync flow's fallback-with-warning resilience) — the
+    failure is logged loudly rather than taking down every catalog
+    endpoint.
+    """
+    from ..clients.csv_adapter import CSVAdServerClient
+    from ..config import get_settings
+
+    data_dir = get_settings().csv_data_dir
+
+    async def _load() -> list[Any]:
+        client = CSVAdServerClient(data_dir=data_dir)
+        async with client:
+            return await client.list_inventory()
+
+    try:
+        items = _run_blocking(_load())
+    except Exception as exc:
+        logger.warning(
+            "CSV catalog build failed for %s (%s); falling back to the "
+            "default catalog — /products will NOT reflect CSV inventory",
+            data_dir,
+            exc,
+        )
+        return build_static_product_catalog()
+
+    products: dict[str, Any] = {}
+    for item in items:
+        product_def = product_from_inventory_item(item)
+        products[product_def.product_id] = product_def
+
+    logger.info("Built CSV product catalog: %d products from %s", len(products), data_dir)
+    return {
+        "products": products,
+        "inventory_types": sorted({p.inventory_type for p in products.values()}),
+    }
+
+
 def build_static_product_catalog() -> dict[str, Any]:
     """Build a fresh catalog dict from ``DEFAULT_PRODUCT_CONFIGS`` (uncached).
 
@@ -259,18 +408,29 @@ def build_static_product_catalog() -> dict[str, Any]:
 
 
 def get_static_product_catalog() -> dict[str, Any]:
-    """Return the seller's default product catalog without running the flow.
+    """Return the seller's product catalog without running the flow.
 
-    Cached — repeated reads return stable product_ids.
+    In CSV mode (``AD_SERVER_TYPE=csv``) the catalog is built from the CSV
+    inventory; in every other mode it is the static default catalog
+    (byte-identical to the pre-CSV-wiring behavior).
+
+    Cached — repeated reads return stable product_ids (issue #34).
     """
     global _CATALOG_CACHE
     if _CATALOG_CACHE is None:
-        _CATALOG_CACHE = build_static_product_catalog()
+        if _csv_mode_active():
+            _CATALOG_CACHE = build_csv_product_catalog()
+        else:
+            _CATALOG_CACHE = build_static_product_catalog()
     return _CATALOG_CACHE
 
 
 def reset_catalog_cache() -> None:
-    """Reset the cached catalog (fresh product IDs on next read)."""
+    """Reset the cached catalog (rebuilt on next read).
+
+    Default mode regenerates fresh uuid product IDs; CSV mode re-reads the
+    CSV inventory, whose IDs are deterministic (the ``id`` column).
+    """
     global _CATALOG_CACHE
     _CATALOG_CACHE = None
 
