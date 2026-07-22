@@ -5,6 +5,19 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 ## [Unreleased]
 
 ### Added
+- OpenDirect 2.1 spec dialect on `POST /products/avails` (dialect
+  convergence, shared avails contract): the published
+  `ProductAvailsSearch` request (multi-product `productids` array +
+  required `accountid`/`advertiserbrandid`) is now accepted alongside the
+  legacy single-product profile, and spec requests are answered with the
+  spec `avails` collection envelope of `Avails` records carrying
+  `availsstatus` (Available / Partially Available / Unavailable, reason
+  `Booked` when capacity caps or exhausts inventory). The response
+  dialect follows the request dialect, so legacy round-trips are
+  byte-for-byte unchanged. Requested volume/budget arrive on the spec
+  dialect as the contract's Investment `producttargeting` entries and
+  feed the same honest-availability policy. Regenerated
+  `docs/api/openapi.json`.
 - Avails endpoint (`POST /products/avails`) adopted the shared avails wire
   contract: request/response models are now
   `iab_agentic_primitives.protocol.AvailsRequest`/`AvailsResponse`

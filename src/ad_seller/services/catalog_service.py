@@ -485,6 +485,11 @@ def check_avails(
     - ``available_targeting``: sorted union of the keys of the product's
       non-None targeting dicts (audience/content/ad_product); None when the
       product declares no targeting dicts.
+    - ``requested_impressions``: the derived requested volume the policy
+      compared against (input volume, budget-derived volume, or the
+      product minimum). Consumed by the OpenDirect spec dialect to derive
+      ``availsstatus`` (Available / Partially Available / Unavailable);
+      ignored by the legacy ``AvailsResponse``.
 
     Raises ``HTTPException(422)`` for unpriceable products (mirroring how
     ``quote_service`` expresses error semantics at the service layer).
@@ -520,6 +525,7 @@ def check_avails(
 
     return {
         "product_id": product.product_id,
+        "requested_impressions": requested,
         "available_impressions": available,
         "guaranteed_impressions": guaranteed,
         "estimated_cpm": cpm,
