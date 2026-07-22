@@ -18,7 +18,7 @@ from typing import Any, Optional
 from crewai.flow.flow import Flow, listen, start
 
 from ..config import get_settings
-from ..models.core import DealType, PricingModel
+from ..models.core import DealType
 from ..models.flow_state import (
     ExecutionStatus,
     ProductDefinition,
@@ -157,21 +157,13 @@ class ProductSetupFlow(Flow[ProductSetupState]):
 
             # Also create ProductDefinition entries from CSV items
             # so the /products REST API endpoint returns real data.
+            # Canonical item→product mapping lives in catalog_service
+            # (shared with the CSV-mode catalog build) so flow-seeded
+            # products and API catalog products cannot diverge.
+            from ..services.catalog_service import product_from_inventory_item
+
             for item in items:
-                raw = getattr(item, "raw", {}) or {}
-                floor = raw.get("floor_price_cpm", 10.0)
-                inv_type = self._classify_inventory_type(item)
-                deal_types = self._infer_deal_types(inv_type)
-                product_def = ProductDefinition(
-                    product_id=item.id,
-                    name=item.name,
-                    description=raw.get("description", ""),
-                    inventory_type=inv_type,
-                    supported_deal_types=deal_types,
-                    supported_pricing_models=[PricingModel.CPM],
-                    base_cpm=floor,
-                    floor_cpm=round(floor * 0.85, 2),
-                )
+                product_def = product_from_inventory_item(item)
                 self.state.products[product_def.product_id] = product_def
 
             logger.info("Created %d products from ad server inventory", len(self.state.products))
@@ -357,36 +349,22 @@ class ProductSetupFlow(Flow[ProductSetupState]):
 
     @staticmethod
     def _classify_inventory_type(item: Any) -> str:
-        """Classify an ad server inventory item into an inventory type string."""
-        name_lower = item.name.lower() if hasattr(item, "name") else ""
-        if "ctv" in name_lower or "ott" in name_lower or "connected" in name_lower:
-            return "ctv"
-        if "video" in name_lower or "preroll" in name_lower or "midroll" in name_lower:
-            return "video"
-        if "native" in name_lower or "feed" in name_lower:
-            return "native"
-        if "app" in name_lower or "mobile" in name_lower:
-            return "mobile_app"
-        if (
-            "linear" in name_lower
-            or "broadcast" in name_lower
-            or "tv " in name_lower
-            or "cable" in name_lower
-        ):
-            return "linear_tv"
-        return "display"
+        """Classify an ad server inventory item into an inventory type string.
+
+        Delegates to the canonical mapping in ``catalog_service`` (shared
+        with the CSV-mode catalog build). Kept as a flow staticmethod for
+        backward compatibility with existing callers/tests.
+        """
+        from ..services.catalog_service import classify_inventory_type
+
+        return classify_inventory_type(item)
 
     @staticmethod
     def _infer_deal_types(inv_type: str) -> list[DealType]:
-        """Infer supported deal types from inventory type."""
-        return {
-            "display": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
-            "video": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
-            "ctv": [DealType.PROGRAMMATIC_GUARANTEED],
-            "mobile_app": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
-            "native": [DealType.PREFERRED_DEAL],
-            "linear_tv": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
-        }.get(inv_type, [DealType.PREFERRED_DEAL])
+        """Infer supported deal types from inventory type (canonical mapping)."""
+        from ..services.catalog_service import infer_deal_types
+
+        return infer_deal_types(inv_type)
 
     @staticmethod
     def _classify_ad_formats_from_type(inv_type: str) -> list[str]:

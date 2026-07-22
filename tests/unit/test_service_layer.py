@@ -114,6 +114,19 @@ def mock_storage():
 
 
 class TestCatalogService:
+    @pytest.fixture(autouse=True)
+    def _pin_default_mode(self, monkeypatch):
+        """Pin non-CSV mode: these tests assert DEFAULT-catalog semantics
+        (uuid ids regenerated on reset), which a developer .env with
+        AD_SERVER_TYPE=csv would otherwise override (CSV-mode catalogs use
+        deterministic ids from the CSV `id` column)."""
+        from ad_seller.config import get_settings
+
+        monkeypatch.setenv("AD_SERVER_TYPE", "google_ad_manager")
+        get_settings.cache_clear()
+        yield
+        get_settings.cache_clear()
+
     def test_catalog_is_cached_with_stable_product_ids(self):
         """Happy: repeated reads return the SAME catalog object and ids."""
         catalog_service.reset_catalog_cache()
