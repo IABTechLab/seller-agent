@@ -32,6 +32,30 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# PUT /packages/{id} field whitelist
+# =============================================================================
+#
+# Identity and server-managed fields are never client-writable:
+# - package_id, layer: package identity
+# - created_at, updated_at: server-managed timestamps
+# - ad_server_source: stamped by the sync flow only
+#
+# Everything else on the Package model is legitimate PUT surface (curation
+# metadata, taxonomy, pricing, placements, featured/seasonal flags), derived
+# from the model so a new Package field is mutable by default unless added
+# to the immutable set.
+PACKAGE_IMMUTABLE_FIELDS: frozenset[str] = frozenset(
+    {"package_id", "layer", "created_at", "updated_at", "ad_server_source"}
+)
+PACKAGE_MUTABLE_FIELDS: frozenset[str] = (
+    frozenset(Package.model_fields) - PACKAGE_IMMUTABLE_FIELDS
+)
+# Deprecated flat input still accepted by the Package model's
+# legacy-migration validator (folded into audience_capabilities, AT 1.1).
+PACKAGE_LEGACY_UPDATE_ALIASES: frozenset[str] = frozenset({"audience_segment_ids"})
+
+
+# =============================================================================
 # Audience filter (proposal §5.7 + §6 row 10)
 # =============================================================================
 #
@@ -245,22 +269,56 @@ class MediaKitService:
         package_id: str,
         updates: dict[str, Any],
     ) -> Optional[Package]:
-        """Update an existing package. Returns None if not found."""
+        """Partially update an existing package. Returns None if not found.
+
+        Only whitelisted mutable Package fields may be updated
+        (``PACKAGE_MUTABLE_FIELDS``); immutable/server-managed or unknown
+        keys are rejected with a 422 naming them, and the merged result is
+        re-validated through the ``Package`` model so type-invalid values
+        can never reach storage. HTTPException at the service layer follows
+        the same convention as ``catalog_service``/``quote_service``.
+        """
+        from fastapi import HTTPException
+        from pydantic import ValidationError
+
+        allowed = PACKAGE_MUTABLE_FIELDS | PACKAGE_LEGACY_UPDATE_ALIASES
+        rejected = sorted(set(updates) - allowed)
+        if rejected:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Package fields cannot be updated: {rejected}. "
+                    f"Mutable fields: {sorted(allowed)}"
+                ),
+            )
+
         package = await self._load_package(package_id)
         if not package:
             return None
 
-        for key, value in updates.items():
-            if hasattr(package, key):
-                setattr(package, key, value)
-        package.updated_at = datetime.utcnow()
+        merged = package.model_dump()
+        merged.update(updates)
+        if "audience_segment_ids" in updates and "audience_capabilities" not in updates:
+            # Let the model's legacy-migration validator fold the flat list
+            # into audience_capabilities instead of being shadowed by the
+            # package's current (dumped) capabilities.
+            merged.pop("audience_capabilities", None)
+
+        try:
+            updated = Package.model_validate(merged)
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Package update failed validation: {e}",
+            ) from e
+        updated.updated_at = datetime.utcnow()
 
         await self._storage.set_package(
-            package.package_id,
-            package.model_dump(mode="json"),
+            updated.package_id,
+            updated.model_dump(mode="json"),
         )
         logger.info("Package updated: %s", package_id)
-        return package
+        return updated
 
     async def delete_package(self, package_id: str) -> bool:
         """Archive a package (soft delete)."""
