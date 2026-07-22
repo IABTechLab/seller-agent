@@ -617,8 +617,55 @@ class TestPersistentSession:
             assert DealsAPIMCPClient._session_error is boom
 
             # A later enter retries start; with the same transport failure it
-            # latches and raises again (upstream reject-after-disconnect case).
+            # latches and raises again.
             with pytest.raises(RuntimeError, match="initialize failed"):
                 async with DealsAPIMCPClient(mcp_url="http://localhost:3100/mcp"):
                     pass
             assert DealsAPIMCPClient._session_error is boom
+
+    @pytest.mark.asyncio
+    async def test_reconnects_after_session_drop(self):
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+
+        fake_session = MagicMock()
+        fake_session.initialize = AsyncMock()
+        fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+        fake_session.__aexit__ = AsyncMock(return_value=None)
+
+        @asynccontextmanager
+        async def fake_transport(*_args, **_kwargs):
+            yield (MagicMock(), MagicMock(), None)
+
+        with (
+            patch(
+                "mcp.client.streamable_http.streamablehttp_client",
+                side_effect=fake_transport,
+            ) as transport_mock,
+            patch("mcp.ClientSession", return_value=fake_session),
+        ):
+            client = DealsAPIMCPClient(mcp_url="http://localhost:3100/mcp")
+            async with client:
+                first_task = DealsAPIMCPClient._session_task
+                first_mcp = DealsAPIMCPClient._shared_mcp
+                assert first_task is not None
+                assert first_mcp is not None
+                assert first_mcp._connected is True
+
+            # Simulate a dropped connection: background task exits.
+            assert DealsAPIMCPClient._session_done is not None
+            DealsAPIMCPClient._session_done.set()
+            await first_task
+            assert first_task.done()
+            assert first_mcp._connected is False
+
+            async with DealsAPIMCPClient(mcp_url="http://localhost:3100/mcp") as client_b:
+                assert DealsAPIMCPClient._session_task is not first_task
+                assert not DealsAPIMCPClient._session_task.done()
+                assert DealsAPIMCPClient._shared_mcp is not first_mcp
+                assert DealsAPIMCPClient._shared_mcp._connected is True
+                assert client_b._mcp_client is DealsAPIMCPClient._shared_mcp
+                assert DealsAPIMCPClient._session_error is None
+
+            assert transport_mock.call_count == 2
+            assert fake_session.initialize.await_count == 2

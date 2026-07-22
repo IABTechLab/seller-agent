@@ -66,13 +66,11 @@ class DealsAPIMCPClient(DealSyncClient):
     Wraps FreeWheelMCPClient for transport and maps structured IAB tool
     arguments to/from the DealSyncClient interface.
 
-    deals-api-mcp's TypeScript MCP SDK sets _initialized = true on the first
-    session and never resets it (close() does not clear the flag), so the server
-    supports exactly ONE session per process lifetime. To satisfy this constraint
-    we keep a class-level persistent background task that holds the MCP session
-    open for the entire process. __aenter__ starts it on first call and reuses
-    it on every subsequent call; __aexit__ is a no-op so the session is never
-    torn down between requests.
+    A class-level background task holds one shared MCP session open so
+    successive ``async with`` blocks reuse it without re-initializing.
+    ``__aexit__`` is a no-op between requests. If the connection drops (or the
+    URL changes), the next ``__aenter__`` tears down the old task and starts a
+    fresh session.
     """
 
     provider = DealSyncProvider.DEALS_API_MCP
@@ -142,17 +140,46 @@ class DealsAPIMCPClient(DealSyncClient):
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        # Session is persistent — do not disconnect between requests.
-        # deals-api-mcp's TypeScript MCP SDK will reject a second initialize
-        # for the lifetime of the server process after any session termination.
+        # Keep the shared session open between requests; reconnect happens on
+        # the next __aenter__ if the background task has died.
         pass
 
+    @classmethod
+    async def _stop_shared_session(cls) -> None:
+        """Signal the background session to exit and wait for it to finish."""
+        done = cls._session_done
+        task = cls._session_task
+        if done is not None:
+            done.set()
+        if task is not None and not task.done():
+            try:
+                await asyncio.wait_for(task, timeout=5.0)
+            except (TimeoutError, asyncio.CancelledError, Exception):
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+        if cls._shared_mcp is not None:
+            cls._shared_mcp._connected = False
+            cls._shared_mcp._session = None
+        cls._session_task = None
+        cls._session_ready = None
+        cls._session_done = None
+        cls._session_error = None
+
     async def _start_shared_session(self) -> None:
-        """Start a new background task that holds the shared MCP session open."""
+        """Start a new background task that holds the shared MCP session open.
+
+        Stops any prior shared session first so a drop (or URL change) can
+        reconnect without leaking the old transport task.
+        """
         from mcp import ClientSession
         from mcp.client.streamable_http import streamablehttp_client
 
         cls = DealsAPIMCPClient
+        await cls._stop_shared_session()
+
         cls._session_ready = asyncio.Event()
         cls._session_done = asyncio.Event()
         cls._session_error = None
@@ -175,7 +202,7 @@ class DealsAPIMCPClient(DealSyncClient):
                         shared_mcp._connected = True
                         ready.set()
                         logger.info("Persistent MCP session established at %s", mcp_url)
-                        await done.wait()  # holds connection open indefinitely
+                        await done.wait()  # holds connection open until stop/reconnect
             except Exception as exc:
                 cls._session_error = exc
                 if not ready.is_set():
