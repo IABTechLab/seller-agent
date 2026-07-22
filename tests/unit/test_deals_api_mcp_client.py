@@ -342,6 +342,47 @@ class TestCloneDeal:
         assert args["dealFloor"] == 99.0
         assert args["name"] == "Custom"
 
+    @pytest.mark.asyncio
+    async def test_raises_when_source_has_no_floor(self):
+        source = {
+            "success": True,
+            "deal": {
+                "id": "src-uuid-3",
+                "externalDealId": "IAB-src-3",
+                "name": "No Floor",
+                "sellerStatus": 2,
+                "terms": {"startDate": "2026-01-01T00:00:00Z"},
+            },
+        }
+        self.client._mcp_client.call_tool.side_effect = [source]
+
+        with pytest.raises(ValueError, match="dealFloor is required"):
+            await self.client.clone_deal("src-uuid-3")
+
+        # Must not call deals_create after the validation failure
+        assert self.client._mcp_client.call_tool.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_override_floor_allows_clone_without_source_floor(self):
+        source = {
+            "success": True,
+            "deal": {
+                "id": "src-uuid-4",
+                "externalDealId": "IAB-src-4",
+                "name": "No Floor",
+                "sellerStatus": 2,
+                "terms": {"startDate": "2026-01-01T00:00:00Z"},
+            },
+        }
+        new_deal = _deal_response(internal_id="clone-uuid-4", deal_id="IAB-clone-4")
+        self.client._mcp_client.call_tool.side_effect = [source, new_deal]
+
+        await self.client.clone_deal("src-uuid-4", overrides={"dealFloor": 12.0})
+
+        create_call = self.client._mcp_client.call_tool.call_args_list[1]
+        _, args = create_call[0]
+        assert args["dealFloor"] == 12.0
+
 
 # ---------------------------------------------------------------------------
 # troubleshoot_deal
@@ -455,3 +496,129 @@ class TestDealSyncFactory:
 
         registry = build_deal_sync_registry(settings)
         assert registry.list_providers() == []
+
+
+# ---------------------------------------------------------------------------
+# Persistent MCP session lifecycle
+# ---------------------------------------------------------------------------
+
+
+def _reset_session_state() -> None:
+    """Tear down class-level persistent session state between tests."""
+    cls = DealsAPIMCPClient
+    if cls._session_done is not None:
+        cls._session_done.set()
+    task = cls._session_task
+    if task is not None and not task.done():
+        task.cancel()
+    cls._shared_mcp = None
+    cls._session_task = None
+    cls._session_ready = None
+    cls._session_done = None
+    cls._session_error = None
+    cls._session_url = None
+    cls._session_lock = None
+
+
+class TestPersistentSession:
+    def setup_method(self):
+        _reset_session_state()
+
+    def teardown_method(self):
+        _reset_session_state()
+
+    @pytest.mark.asyncio
+    async def test_starts_shared_session_on_first_aenter(self):
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+
+        fake_session = MagicMock()
+        fake_session.initialize = AsyncMock()
+        fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+        fake_session.__aexit__ = AsyncMock(return_value=None)
+
+        @asynccontextmanager
+        async def fake_transport(*_args, **_kwargs):
+            yield (MagicMock(), MagicMock(), None)
+
+        with (
+            patch(
+                "mcp.client.streamable_http.streamablehttp_client",
+                side_effect=fake_transport,
+            ) as transport_mock,
+            patch("mcp.ClientSession", return_value=fake_session),
+        ):
+            client = DealsAPIMCPClient(mcp_url="http://localhost:3100/mcp")
+            async with client:
+                assert DealsAPIMCPClient._shared_mcp is not None
+                assert DealsAPIMCPClient._shared_mcp._connected is True
+                assert DealsAPIMCPClient._session_task is not None
+                assert not DealsAPIMCPClient._session_task.done()
+                assert client._mcp_client is DealsAPIMCPClient._shared_mcp
+
+            transport_mock.assert_called_once()
+            fake_session.initialize.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_reuses_session_on_second_aenter(self):
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+
+        fake_session = MagicMock()
+        fake_session.initialize = AsyncMock()
+        fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+        fake_session.__aexit__ = AsyncMock(return_value=None)
+
+        @asynccontextmanager
+        async def fake_transport(*_args, **_kwargs):
+            yield (MagicMock(), MagicMock(), None)
+
+        with (
+            patch(
+                "mcp.client.streamable_http.streamablehttp_client",
+                side_effect=fake_transport,
+            ) as transport_mock,
+            patch("mcp.ClientSession", return_value=fake_session),
+        ):
+            client_a = DealsAPIMCPClient(mcp_url="http://localhost:3100/mcp")
+            client_b = DealsAPIMCPClient(mcp_url="http://localhost:3100/mcp")
+
+            async with client_a:
+                first_task = DealsAPIMCPClient._session_task
+
+            async with client_b:
+                assert DealsAPIMCPClient._session_task is first_task
+                assert client_b._mcp_client is DealsAPIMCPClient._shared_mcp
+
+            transport_mock.assert_called_once()
+            fake_session.initialize.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_latches_and_reraises_session_start_error(self):
+        from contextlib import asynccontextmanager
+        from unittest.mock import patch
+
+        boom = RuntimeError("initialize failed")
+
+        @asynccontextmanager
+        async def failing_transport(*_args, **_kwargs):
+            raise boom
+            yield  # pragma: no cover
+
+        with patch(
+            "mcp.client.streamable_http.streamablehttp_client",
+            side_effect=failing_transport,
+        ):
+            client = DealsAPIMCPClient(mcp_url="http://localhost:3100/mcp")
+            with pytest.raises(RuntimeError, match="initialize failed"):
+                async with client:
+                    pass
+
+            assert DealsAPIMCPClient._session_error is boom
+
+            # A later enter retries start; with the same transport failure it
+            # latches and raises again (upstream reject-after-disconnect case).
+            with pytest.raises(RuntimeError, match="initialize failed"):
+                async with DealsAPIMCPClient(mcp_url="http://localhost:3100/mcp"):
+                    pass
+            assert DealsAPIMCPClient._session_error is boom

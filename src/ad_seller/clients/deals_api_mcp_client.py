@@ -260,12 +260,18 @@ class DealsAPIMCPClient(DealSyncClient):
         source_deal = source_raw.get("deal", {}) if isinstance(source_raw, dict) else {}
         terms = source_deal.get("terms", {}) if isinstance(source_deal.get("terms"), dict) else {}
         now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        overrides = overrides or {}
+
+        # Never invent a floor — same rule as create_deal.
+        floor = overrides.get("dealFloor", terms.get("dealFloor"))
+        if floor is None:
+            raise ValueError("dealFloor is required to clone a deal via deals-api-mcp")
 
         args: dict[str, Any] = {
             "name": f"Copy of {source_deal.get('name', source_deal_id)}",
             "origin": self._seller_origin,
             "seller": source_deal.get("seller", self.ssp_name),
-            "dealFloor": terms.get("dealFloor", 1.0),
+            "dealFloor": floor,
             "startDate": terms.get("startDate", now_iso),
         }
         if terms.get("endDate"):

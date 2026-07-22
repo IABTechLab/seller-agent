@@ -133,7 +133,10 @@ sequenceDiagram
 !!! note "Persistent session"
     `deals-api-mcp`'s TypeScript MCP SDK sets `_initialized = true` on the first `initialize` and never resets it — `close()` does not clear the flag. A second `initialize` after any session termination permanently fails with `400 Bad Request: Server already initialized` for the lifetime of the process.
 
-    `DealsAPIMCPClient` handles this via a **class-level persistent background task**: the MCP session is created once on first use and held open indefinitely. Every subsequent `async with ssp:` block reuses the existing session without re-initializing.
+    `DealsAPIMCPClient` handles this via a **class-level persistent background task**: the MCP session is created once on first use and held open indefinitely. Every subsequent `async with` block reuses the existing session without re-initializing.
+
+!!! warning "Restart required after disconnect"
+    If the MCP connection drops, the connector stays unusable until the seller-agent process is restarted. Reconnecting would hit the same `400 Server already initialized` failure. The full fix is blocked on the server-side transport bug tracked as [IABTechLab/deals-api-mcp#7](https://github.com/IABTechLab/deals-api-mcp/issues/7).
 
 ## Related
 
