@@ -386,6 +386,20 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         # Get audience validation results (from validate_audience step)
         audience_validation = getattr(self, "_audience_validation", {})
 
+        # Ground availability in declared catalog capacity — the SAME
+        # calculation as the quote path / POST /products/avails
+        # (catalog_service.check_avails, honest-availability policy:
+        # uncapped products report requested-as-available, capped products
+        # cap at maximum_impressions). Replaces the former hardcoded
+        # 1,000,000 placeholder that terminal-rejected any larger volume.
+        from ..services import catalog_service
+
+        requested_impressions = self.state.proposal_data.get("impressions", 0)
+        avails = catalog_service.check_avails(
+            product, requested_impressions=requested_impressions
+        )
+        available_impressions = avails["available_impressions"]
+
         # Initialize evaluation with audience fields
         self.state.evaluation = ProposalEvaluation(
             proposal_id=self.state.proposal_id,
@@ -395,9 +409,9 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             minimum_acceptable_price=product.floor_cpm,
             recommended_price=product.base_cpm,
             price_acceptable=price_acceptable,
-            requested_impressions=self.state.proposal_data.get("impressions", 0),
-            available_impressions=1000000,  # Placeholder - would come from avails
-            impressions_available=True,  # Simplified
+            requested_impressions=requested_impressions,
+            available_impressions=available_impressions,
+            impressions_available=requested_impressions <= available_impressions,
             # Audience validation fields
             audience_validated=audience_validation.get("validated", False),
             audience_coverage=audience_validation.get("coverage", 0.0),
@@ -417,8 +431,9 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         if self.state.status == ExecutionStatus.FAILED or not self.state.evaluation:
             return
 
-        # Simplified availability check
-        # In production, this would query the ad server or avails system
+        # Availability is grounded in evaluate_pricing via
+        # catalog_service.check_avails (declared catalog capacity — no
+        # second availability opinion here).
         requested = self.state.evaluation.requested_impressions
         available = self.state.evaluation.available_impressions
 
@@ -581,6 +596,12 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             self.state.recommendation = "accept"
         elif self.state.evaluation.impressions_available:
             self.state.recommendation = "counter"
+        elif self._volume_counter_applies():
+            # Volume shortfall with partial availability is negotiable:
+            # counter with the available volume instead of terminal-
+            # rejecting. Terminal reject stays for genuinely zero
+            # availability (and invalid offers).
+            self.state.recommendation = "counter"
         else:
             self.state.recommendation = "reject"
 
@@ -600,16 +621,47 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             return False
         return 0 < ev.requested_price < ev.minimum_acceptable_price
 
+    def _volume_counter_applies(self) -> bool:
+        """A volume shortfall that is negotiable, not terminal.
+
+        Requested impressions exceed the grounded availability, but some
+        inventory IS available and the price is a valid offer for the
+        NegotiationEngine to answer — so the seller counters with the
+        available volume instead of terminal-rejecting. Terminal reject
+        remains for genuinely zero availability and nonpositive prices
+        (not valid offers, mirroring the engine's convention).
+        """
+        ev = self.state.evaluation
+        if ev is None or ev.impressions_available or not ev.targeting_compatible:
+            return False
+        return ev.available_impressions > 0 and ev.requested_price > 0
+
     @listen(run_crew_evaluation)
     async def generate_counter_terms(self) -> None:
         """Generate counter terms using NegotiationEngine."""
-        if self.state.recommendation == "reject" and self._lowball_counter_applies():
-            # ANY below-floor opener must be invited up to the floor, not
-            # terminally rejected — whichever
-            # evaluator (crew or fallback) said reject.
+        if self.state.recommendation == "reject" and (
+            self._lowball_counter_applies() or self._volume_counter_applies()
+        ):
+            # ANY below-floor opener must be invited up to the floor, and
+            # ANY volume shortfall with partial availability must be
+            # countered with the available volume — not terminally
+            # rejected — whichever evaluator (crew or fallback) said
+            # reject.
             self.state.recommendation = "counter"
             if self.state.evaluation:
                 self.state.evaluation.recommendation = "counter"
+
+        if self.state.recommendation == "accept" and self.state.evaluation:
+            # Deterministic availability truth gates the crew's opinion:
+            # the seller cannot ACCEPT volume it cannot deliver.
+            if self._volume_counter_applies():
+                self.state.recommendation = "counter"
+                self.state.evaluation.recommendation = "counter"
+            elif not self.state.evaluation.impressions_available:
+                # Genuinely zero availability (or invalid offer): nothing
+                # deliverable to counter with — terminal reject.
+                self.state.recommendation = "reject"
+                self.state.evaluation.recommendation = "reject"
 
         if self.state.recommendation != "counter":
             return
@@ -646,6 +698,40 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         round_result = neg_engine.evaluate_buyer_offer(
             history, buyer_price, self.state.buyer_context
         )
+
+        # Volume shortfall: the engine only reasons about price, so fold
+        # the truthful volume story into the round. An agreeable price
+        # (engine ACCEPT) is kept as the counter price — the counter is
+        # about volume, not price — but the round must be a COUNTER, not
+        # an acceptance, so the negotiation stays open for the buyer's
+        # answer.
+        ev = self.state.evaluation
+        if not ev.impressions_available and ev.available_impressions > 0:
+            from ..models.negotiation import NegotiationAction
+
+            volume_note = (
+                f"Requested {ev.requested_impressions:,} impressions exceeds "
+                f"the {ev.available_impressions:,} available; countering with "
+                f"the available volume."
+            )
+            if round_result.action == NegotiationAction.ACCEPT:
+                round_result = round_result.model_copy(
+                    update={
+                        "action": NegotiationAction.COUNTER,
+                        "rationale": (
+                            f"Price ${round_result.seller_price:.2f} CPM is "
+                            f"agreeable. {volume_note}"
+                        ),
+                    }
+                )
+            elif round_result.action in (
+                NegotiationAction.COUNTER,
+                NegotiationAction.FINAL_OFFER,
+            ):
+                round_result = round_result.model_copy(
+                    update={"rationale": f"{round_result.rationale} {volume_note}"}
+                )
+
         history = neg_engine.record_round(history, round_result)
 
         # Surface the history so the service layer can persist it — in memory
