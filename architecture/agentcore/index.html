@@ -1,0 +1,1186 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="API &amp; Architecture Reference for the IAB OpenDirect 2.1 Seller Agent" name="description"/>
+<link href="https://iabtechlab.github.io/seller-agent/architecture/agentcore/" rel="canonical"/>
+<link href="../../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.7" name="generator"/>
+<title>AgentCore Architecture - IAB Tech Lab — Seller Agent</title>
+<link href="../../assets/stylesheets/main.ec1eaa64.min.css" rel="stylesheet"/>
+<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="amber" data-md-color-primary="indigo" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#agentcore-architecture">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+<aside class="md-banner">
+<div class="md-banner__inner md-grid md-typeset">
+<a href="https://iabtechlab.github.io/buyer-agent/" style="color: white;">
+    This is the <strong>Seller Agent</strong> documentation.
+    Looking for the <strong>Buyer Agent</strong>? Click here →
+  </a>
+</div>
+</aside>
+</div>
+<header class="md-header" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="IAB Tech Lab — Seller Agent" class="md-header__button md-logo" data-md-component="logo" href="../.." title="IAB Tech Lab — Seller Agent">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            IAB Tech Lab — Seller Agent
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              AgentCore Architecture
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="amber" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="amber" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/IABTechLab/seller-agent" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<nav aria-label="Tabs" class="md-tabs" data-md-component="tabs">
+<div class="md-grid">
+<ul class="md-tabs__list">
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../..">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../getting-started/quickstart/">
+          
+  
+  
+  Getting Started
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../api/overview/">
+          
+  
+  
+  API Reference
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../overview/">
+          
+  
+  
+  Architecture
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../state-machines/order-lifecycle/">
+          
+  
+  
+  State Machines
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../event-bus/overview/">
+          
+  
+  
+  Event Bus
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../integration/buyer-agent/">
+          
+  
+  
+  Integration
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../guides/claude-desktop-setup/">
+          
+  
+  
+  AI Assistant Setup
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../guides/publisher-setup/">
+          
+  
+  
+  Publisher Guide
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="https://iabtechlab.github.io/buyer-agent/">
+        
+  
+  
+    
+  
+  Buyer Agent Docs →
+
+      </a>
+</li>
+</ul>
+</div>
+</nav>
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary md-nav--lifted" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="IAB Tech Lab — Seller Agent" class="md-nav__button md-logo" data-md-component="logo" href="../.." title="IAB Tech Lab — Seller Agent">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    IAB Tech Lab — Seller Agent
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/IABTechLab/seller-agent" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    IABTechLab/seller-agent
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_2" type="checkbox"/>
+<label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_2_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_2">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../getting-started/quickstart/">
+<span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_3" type="checkbox"/>
+<label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_3_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../api/overview/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../api/mcp/">
+<span class="md-ellipsis">
+    
+  
+    MCP Protocol
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../api/a2a/">
+<span class="md-ellipsis">
+    
+  
+    A2A Protocol
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../api/agent-discovery/">
+<span class="md-ellipsis">
+    
+  
+    Agent Discovery
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../api/authentication/">
+<span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../api/quotes/">
+<span class="md-ellipsis">
+    
+  
+    Quotes
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../api/orders/">
+<span class="md-ellipsis">
+    
+  
+    Orders
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../api/change-requests/">
+<span class="md-ellipsis">
+    
+  
+    Change Requests
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_4" type="checkbox"/>
+<label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_4_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../overview/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../data-flow/">
+<span class="md-ellipsis">
+    
+  
+    Data Flow
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../storage/">
+<span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_5" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    State Machines
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    State Machines
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../state-machines/order-lifecycle/">
+<span class="md-ellipsis">
+    
+  
+    Order Lifecycle
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../state-machines/change-request-flow/">
+<span class="md-ellipsis">
+    
+  
+    Change Request Flow
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_6" type="checkbox"/>
+<label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Event Bus
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_6_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_6">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Event Bus
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../event-bus/overview/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_7" type="checkbox"/>
+<label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_7_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_7">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Integration
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../integration/buyer-agent/">
+<span class="md-ellipsis">
+    
+  
+    Buyer Agent Guide
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../integration/negotiation/">
+<span class="md-ellipsis">
+    
+  
+    Negotiation Protocol
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_8" type="checkbox"/>
+<label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    AI Assistant Setup
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_8_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_8">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    AI Assistant Setup
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/claude-desktop-setup/">
+<span class="md-ellipsis">
+    
+  
+    Claude (Desktop &amp; Web)
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/chatgpt-setup/">
+<span class="md-ellipsis">
+    
+  
+    ChatGPT, Codex &amp; AI IDEs
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/developer-setup/">
+<span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_9" type="checkbox"/>
+<label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Publisher Guide
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_9_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_9">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Publisher Guide
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/publisher-setup/">
+<span class="md-ellipsis">
+    
+  
+    Setup Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/configuration/">
+<span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/inventory-sync/">
+<span class="md-ellipsis">
+    
+  
+    Inventory Sync
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/gam-reporting/">
+<span class="md-ellipsis">
+    
+  
+    GAM Delivery Reporting
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/media-kit/">
+<span class="md-ellipsis">
+    
+  
+    Media Kit
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/pricing-rules/">
+<span class="md-ellipsis">
+    
+  
+    Pricing &amp; Access Tiers
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/approval-rules/">
+<span class="md-ellipsis">
+    
+  
+    Approval &amp; HITL
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/agent-management/">
+<span class="md-ellipsis">
+    
+  
+    Buyer &amp; Agent Management
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/deployment/">
+<span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="https://iabtechlab.github.io/buyer-agent/">
+<span class="md-ellipsis">
+    
+  
+    Buyer Agent Docs →
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#design-principles">
+<span class="md-ellipsis">
+      
+        Design Principles
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#component-map">
+<span class="md-ellipsis">
+      
+        Component Map
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#data-flow-crew-mode">
+<span class="md-ellipsis">
+      
+        Data Flow — Crew Mode
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tool-architecture">
+<span class="md-ellipsis">
+      
+        Tool Architecture
+      
+    </span>
+</a>
+<nav aria-label="Tool Architecture" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#read-tools-mcp">
+<span class="md-ellipsis">
+      
+        Read Tools (MCP)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#write-tools-basetool">
+<span class="md-ellipsis">
+      
+        Write Tools (BaseTool)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tool-filter">
+<span class="md-ellipsis">
+      
+        Tool Filter
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#storage">
+<span class="md-ellipsis">
+      
+        Storage
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#bedrock-converse-integration">
+<span class="md-ellipsis">
+      
+        Bedrock Converse Integration
+      
+    </span>
+</a>
+<nav aria-label="Bedrock Converse Integration" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#patch-1-orphaned-tool-block-sanitization">
+<span class="md-ellipsis">
+      
+        Patch 1: Orphaned Tool Block Sanitization
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#patch-2-tool-argument-extraction">
+<span class="md-ellipsis">
+      
+        Patch 2: Tool Argument Extraction
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#relationship-to-ecs-deployment">
+<span class="md-ellipsis">
+      
+        Relationship to ECS Deployment
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="agentcore-architecture">AgentCore Architecture<a class="headerlink" href="#agentcore-architecture" title="Permanent link">¶</a></h1>
+<p>The AgentCore deployment wraps the existing seller agent in a <code>BedrockAgentCoreApp</code> container without modifying community-maintained code. All AgentCore-specific files live in <code>src/ad_seller/interfaces/agentcore/</code> and <code>patches/</code>.</p>
+<hr/>
+<h2 id="design-principles">Design Principles<a class="headerlink" href="#design-principles" title="Permanent link">¶</a></h2>
+<ol>
+<li><strong>No community code modifications</strong> — Agent, crew, flow, and engine code is untouched. Tools and patches are injected at runtime.</li>
+<li><strong>Same data, different interface</strong> — The AgentCore runtime uses the same CSV adapter, pricing engine, and deal creation logic as the Docker/ECS deployment.</li>
+<li><strong>Two routing paths</strong> — <code>crew</code> mode for agentic LLM behavior, <code>chat</code> mode for deterministic keyword routing. Both share the same storage and product catalog.</li>
+</ol>
+<hr/>
+<h2 id="component-map">Component Map<a class="headerlink" href="#component-map" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a>src/ad_seller/interfaces/agentcore/
+<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a>├── http_main.py          # BedrockAgentCoreApp entrypoint
+<a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a>├── crew_tools.py         # BaseTool subclasses for CrewAI
+<a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a>├── mcp_main.py           # MCP-only entrypoint (standalone)
+<a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>├── main.py               # Unified entrypoint (mode selection)
+<a href="#__codelineno-0-6" id="__codelineno-0-6" name="__codelineno-0-6"></a>└── __init__.py
+<a href="#__codelineno-0-7" id="__codelineno-0-7" name="__codelineno-0-7"></a>
+<a href="#__codelineno-0-8" id="__codelineno-0-8" name="__codelineno-0-8"></a>patches/
+<a href="#__codelineno-0-9" id="__codelineno-0-9" name="__codelineno-0-9"></a>├── crewai_bedrock_fix.py # Bedrock Converse API compatibility
+<a href="#__codelineno-0-10" id="__codelineno-0-10" name="__codelineno-0-10"></a>└── __init__.py
+<a href="#__codelineno-0-11" id="__codelineno-0-11" name="__codelineno-0-11"></a>
+<a href="#__codelineno-0-12" id="__codelineno-0-12" name="__codelineno-0-12"></a>infra/aws/agentcore/
+<a href="#__codelineno-0-13" id="__codelineno-0-13" name="__codelineno-0-13"></a>├── deploy.sh             # Build + deploy via agentcore CLI
+<a href="#__codelineno-0-14" id="__codelineno-0-14" name="__codelineno-0-14"></a>├── requirements.txt      # Python dependencies for container
+<a href="#__codelineno-0-15" id="__codelineno-0-15" name="__codelineno-0-15"></a>├── agentcore-network.yaml # CloudFormation (VPC mode)
+<a href="#__codelineno-0-16" id="__codelineno-0-16" name="__codelineno-0-16"></a>└── main-agentcore.yaml   # CloudFormation (root stack)
+</code></pre></div>
+<hr/>
+<h2 id="data-flow-crew-mode">Data Flow — Crew Mode<a class="headerlink" href="#data-flow-crew-mode" title="Permanent link">¶</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+    participant Client
+    participant AgentCore as BedrockAgentCoreApp<br/>(port 8080)
+    participant Crew as PublisherCrew<br/>(Bedrock Converse)
+    participant MCP as MCP Tools<br/>(SSE adapter)
+    participant Deal as CreateDealTool<br/>(BaseTool)
+    participant FastAPI as FastAPI+MCP<br/>(port 8001)
+    participant DB as SQLite + CSV
+
+    Client-&gt;&gt;AgentCore: POST /invocations {prompt, routing_mode: "crew"}
+    AgentCore-&gt;&gt;AgentCore: Start FastAPI background (once)
+    AgentCore-&gt;&gt;Crew: Create task with prompt
+    Crew-&gt;&gt;Crew: LLM selects tool
+
+    alt Read operation (inventory, pricing)
+        Crew-&gt;&gt;MCP: Call MCP tool via SSE
+        MCP-&gt;&gt;FastAPI: HTTP request
+        FastAPI-&gt;&gt;DB: Query products/pricing
+        DB--&gt;&gt;FastAPI: Data
+        FastAPI--&gt;&gt;MCP: JSON response
+        MCP--&gt;&gt;Crew: Tool result
+    end
+
+    alt Write operation (deal creation)
+        Crew-&gt;&gt;Deal: Call create_deal BaseTool
+        Deal-&gt;&gt;FastAPI: Try REST with API key
+        alt API key valid
+            FastAPI-&gt;&gt;DB: Create deal
+            DB--&gt;&gt;FastAPI: Deal record
+            FastAPI--&gt;&gt;Deal: Deal JSON
+        else Fallback (auth mismatch)
+            Deal-&gt;&gt;FastAPI: GET /products/{id}
+            FastAPI--&gt;&gt;Deal: Product data
+            Deal-&gt;&gt;Deal: Create deal in-process
+        end
+        Deal--&gt;&gt;Crew: Deal JSON with DEAL-ID
+    end
+
+    Crew--&gt;&gt;AgentCore: CrewOutput (text + structured data)
+    AgentCore-&gt;&gt;AgentCore: Extract Deal IDs, CPMs, add visualization tags
+    AgentCore--&gt;&gt;Client: {response, metadata}
+</code></pre>
+<hr/>
+<h2 id="tool-architecture">Tool Architecture<a class="headerlink" href="#tool-architecture" title="Permanent link">¶</a></h2>
+<h3 id="read-tools-mcp">Read Tools (MCP)<a class="headerlink" href="#read-tools-mcp" title="Permanent link">¶</a></h3>
+<p>Read operations use <code>MCPServerAdapter</code> with SSE transport to auto-discover tools from the MCP server running on localhost:8001.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>MCP Name</th>
+<th>Endpoint</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>List Products</td>
+<td><code>list_products</code></td>
+<td><code>GET /products</code></td>
+</tr>
+<tr>
+<td>Get Product Details</td>
+<td><code>get_product_details</code></td>
+<td><code>GET /products/{id}</code></td>
+</tr>
+<tr>
+<td>Get Pricing</td>
+<td><code>get_pricing</code></td>
+<td><code>POST /pricing</code></td>
+</tr>
+<tr>
+<td>Discover Inventory</td>
+<td><code>discover_inventory</code></td>
+<td><code>POST /discovery</code></td>
+</tr>
+<tr>
+<td>Get Rate Card</td>
+<td><code>get_rate_card</code></td>
+<td><code>GET /products</code> (grouped)</td>
+</tr>
+<tr>
+<td>Get Deal Performance</td>
+<td><code>get_deal_performance</code></td>
+<td><code>GET /api/v1/deals/{id}/performance</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="write-tools-basetool">Write Tools (BaseTool)<a class="headerlink" href="#write-tools-basetool" title="Permanent link">¶</a></h3>
+<p>Write operations use a hand-written <code>CreateDealTool</code> (BaseTool subclass) instead of the MCP <code>create_deal_from_template</code> tool. Reasons:</p>
+<ol>
+<li>The MCP tool description is minimal — the LLM is less confident executing it</li>
+<li>The MCP endpoint requires auth headers the SSE adapter doesn't send</li>
+<li>The BaseTool has an enriched description with explicit authorization language</li>
+<li>The BaseTool includes an in-process fallback that bypasses REST auth</li>
+</ol>
+<h3 id="tool-filter">Tool Filter<a class="headerlink" href="#tool-filter" title="Permanent link">¶</a></h3>
+<p>The <code>CREW_MCP_TOOLS</code> env var controls which MCP tools are loaded. This reduces tool overload so the LLM reliably selects the right tool. Default:</p>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a>list_products,get_product_details,get_pricing,discover_inventory,get_rate_card,search_media_kit,get_deal_performance
+</code></pre></div>
+<p><code>create_deal_from_template</code> is excluded — the BaseTool <code>CreateDealTool</code> handles deal creation.</p>
+<hr/>
+<h2 id="storage">Storage<a class="headerlink" href="#storage" title="Permanent link">¶</a></h2>
+<p>AgentCore containers have ephemeral filesystems. The runtime uses:</p>
+<ul>
+<li><strong>SQLite in-memory</strong> (<code>sqlite:///:memory:</code>) for session state and product catalog</li>
+<li><strong>CSV adapter</strong> loads products from <code>data/csv/samples/aws_workshop/</code> at startup</li>
+<li>No persistent storage across invocations — each cold start reloads from CSV</li>
+</ul>
+<p>For production with persistent storage, set <code>STORAGE_TYPE=hybrid</code> with Aurora PostgreSQL and ElastiCache Redis (requires VPC mode).</p>
+<hr/>
+<h2 id="bedrock-converse-integration">Bedrock Converse Integration<a class="headerlink" href="#bedrock-converse-integration" title="Permanent link">¶</a></h2>
+<p>The CrewAI <code>PublisherCrew</code> runs with Bedrock's native Converse API via <code>LLM(model="bedrock/...")</code>. Two compatibility patches are required:</p>
+<h3 id="patch-1-orphaned-tool-block-sanitization">Patch 1: Orphaned Tool Block Sanitization<a class="headerlink" href="#patch-1-orphaned-tool-block-sanitization" title="Permanent link">¶</a></h3>
+<p>Bedrock Converse requires every <code>toolUse</code> block to have a matching <code>toolResult</code> in the next message. CrewAI's agent executor can leave orphaned blocks from previous iterations. The patch strips unmatched blocks before each API call.</p>
+<h3 id="patch-2-tool-argument-extraction">Patch 2: Tool Argument Extraction<a class="headerlink" href="#patch-2-tool-argument-extraction" title="Permanent link">¶</a></h3>
+<p>CrewAI's <code>_parse_native_tool_call</code> reads <code>func_info.get("arguments", "{}")</code> which returns the truthy default string <code>"{}"</code>, so the <code>or tool_call.get("input", {})</code> fallback never evaluates. The patch intercepts Bedrock-format dicts (identified by <code>toolUseId</code> key) and reads <code>input</code> directly.</p>
+<p>Both patches are in <code>patches/crewai_bedrock_fix.py</code> and applied automatically on first crew invocation.</p>
+<hr/>
+<h2 id="relationship-to-ecs-deployment">Relationship to ECS Deployment<a class="headerlink" href="#relationship-to-ecs-deployment" title="Permanent link">¶</a></h2>
+<p>The AgentCore deployment is an alternative to the existing ECS/Docker deployment, not a replacement.</p>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>ECS/Docker</th>
+<th>AgentCore</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Container orchestration</td>
+<td>ECS Fargate</td>
+<td>AgentCore managed</td>
+</tr>
+<tr>
+<td>LLM provider</td>
+<td>Anthropic API (direct)</td>
+<td>Bedrock Converse (native)</td>
+</tr>
+<tr>
+<td>Storage</td>
+<td>Aurora + Redis</td>
+<td>SQLite in-memory (or Aurora via VPC)</td>
+</tr>
+<tr>
+<td>Scaling</td>
+<td>ECS auto-scaling</td>
+<td>AgentCore microVM-per-session</td>
+</tr>
+<tr>
+<td>Deploy tool</td>
+<td>CloudFormation / Terraform</td>
+<td><code>agentcore</code> CLI + CodeBuild</td>
+</tr>
+<tr>
+<td>Cold start</td>
+<td>~5s (ECS)</td>
+<td>~15-30s (container + FastAPI)</td>
+</tr>
+<tr>
+<td>Code changes</td>
+<td>None</td>
+<td><code>interfaces/agentcore/</code> + <code>patches/</code> only</td>
+</tr>
+</tbody>
+</table>
+</article>
+</div>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs";
+window.mermaidConfig = {default: {
+    startOnLoad: false
+}};</script></body>
+</html>
