@@ -19,7 +19,7 @@ The Ad Seller System API exposes **59 endpoints** across **19 tags**. All endpoi
 | Method | Path | Summary |
 |--------|------|---------|
 | GET | `/products` | List all products in the catalog |
-| POST | `/products/avails` | OpenDirect availability check for a product (camelCase wire shape). Availability is derived from the catalog (`requestedImpressions`, else budget-derived at the product CPM, else `minimum_impressions`; capped by `maximum_impressions` when set); unpriceable products are a 422 and `deliveryConfidence` is always null — nothing is fabricated |
+| POST | `/products/avails` | OpenDirect availability check for a product (shared `iab_agentic_primitives.protocol` avails contract). Availability is derived from the catalog (`requestedImpressions`, else budget-derived at the product CPM, else `minimum_impressions`; capped by `maximum_impressions` when set); unpriceable products are a 422, `deliveryConfidence` is omitted (no forecast data source), and `guaranteedImpressions` appears only for PG-capable products — nothing is fabricated, nothing is null-padded |
 | GET | `/products/{product_id}` | Get a specific product |
 
 ## Pricing

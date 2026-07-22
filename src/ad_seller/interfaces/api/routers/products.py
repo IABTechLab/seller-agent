@@ -50,19 +50,30 @@ async def list_products(
     )
 
 
-@router.post("/products/avails", response_model=AvailsResponse, tags=["Products"])
+@router.post(
+    "/products/avails",
+    response_model=AvailsResponse,
+    # Policy-conformant emission (shared avails contract): optionals with
+    # no value are OMITTED, never null-padded — deliveryConfidence is
+    # absent when there is no forecast data source, guaranteedImpressions
+    # is present only for PG-capable products.
+    response_model_exclude_none=True,
+    tags=["Products"],
+)
 async def check_avails(request: AvailsRequest) -> AvailsResponse:
-    """OpenDirect availability check for a product (spec-lowercase wire names).
+    """OpenDirect availability check for a product (shared avails contract).
 
+    Request/response models are the canonical
+    ``iab_agentic_primitives.protocol`` avails messages (EP-12 adoption).
     Called by the buyer agent's OpenDirect client (``check_avails``).
     Availability is derived honestly from the cached static catalog:
     requested impressions come from ``requestedImpressions``, else are
     budget-derived at the product CPM, else fall back to the product's
     ``minimum_impressions``; ``maximum_impressions`` (when set) caps
-    availability. ``deliveryConfidence`` is always null (no forecast data
-    source) and products with neither ``base_cpm`` nor ``floor_cpm`` are a
-    422 — the reference implementation never fabricates numbers. The
-    request's ``targeting`` field is accepted but not used for filtering.
+    availability. ``deliveryConfidence`` is OMITTED (no forecast data
+    source — never fabricated) and products with neither ``base_cpm`` nor
+    ``floor_cpm`` are a 422 — never a fabricated price. The request's
+    ``targeting`` field is accepted but not used for filtering.
     See :func:`ad_seller.services.catalog_service.check_avails` for the
     full policy.
     """

@@ -9,8 +9,9 @@ attribute names; Tier-1 rename). The response is the
 ``AvailsResponse`` shape the buyer expects: availability is
 derived honestly from the product catalog (``maximum_impressions`` /
 ``minimum_impressions`` / CPMs) with no fabricated data —
-``deliveryConfidence`` is always null and unpriceable products are a 422,
-never a made-up price.
+``deliveryConfidence`` is OMITTED (no forecast data source; the shared
+avails contract never null-pads valueless optionals) and unpriceable
+products are a 422, never a made-up price.
 """
 
 import sys
@@ -121,8 +122,9 @@ class TestAvailsHappyPath:
         assert data["guaranteedImpressions"] == 500000
         assert data["estimatedCpm"] == 35.0
         assert data["totalCost"] == 17500.0  # 500000 / 1000 * 35.0
-        # No data source for confidence — never fabricated.
-        assert data["deliveryConfidence"] is None
+        # No data source for confidence — never fabricated, and OMITTED
+        # rather than null-padded (shared-contract policy).
+        assert "deliveryConfidence" not in data
         # No snake_case leakage on the wire.
         assert "available_impressions" not in data
 
@@ -183,8 +185,9 @@ class TestAvailsHappyPath:
 
 
 class TestAvailsGuaranteedImpressions:
-    async def test_non_pg_product_guaranteed_null(self, client):
-        """No PROGRAMMATIC_GUARANTEED support → guaranteedImpressions null."""
+    async def test_non_pg_product_guaranteed_omitted(self, client):
+        """No PROGRAMMATIC_GUARANTEED support → guaranteedImpressions absent
+        (present ONLY for PG-capable products — shared-contract policy)."""
         from ad_seller.models.core import DealType
 
         product = _make_product(supported_deal_types=[DealType.PREFERRED_DEAL])
@@ -195,7 +198,7 @@ class TestAvailsGuaranteedImpressions:
             )
 
         assert resp.status_code == 200
-        assert resp.json()["guaranteedImpressions"] is None
+        assert "guaranteedImpressions" not in resp.json()
 
 
 class TestAvailsTargeting:
@@ -215,8 +218,8 @@ class TestAvailsTargeting:
         assert resp.status_code == 200
         assert resp.json()["availableTargeting"] == ["demo", "format", "genre", "geo"]
 
-    async def test_no_targeting_dicts_is_null(self, client):
-        """All targeting dicts None → availableTargeting null."""
+    async def test_no_targeting_dicts_is_omitted(self, client):
+        """All targeting dicts None → availableTargeting absent."""
         with _patch_catalog(_catalog_with(_make_product())):
             resp = await client.post(
                 "/products/avails",
@@ -224,7 +227,7 @@ class TestAvailsTargeting:
             )
 
         assert resp.status_code == 200
-        assert resp.json()["availableTargeting"] is None
+        assert "availableTargeting" not in resp.json()
 
     async def test_request_targeting_accepted_not_filtering(self, client):
         """Request targeting is accepted (no 422) but does not change avails."""
