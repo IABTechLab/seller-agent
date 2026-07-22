@@ -13,7 +13,12 @@ directly. Internal ``ProductDefinition`` is mapped at the boundary via
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from iab_agentic_primitives.primitives import Product
-from iab_agentic_primitives.protocol import ProductListResponse
+from iab_agentic_primitives.protocol import (
+    AvailsCollection,
+    ProductAvailsSearch,
+    ProductListResponse,
+    avails_from_simplified,
+)
 
 from ....services import catalog_service, quote_service
 from .. import contract_mappers as cm
@@ -50,24 +55,77 @@ async def list_products(
     )
 
 
+def _spec_avails_collection(
+    search: ProductAvailsSearch, catalog: dict
+) -> AvailsCollection:
+    """Serve the OpenDirect 2.1 spec dialect: one Avails per product.
+
+    Requested volume/budget arrive as minted Investment
+    ``producttargeting`` entries (shared-contract bridge) and feed the
+    SAME honest-availability policy as the legacy fields; the spec
+    ``availsstatus`` (Available / Partially Available / Unavailable,
+    reason ``Booked``) is derived from the policy's requested-vs-available
+    numbers by the shared ``avails_from_simplified`` helper.
+    """
+    missing = [pid for pid in search.product_ids if pid not in catalog["products"]]
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Products not found: {', '.join(missing)}",
+        )
+
+    records = []
+    for query in search.to_simplified():
+        product = catalog["products"][query.product_id]
+        result = catalog_service.check_avails(
+            product,
+            requested_impressions=query.requested_impressions,
+            budget=query.budget,
+        )
+        records.append(
+            avails_from_simplified(
+                AvailsResponse(**result),
+                account_id=search.account_id,
+                start_date=search.start_date,
+                end_date=search.end_date,
+                currency=search.currency or product.currency,
+                requested_impressions=result["requested_impressions"],
+            )
+        )
+    return AvailsCollection(avails=records)
+
+
 @router.post(
     "/products/avails",
-    response_model=AvailsResponse,
+    # Response dialect follows request dialect: spec searches get the
+    # spec 'avails' collection envelope, legacy requests the legacy
+    # single object (v2.1.0-v2.2.1 round-trips unchanged).
+    response_model=AvailsCollection | AvailsResponse,
     # Policy-conformant emission (shared avails contract): optionals with
     # no value are OMITTED, never null-padded — deliveryConfidence is
     # absent when there is no forecast data source, guaranteedImpressions
-    # is present only for PG-capable products.
+    # is present only for PG-capable products. On the spec dialect this
+    # also omits valueless optional Avails/AvailsStatus attributes
+    # (e.g. reason when fully Available).
     response_model_exclude_none=True,
     tags=["Products"],
 )
-async def check_avails(request: AvailsRequest) -> AvailsResponse:
-    """OpenDirect availability check for a product (shared avails contract).
+async def check_avails(
+    request: ProductAvailsSearch | AvailsRequest,
+) -> AvailsCollection | AvailsResponse:
+    """OpenDirect availability check (shared avails contract, BOTH dialects).
 
     Request/response models are the canonical
     ``iab_agentic_primitives.protocol`` avails messages (EP-12 adoption).
-    Called by the buyer agent's OpenDirect client (``check_avails``).
+    The published OpenDirect 2.1 ``ProductAvailsSearch`` (multi-product
+    ``productids`` array + required ``accountid``/``advertiserbrandid``)
+    and the legacy simplified profile (scalar ``productid``) are both
+    accepted, discriminated by their mutually-exclusive required fields;
+    the response dialect follows the request dialect.
+
     Availability is derived honestly from the cached static catalog:
-    requested impressions come from ``requestedImpressions``, else are
+    requested impressions come from ``requestedImpressions`` (legacy) or
+    the minted Investment ``producttargeting`` entries (spec), else are
     budget-derived at the product CPM, else fall back to the product's
     ``minimum_impressions``; ``maximum_impressions`` (when set) caps
     availability. ``deliveryConfidence`` is OMITTED (no forecast data
@@ -78,6 +136,10 @@ async def check_avails(request: AvailsRequest) -> AvailsResponse:
     full policy.
     """
     catalog = deps.get_product_catalog()
+
+    if isinstance(request, ProductAvailsSearch):
+        return _spec_avails_collection(request, catalog)
+
     product = catalog["products"].get(request.product_id)
     if not product:
         raise HTTPException(

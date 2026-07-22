@@ -7,10 +7,12 @@ Extracted verbatim from ``interfaces/api/main.py`` (EP-3.1). Wire shapes
 are unchanged — these are the same Pydantic models the endpoints have
 always used.
 
-The avails models (``AvailsRequest``/``AvailsResponse``) are the shared
-contract classes from ``iab_agentic_primitives.protocol``, re-exported
-here so existing imports keep working (EP-12 adoption: one canonical home
-for the avails wire contract, no per-repo drift). Same wire dialect; the
+The avails models (legacy ``AvailsRequest``/``AvailsResponse`` and the
+OpenDirect 2.1 spec-dialect ``ProductAvailsSearch``/``Avails``/
+``AvailsStatus``/``AvailsCollection``) are the shared contract classes
+from ``iab_agentic_primitives.protocol``, re-exported here so existing
+imports keep working (EP-12 adoption: one canonical home for the avails
+wire contract, no per-repo drift). Same wire dialect; the
 only behavior change is policy-conformant emission — optionals with no
 value are omitted, never null-padded (see
 ``tests/unit/test_avails_contract_adoption.py``).
@@ -19,10 +21,22 @@ value are omitted, never null-padded (see
 from typing import Any, Optional
 
 from iab_agentic_primitives.protocol import (
+    Avails as Avails,  # noqa: PLC0414 — explicit re-export
+)
+from iab_agentic_primitives.protocol import (
+    AvailsCollection as AvailsCollection,  # noqa: PLC0414 — explicit re-export
+)
+from iab_agentic_primitives.protocol import (
     AvailsRequest as AvailsRequest,  # noqa: PLC0414 — explicit re-export
 )
 from iab_agentic_primitives.protocol import (
     AvailsResponse as AvailsResponse,  # noqa: PLC0414 — explicit re-export
+)
+from iab_agentic_primitives.protocol import (
+    AvailsStatus as AvailsStatus,  # noqa: PLC0414 — explicit re-export
+)
+from iab_agentic_primitives.protocol import (
+    ProductAvailsSearch as ProductAvailsSearch,  # noqa: PLC0414 — explicit re-export
 )
 from pydantic import BaseModel
 
