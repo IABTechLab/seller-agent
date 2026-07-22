@@ -10,10 +10,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ad_seller.clients.ssp_base import SSPDeal, SSPDealCreateRequest, SSPDealStatus, SSPType
-from ad_seller.clients.ssp_deals_api_mcp_client import (
+from ad_seller.clients.deals_api_mcp_client import (
     _SELLER_STATUS_MAP,
     DealsAPIMCPClient,
+)
+from ad_seller.clients.ssp_base import (
+    SSPDeal,
+    SSPDealCreateRequest,
+    SSPDealStatus,
+    SSPDealType,
+    SSPType,
 )
 
 # ---------------------------------------------------------------------------
@@ -112,7 +118,7 @@ class TestParseDeal:
     def test_returns_unknown_for_non_dict_input(self):
         deal = self.client._parse_deal("not a dict")
         assert deal.deal_id == "unknown"
-        assert deal.ssp_type == SSPType.CUSTOM
+        assert deal.ssp_type == SSPType.CUSTOM  # SSPDeal model default
 
     def test_handles_missing_terms_gracefully(self):
         raw = {"deal": {"id": "x", "externalDealId": "ext-x", "sellerStatus": 0}}
@@ -124,7 +130,7 @@ class TestParseDeal:
     def test_ssp_name_and_type_always_set(self):
         deal = self.client._parse_deal(_deal_response())
         assert deal.ssp_name == "IAB Deals MCP"
-        assert deal.ssp_type == SSPType.CUSTOM
+        assert deal.ssp_type == SSPType.CUSTOM  # SSPDeal model default; excluded from API responses
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +162,7 @@ class TestCreateDeal:
         tool_name, args = call_args[0]
         assert tool_name == "deals_create"
         assert args["name"] == "Q3 Video"
-        assert args["seller"] == "Acme Corp"
+        assert args["seller"] == "test.example.com"  # configured seller origin, not advertiser
         assert args["dealFloor"] == 30.0
         assert args["startDate"] == "2026-07-01T00:00:00Z"
         assert args["endDate"] == "2026-09-30T00:00:00Z"
@@ -171,19 +177,40 @@ class TestCreateDeal:
     async def test_uses_defaults_for_missing_optional_fields(self):
         self.client._mcp_client.call_tool.return_value = _deal_response()
 
-        await self.client.create_deal(SSPDealCreateRequest())
+        await self.client.create_deal(SSPDealCreateRequest(cpm=5.0))
 
         call_args = self.client._mcp_client.call_tool.call_args
         _, args = call_args[0]
         assert args["name"] == "Untitled Deal"
-        assert args["dealFloor"] == 1.0
+        assert args["dealFloor"] == 5.0
         assert "endDate" not in args
         assert "units" not in args
 
     @pytest.mark.asyncio
+    async def test_raises_on_missing_cpm(self):
+        with pytest.raises(ValueError, match="cpm is required"):
+            await self.client.create_deal(SSPDealCreateRequest())
+
+    @pytest.mark.asyncio
+    async def test_pg_deal_sets_guar_flag(self):
+        self.client._mcp_client.call_tool.return_value = _deal_response(internal_id="pg-uuid-1")
+        await self.client.create_deal(SSPDealCreateRequest(cpm=50.0, deal_type=SSPDealType.PG))
+
+        _, args = self.client._mcp_client.call_tool.call_args[0]
+        assert args.get("guar") == 1
+
+    @pytest.mark.asyncio
+    async def test_non_pg_deal_has_no_guar_flag(self):
+        self.client._mcp_client.call_tool.return_value = _deal_response(internal_id="pmp-uuid-1")
+        await self.client.create_deal(SSPDealCreateRequest(cpm=20.0, deal_type=SSPDealType.PMP))
+
+        _, args = self.client._mcp_client.call_tool.call_args[0]
+        assert "guar" not in args
+
+    @pytest.mark.asyncio
     async def test_returns_ssp_deal_instance(self):
         self.client._mcp_client.call_tool.return_value = _deal_response(internal_id="ret-uuid-1")
-        result = await self.client.create_deal(SSPDealCreateRequest())
+        result = await self.client.create_deal(SSPDealCreateRequest(cpm=10.0))
         assert isinstance(result, SSPDeal)
 
 
@@ -254,6 +281,22 @@ class TestListDeals:
 
         _, args = self.client._mcp_client.call_tool.call_args[0]
         assert args["pageSize"] == 100
+
+    @pytest.mark.asyncio
+    async def test_passes_status_filter_to_mcp(self):
+        self.client._mcp_client.call_tool.return_value = {"deals": []}
+        await self.client.list_deals(status=SSPDealStatus.ACTIVE)
+
+        _, args = self.client._mcp_client.call_tool.call_args[0]
+        assert args["sellerStatus"] == 0  # ACTIVE maps to sellerStatus=0
+
+    @pytest.mark.asyncio
+    async def test_no_status_filter_omits_seller_status_param(self):
+        self.client._mcp_client.call_tool.return_value = {"deals": []}
+        await self.client.list_deals()
+
+        _, args = self.client._mcp_client.call_tool.call_args[0]
+        assert "sellerStatus" not in args
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_on_non_dict_response(self):
@@ -366,3 +409,49 @@ class TestSellerStatusMap:
     def test_code_3_is_not_mapped(self):
         # Code 3 is unassigned in the IAB spec — must not silently map to a status
         assert 3 not in _SELLER_STATUS_MAP
+
+
+# ---------------------------------------------------------------------------
+# DealSyncRegistry factory registration
+# ---------------------------------------------------------------------------
+
+
+class TestDealSyncFactory:
+    def test_registers_deals_api_mcp_when_configured(self):
+        from unittest.mock import MagicMock
+
+        from ad_seller.clients.deal_sync_factory import build_deal_sync_registry
+        from ad_seller.clients.deals_api_mcp_client import DealsAPIMCPClient
+
+        settings = MagicMock()
+        settings.deal_sync_connectors = "deals_api_mcp"
+        settings.deals_api_mcp_url = "http://localhost:3100/mcp"
+        settings.deals_api_mcp_key = None
+        settings.deals_api_mcp_seller_origin = "publisher.example.com"
+
+        registry = build_deal_sync_registry(settings)
+        assert "deals_api_mcp" in registry.list_providers()
+        assert isinstance(registry.get_client("deals_api_mcp"), DealsAPIMCPClient)
+
+    def test_registers_nothing_when_url_missing(self):
+        from unittest.mock import MagicMock
+
+        from ad_seller.clients.deal_sync_factory import build_deal_sync_registry
+
+        settings = MagicMock()
+        settings.deal_sync_connectors = "deals_api_mcp"
+        settings.deals_api_mcp_url = None
+
+        registry = build_deal_sync_registry(settings)
+        assert registry.list_providers() == []
+
+    def test_empty_connectors_returns_empty_registry(self):
+        from unittest.mock import MagicMock
+
+        from ad_seller.clients.deal_sync_factory import build_deal_sync_registry
+
+        settings = MagicMock()
+        settings.deal_sync_connectors = ""
+
+        registry = build_deal_sync_registry(settings)
+        assert registry.list_providers() == []

@@ -259,17 +259,9 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
 
             settings = get_settings()
 
-            if not settings.ssp_connectors:
-                return  # No SSPs configured — skip
-
             from ..clients.ssp_base import SSPDealCreateRequest, SSPDealType
-            from ..clients.ssp_factory import build_ssp_registry
 
-            registry = build_ssp_registry(settings)
-            if not registry.list_ssps():
-                return
-
-            # Map deal type
+            # Map deal type once — used by both SSP and deal-sync blocks
             deal_type_str = (
                 deal.deal_type.value if hasattr(deal.deal_type, "value") else str(deal.deal_type)
             )
@@ -285,37 +277,74 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
                 cpm=deal.price,
             )
 
-            # Route to appropriate SSP
-            ssp = registry.get_client_for(
-                inventory_type=getattr(deal, "product_id", None),
-                deal_type=deal_type_str,
-            )
+            # SSP block
+            if settings.ssp_connectors:
+                from ..clients.ssp_factory import build_ssp_registry
 
-            async with ssp:
-                ssp_result = await ssp.create_deal(create_req)
+                ssp_registry = build_ssp_registry(settings)
+                if ssp_registry.list_ssps():
+                    ssp = ssp_registry.get_client_for(
+                        inventory_type=getattr(deal, "product_id", None),
+                        deal_type=deal_type_str,
+                    )
+                    async with ssp:
+                        ssp_result = await ssp.create_deal(create_req)
 
-            self.state.execution_orders.setdefault(deal.deal_id, {})["ssp_deal"] = {
-                "ssp_name": ssp_result.ssp_name,
-                "ssp_deal_id": ssp_result.deal_id,
-                "external_deal_id": ssp_result.external_deal_id,
-                "ssp_status": ssp_result.status.value,
-            }
+                    self.state.execution_orders.setdefault(deal.deal_id, {})["ssp_deal"] = {
+                        "channel": "ssp",
+                        "ssp_name": ssp_result.ssp_name,
+                        "ssp_deal_id": ssp_result.deal_id,
+                        "external_deal_id": ssp_result.external_deal_id,
+                        "ssp_status": ssp_result.status.value,
+                    }
 
-            await emit_event(
-                event_type=EventType.DEAL_SYNCED,
-                flow_id=self.state.flow_id,
-                flow_type=self.state.flow_type,
-                deal_id=self.state.deal_id,
-                payload={
-                    "ssp_name": ssp_result.ssp_name,
-                    "ssp_deal_id": ssp_result.deal_id,
-                    "external_deal_id": ssp_result.external_deal_id,
-                },
-            )
+                    await emit_event(
+                        event_type=EventType.DEAL_SYNCED,
+                        flow_id=self.state.flow_id,
+                        flow_type=self.state.flow_type,
+                        deal_id=self.state.deal_id,
+                        payload={
+                            "channel": "ssp",
+                            "ssp_name": ssp_result.ssp_name,
+                            "ssp_deal_id": ssp_result.deal_id,
+                            "external_deal_id": ssp_result.external_deal_id,
+                        },
+                    )
+
+            # Deal-sync block
+            if settings.deal_sync_connectors:
+                from ..clients.deal_sync_factory import build_deal_sync_registry
+
+                sync_registry = build_deal_sync_registry(settings)
+                if sync_registry.list_providers():
+                    sync_client = sync_registry.get_default()
+                    async with sync_client:
+                        sync_result = await sync_client.create_deal(create_req)
+
+                    self.state.execution_orders.setdefault(deal.deal_id, {})["deal_sync"] = {
+                        "provider": sync_client.provider.value,
+                        "deal_sync_deal_id": sync_result.deal_id,
+                        "external_deal_id": sync_result.external_deal_id,
+                        "status": sync_result.status.value,
+                    }
+
+                    await emit_event(
+                        event_type=EventType.DEAL_SYNCED,
+                        flow_id=self.state.flow_id,
+                        flow_type=self.state.flow_type,
+                        deal_id=self.state.deal_id,
+                        payload={
+                            "channel": "deal_sync",
+                            "provider": sync_client.provider.value,
+                            "provider_name": sync_client.provider_name,
+                            "deal_sync_deal_id": sync_result.deal_id,
+                            "external_deal_id": sync_result.external_deal_id,
+                        },
+                    )
 
         except Exception as e:
-            # SSP distribution failure is non-fatal — deal still exists in ad server
-            self.state.warnings.append(f"SSP distribution failed (non-fatal): {e}")
+            # Distribution failure is non-fatal — deal still exists in ad server
+            self.state.warnings.append(f"Deal distribution failed (non-fatal): {e}")
 
     @listen(distribute_to_ssps)
     async def update_execution_status(self) -> None:

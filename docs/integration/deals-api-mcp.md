@@ -6,12 +6,12 @@ The seller agent can distribute deals through [deals-api-mcp](https://github.com
 
 ```
 seller-agent (Python)
-  └── DealsAPIMCPClient        ← SSPClient implementation
+  └── DealsAPIMCPClient        ← DealSyncClient implementation
         └── MCP Transport      ← MCP Streamable HTTP transport
               └── deals-api-mcp  ← MCP server (TypeScript, SQLite)
 ```
 
-`DealsAPIMCPClient` implements the generic `SSPClient` interface and is registered in the SSP registry alongside other connectors. All operations are exposed through the seller agent's standard REST API — no direct access to the connector is needed.
+`DealsAPIMCPClient` implements the `DealSyncClient` interface and is registered in the deal-sync registry (a peer of the SSP registry). All operations are exposed through the seller agent's standard REST API — no direct access to the connector is needed.
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ The server listens at `http://localhost:3100/mcp`. See [deals-api-mcp HTTP Strea
 Enable the connector via environment variables:
 
 ```bash
-SSP_CONNECTORS=deals_api_mcp
+DEAL_SYNC_CONNECTORS=deals_api_mcp
 DEALS_API_MCP_URL=http://localhost:3100/mcp
 DEALS_API_MCP_SELLER_ORIGIN=publisher.example.com
 DEALS_API_MCP_KEY=                        # omit for NODE_ENV=demo
@@ -36,7 +36,7 @@ DEALS_API_MCP_KEY=                        # omit for NODE_ENV=demo
 
 | Variable | Description |
 |----------|-------------|
-| `SSP_CONNECTORS` | Comma-separated list of active connectors. Include `deals_api_mcp` to enable. |
+| `DEAL_SYNC_CONNECTORS` | Comma-separated list of active deal-sync providers. Include `deals_api_mcp` to enable. |
 | `DEALS_API_MCP_URL` | Full URL of the deals-api-mcp `/mcp` endpoint |
 | `DEALS_API_MCP_SELLER_ORIGIN` | Publisher domain stamped on every created deal |
 | `DEALS_API_MCP_KEY` | Auth key. Required when `NODE_ENV=production`; omit in demo mode |
@@ -68,8 +68,9 @@ Response:
 {
   "deal_id": "8b3f9cfe-7716-48e0-94bf-42fe44595928",
   "external_deal_id": "IAB-Q3SPORTS001",
-  "ssp": "IAB Deals MCP",
-  "ssp_type": "custom",
+  "channel": "deal_sync",
+  "provider": "deals_api_mcp",
+  "provider_name": "IAB Deals MCP",
   "status": "created",
   "deal": { "name": "Q3 Sports Video", "cpm": 25.00, "external_deal_id": "IAB-Q3SPORTS001", ... }
 }
@@ -137,4 +138,4 @@ sequenceDiagram
 ## Related
 
 - [deals-api-mcp README](https://github.com/IABTechLab/deals-api-mcp#readme) — server setup, all 10 MCP tools, data models
-- `src/ad_seller/clients/ssp_deals_api_mcp_client.py` — source for `DealsAPIMCPClient`
+- `src/ad_seller/clients/deals_api_mcp_client.py` — source for `DealsAPIMCPClient`

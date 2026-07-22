@@ -146,7 +146,7 @@ class Settings(BaseSettings):
 
     # SSP Connectors (publishers can configure multiple SSPs)
     # Comma-separated list of SSP names to enable
-    ssp_connectors: str = ""  # e.g. "pubmatic,magnite,deals_api_mcp"
+    ssp_connectors: str = ""  # e.g. "pubmatic,magnite"
     # Routing rules: inventory_type:ssp_name pairs, comma-separated
     ssp_routing_rules: str = ""  # e.g. "ctv:pubmatic,display:magnite"
     # PubMatic SSP
@@ -158,6 +158,10 @@ class Settings(BaseSettings):
     # Index Exchange SSP (REST API)
     index_exchange_api_url: Optional[str] = None
     index_exchange_api_key: Optional[str] = None
+
+    # Deal Sync Connectors (external deal-sync services, peer of SSP connectors)
+    # Comma-separated list of provider names to enable
+    deal_sync_connectors: str = ""  # e.g. "deals_api_mcp"  (env: DEAL_SYNC_CONNECTORS)
     # IAB Deals MCP (deals-api-mcp server — HTTP Streamable transport)
     deals_api_mcp_url: Optional[str] = None  # e.g. http://localhost:3100/mcp
     deals_api_mcp_key: Optional[str] = None  # IAB_DEALS_API_KEY on the MCP server

@@ -1,10 +1,10 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""SSP client for IAB deals-api-mcp (HTTP Streamable MCP transport).
+"""Deal-sync connector for IAB deals-api-mcp (HTTP Streamable MCP transport).
 
 Connects to a running deals-api-mcp server via MCP Streamable HTTP and maps
-the IAB Deal Sync API v1.0 tool schema to the generic SSPClient interface.
+the IAB Deal Sync API v1.0 tool schema to the DealSyncClient interface.
 
 deals-api-mcp tools used:
   - deals_create:  create a new deal (required: name, origin, seller, dealFloor, startDate)
@@ -26,14 +26,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, ClassVar, Optional
 
+from .deal_sync_base import DealSyncClient, DealSyncProvider
 from .freewheel_mcp_client import FreeWheelMCPClient
 from .ssp_base import (
-    SSPClient,
     SSPDeal,
     SSPDealCreateRequest,
     SSPDealStatus,
+    SSPDealType,
     SSPTroubleshootResult,
-    SSPType,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,9 @@ _SELLER_STATUS_MAP: dict[int, SSPDealStatus] = {
     5: SSPDealStatus.ARCHIVED,
 }
 
+# Reverse: SSPDealStatus → sellerStatus integer (for deals_list filter)
+_STATUS_TO_SELLER_INT: dict[SSPDealStatus, int] = {v: k for k, v in _SELLER_STATUS_MAP.items()}
+
 _SELLER_STATUS_LABEL: dict[int, str] = {
     0: "Active",
     1: "Paused",
@@ -57,11 +60,11 @@ _SELLER_STATUS_LABEL: dict[int, str] = {
 }
 
 
-class DealsAPIMCPClient(SSPClient):
-    """SSP connector for deals-api-mcp via MCP Streamable HTTP.
+class DealsAPIMCPClient(DealSyncClient):
+    """Deal-sync connector for deals-api-mcp via MCP Streamable HTTP.
 
     Wraps FreeWheelMCPClient for transport and maps structured IAB tool
-    arguments to/from the generic SSPClient interface.
+    arguments to/from the DealSyncClient interface.
 
     deals-api-mcp's TypeScript MCP SDK sets _initialized = true on the first
     session and never resets it (close() does not clear the flag), so the server
@@ -72,8 +75,9 @@ class DealsAPIMCPClient(SSPClient):
     torn down between requests.
     """
 
-    ssp_type: SSPType = SSPType.CUSTOM
-    ssp_name: str = "IAB Deals MCP"
+    provider = DealSyncProvider.DEALS_API_MCP
+    provider_name: str = "IAB Deals MCP"
+    ssp_name: str = "IAB Deals MCP"  # feeds SSPDeal.ssp_name in _parse_deal
 
     # ── Class-level persistent session ─────────────────────────────────────
     _shared_mcp: ClassVar[Optional[FreeWheelMCPClient]] = None
@@ -97,7 +101,6 @@ class DealsAPIMCPClient(SSPClient):
         api_key: Optional[str] = None,
         seller_origin: str = "publisher.example.com",
     ) -> None:
-        self.ssp_type = SSPType.CUSTOM
         self.ssp_name = "IAB Deals MCP"
         self._mcp_url = mcp_url
         self._api_key = api_key
@@ -188,15 +191,24 @@ class DealsAPIMCPClient(SSPClient):
 
     async def create_deal(self, request: SSPDealCreateRequest) -> SSPDeal:
         """Map SSPDealCreateRequest → deals_create structured args."""
+        cpm = getattr(request, "cpm", None)
+        if cpm is None:
+            raise ValueError("cpm is required to create a deal via deals-api-mcp")
+
         now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        deal_type = getattr(request, "deal_type", None)
 
         args: dict[str, Any] = {
             "name": getattr(request, "name", None) or "Untitled Deal",
             "origin": self._seller_origin,
-            "seller": getattr(request, "advertiser", None) or self.ssp_name,
-            "dealFloor": getattr(request, "cpm", None) or 1.0,
+            "seller": self._seller_origin,
+            "dealFloor": cpm,
             "startDate": getattr(request, "start_date", None) or now_iso,
         }
+
+        # PG deals must be flagged as guaranteed
+        if deal_type == SSPDealType.PG:
+            args["guar"] = 1
 
         if getattr(request, "end_date", None):
             args["endDate"] = request.end_date
@@ -213,8 +225,8 @@ class DealsAPIMCPClient(SSPClient):
         deal = self._parse_deal(raw)
         # deals-api-mcp has no dealType concept — echo back the requested type
         # so callers aren't silently told every deal is PMP.
-        if getattr(request, "deal_type", None):
-            deal = deal.model_copy(update={"deal_type": request.deal_type})
+        if deal_type:
+            deal = deal.model_copy(update={"deal_type": deal_type})
         return deal
 
     async def get_deal(self, deal_id: str) -> SSPDeal:
@@ -228,6 +240,8 @@ class DealsAPIMCPClient(SSPClient):
         limit: int = 100,
     ) -> list[SSPDeal]:
         args: dict[str, Any] = {"pageSize": min(limit, 100)}
+        if status is not None and status in _STATUS_TO_SELLER_INT:
+            args["sellerStatus"] = _STATUS_TO_SELLER_INT[status]
         raw = await self._mcp_client.call_tool("deals_list", args)
         if isinstance(raw, dict):
             items = raw.get("deals", raw.get("items", []))
@@ -282,7 +296,6 @@ class DealsAPIMCPClient(SSPClient):
             deal_id=deal_id,
             status=self._seller_status_label(raw),
             primary_issues=issues,
-            ssp_type=self.ssp_type,
             raw=raw,
         )
 
@@ -291,7 +304,7 @@ class DealsAPIMCPClient(SSPClient):
     def _parse_deal(self, raw: Any) -> SSPDeal:
         """Parse a deals-api-mcp tool response into SSPDeal."""
         if not isinstance(raw, dict):
-            return SSPDeal(deal_id="unknown", ssp_type=self.ssp_type, ssp_name=self.ssp_name)
+            return SSPDeal(deal_id="unknown", ssp_name=self.ssp_name)
 
         # deals_create: {"success": true, "deal": {...}}
         # deals_status: {"success": true, "deal": {...}, "status": {...}}
@@ -311,7 +324,6 @@ class DealsAPIMCPClient(SSPClient):
             status=_SELLER_STATUS_MAP.get(seller_status_int, SSPDealStatus.CREATED),
             cpm=terms.get("dealFloor"),
             currency=terms.get("currency", "USD"),
-            ssp_type=self.ssp_type,
             ssp_name=self.ssp_name,
             raw=raw,
         )

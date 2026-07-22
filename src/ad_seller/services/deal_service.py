@@ -968,37 +968,53 @@ async def get_deal_buyer_status(deal_id: str, buyer_url: str) -> dict[str, Any]:
 
 
 async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
-    """Distribute a deal through configured SSP(s)."""
+    """Distribute a deal through configured SSP(s) or deal-sync providers."""
+    from ..clients.deal_sync_factory import build_deal_sync_registry
     from ..clients.ssp_base import SSPDealCreateRequest, SSPDealType
     from ..clients.ssp_factory import build_ssp_registry
 
-    registry = build_ssp_registry()
+    ssp_registry = build_ssp_registry()
+    sync_registry = build_deal_sync_registry()
 
-    if not registry.list_ssps():
+    if not ssp_registry.list_ssps() and not sync_registry.list_providers():
         raise HTTPException(
             status_code=503,
             detail={
-                "error": "no_ssps_configured",
-                "message": "No SSP connectors configured. Set SSP_CONNECTORS in environment.",
+                "error": "no_connectors_configured",
+                "message": (
+                    "No connectors configured. "
+                    "Set SSP_CONNECTORS or DEAL_SYNC_CONNECTORS in environment."
+                ),
             },
         )
 
-    # Get the right SSP client
+    # Resolve client — try SSP first, then deal-sync
+    client: Any = None
+    is_deal_sync = False
     try:
         if request.ssp_name:
-            ssp = registry.get_client(request.ssp_name)
+            try:
+                client = ssp_registry.get_client(request.ssp_name)
+            except KeyError:
+                client = sync_registry.get_client(request.ssp_name)
+                is_deal_sync = True
         else:
-            ssp = registry.get_client_for(
-                inventory_type=request.inventory_type,
-                deal_type=request.deal_type,
-            )
+            if ssp_registry.list_ssps():
+                client = ssp_registry.get_client_for(
+                    inventory_type=request.inventory_type,
+                    deal_type=request.deal_type,
+                )
+            else:
+                client = sync_registry.get_default()
+                is_deal_sync = True
     except (KeyError, RuntimeError) as e:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "ssp_routing_failed",
                 "message": str(e),
-                "available_ssps": registry.list_ssps(),
+                "available_ssps": ssp_registry.list_ssps(),
+                "available_deal_sync_providers": sync_registry.list_providers(),
             },
         )
 
@@ -1023,12 +1039,27 @@ async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
         targeting=request.targeting,
     )
 
-    async with ssp:
-        result = await ssp.create_deal(create_request)
+    try:
+        async with client:
+            result = await client.create_deal(create_request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"error": "invalid_request", "message": str(e)})
+
+    if is_deal_sync:
+        return {
+            "deal_id": result.deal_id,
+            "external_deal_id": result.external_deal_id,
+            "channel": client.channel,
+            "provider": client.provider.value,
+            "provider_name": client.provider_name,
+            "status": result.status.value,
+            "deal": result.model_dump(exclude={"raw", "ssp_type", "ssp_name"}),
+        }
 
     return {
         "deal_id": result.deal_id,
         "external_deal_id": result.external_deal_id,
+        "channel": "ssp",
         "ssp": result.ssp_name,
         "ssp_type": result.ssp_type.value,
         "status": result.status.value,
@@ -1037,27 +1068,40 @@ async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
 
 
 async def troubleshoot_deal_via_ssp(deal_id: str, ssp_name: str) -> dict[str, Any]:
-    """Troubleshoot a deal via SSP diagnostics."""
+    """Troubleshoot a deal via SSP or deal-sync provider diagnostics."""
+    from ..clients.deal_sync_factory import build_deal_sync_registry
     from ..clients.ssp_factory import build_ssp_registry
 
-    registry = build_ssp_registry()
+    ssp_registry = build_ssp_registry()
+    sync_registry = build_deal_sync_registry()
 
+    # Try SSP first, then deal-sync
+    client: Any = None
     try:
-        ssp = registry.get_client(ssp_name)
+        client = ssp_registry.get_client(ssp_name)
     except KeyError:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "unknown_ssp",
-                "message": f"SSP '{ssp_name}' not configured.",
-                "available_ssps": registry.list_ssps(),
-            },
-        )
+        try:
+            client = sync_registry.get_client(ssp_name)
+        except KeyError:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "unknown_ssp",
+                    "message": f"SSP '{ssp_name}' not configured.",
+                    "available_ssps": ssp_registry.list_ssps(),
+                    "available_deal_sync_providers": sync_registry.list_providers(),
+                },
+            )
 
-    async with ssp:
-        result = await ssp.troubleshoot_deal(deal_id)
+    async with client:
+        result = await client.troubleshoot_deal(deal_id)
 
-    return result.model_dump(exclude={"raw"})
+    from ..clients.deal_sync_base import DealSyncClient
+
+    # SSP clients: preserve ssp_type (existing field); deal-sync clients: exclude it
+    # (SSPDeal.ssp_type defaults to "custom" for deal-sync — not meaningful to callers)
+    exclude: set[str] = {"raw", "ssp_type"} if isinstance(client, DealSyncClient) else {"raw"}
+    return result.model_dump(exclude=exclude)
 
 
 # =============================================================================

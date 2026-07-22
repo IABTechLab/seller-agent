@@ -38,6 +38,7 @@ class SSPType(str, Enum):
     INDEX_EXCHANGE = "index_exchange"
     OPENX = "openx"
     XANDR = "xandr"
+    DEAL_SYNC = "deal_sync"  # IAB Deal Sync API hub (e.g. deals-api-mcp)
     CUSTOM = "custom"
 
 
