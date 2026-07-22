@@ -727,7 +727,7 @@
           "Products"
         ],
         "summary": "Check Avails",
-        "description": "OpenDirect availability check for a product (spec-lowercase wire names).\n\nCalled by the buyer agent's OpenDirect client (``check_avails``).\nAvailability is derived honestly from the cached static catalog:\nrequested impressions come from ``requestedImpressions``, else are\nbudget-derived at the product CPM, else fall back to the product's\n``minimum_impressions``; ``maximum_impressions`` (when set) caps\navailability. ``deliveryConfidence`` is always null (no forecast data\nsource) and products with neither ``base_cpm`` nor ``floor_cpm`` are a\n422 \u2014 the reference implementation never fabricates numbers. The\nrequest's ``targeting`` field is accepted but not used for filtering.\nSee :func:`ad_seller.services.catalog_service.check_avails` for the\nfull policy.",
+        "description": "OpenDirect availability check for a product (shared avails contract).\n\nRequest/response models are the canonical\n``iab_agentic_primitives.protocol`` avails messages (EP-12 adoption).\nCalled by the buyer agent's OpenDirect client (``check_avails``).\nAvailability is derived honestly from the cached static catalog:\nrequested impressions come from ``requestedImpressions``, else are\nbudget-derived at the product CPM, else fall back to the product's\n``minimum_impressions``; ``maximum_impressions`` (when set) caps\navailability. ``deliveryConfidence`` is OMITTED (no forecast data\nsource \u2014 never fabricated) and products with neither ``base_cpm`` nor\n``floor_cpm`` are a 422 \u2014 never a fabricated price. The request's\n``targeting`` field is accepted but not used for filtering.\nSee :func:`ad_seller.services.catalog_service.check_avails` for the\nfull policy.",
         "operationId": "check_avails_products_avails_post",
         "requestBody": {
           "content": {
@@ -5099,17 +5099,20 @@
         "properties": {
           "productid": {
             "type": "string",
-            "title": "Productid"
+            "title": "Productid",
+            "description": "Product to check."
           },
           "startdate": {
             "type": "string",
             "format": "date-time",
-            "title": "Startdate"
+            "title": "Startdate",
+            "description": "Flight start (ISO-8601)."
           },
           "enddate": {
             "type": "string",
             "format": "date-time",
-            "title": "Enddate"
+            "title": "Enddate",
+            "description": "Flight end (ISO-8601); must be after startdate."
           },
           "requestedImpressions": {
             "anyOf": [
@@ -5121,7 +5124,8 @@
                 "type": "null"
               }
             ],
-            "title": "Requestedimpressions"
+            "title": "Requestedimpressions",
+            "description": "Requested volume; when omitted the seller derives it from budget at the product CPM, else the product minimum."
           },
           "budget": {
             "anyOf": [
@@ -5132,7 +5136,8 @@
                 "type": "null"
               }
             ],
-            "title": "Budget"
+            "title": "Budget",
+            "description": "Budget in currency units (OpenDirect 2.1 float dialect \u2014 see the module docstring for the FD-11 exception)."
           },
           "targeting": {
             "anyOf": [
@@ -5144,7 +5149,8 @@
                 "type": "null"
               }
             ],
-            "title": "Targeting"
+            "title": "Targeting",
+            "description": "Requested targeting slices; sellers without per-slice availability data accept but do not filter on it."
           }
         },
         "type": "object",
@@ -5154,36 +5160,43 @@
           "enddate"
         ],
         "title": "AvailsRequest",
-        "description": "OpenDirect availability check request (POST /products/avails).\n\nSpec-named fields use the OpenDirect 2.1 all-lowercase wire names\n(``productid``/``startdate``/``enddate``), matching the buyer agent's\nOpenDirect client (``AvailsRequest`` in the buyer's models; coordinated\nTier-1 rename). Non-spec extension fields\n(``requestedImpressions``/``budget``/``targeting``) are unchanged\npending the Tier-2 restructure. ``targeting`` is accepted for wire\ncompatibility but not used for filtering in this reference\nimplementation \u2014 the static catalog has no per-slice availability data."
+        "description": "Request body for ``POST /products/avails``.\n\nSpec-named fields use the OpenDirect 2.1 all-lowercase wire names;\nthe extension fields (``requestedImpressions``/``budget``/\n``targeting``) keep their camelCase names. When neither\n``requestedImpressions`` nor ``budget`` is sent, the seller falls back\nto the product's minimum impressions."
       },
       "AvailsResponse": {
         "properties": {
           "productid": {
             "type": "string",
-            "title": "Productid"
+            "title": "Productid",
+            "description": "Echo of the product."
           },
           "availableImpressions": {
             "type": "integer",
-            "title": "Availableimpressions"
+            "minimum": 0.0,
+            "title": "Availableimpressions",
+            "description": "REQUIRED (policy 1). Products without a capacity cap report the requested volume as available."
           },
           "guaranteedImpressions": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "integer",
+                "minimum": 0.0
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Guaranteedimpressions"
+            "title": "Guaranteedimpressions",
+            "description": "Present ONLY for PG-capable products (policy 3); omitted otherwise."
           },
           "estimatedCpm": {
             "type": "number",
-            "title": "Estimatedcpm"
+            "title": "Estimatedcpm",
+            "description": "CPM the availability is priced at (base CPM, falling back to floor CPM). OpenDirect 2.1 float dialect (FD-11 exception)."
           },
           "totalCost": {
             "type": "number",
-            "title": "Totalcost"
+            "title": "Totalcost",
+            "description": "availableImpressions / 1000 * estimatedCpm, rounded to 2 decimals. OpenDirect 2.1 float dialect (FD-11 exception)."
           },
           "deliveryConfidence": {
             "anyOf": [
@@ -5196,7 +5209,8 @@
                 "type": "null"
               }
             ],
-            "title": "Deliveryconfidence"
+            "title": "Deliveryconfidence",
+            "description": "Forecast confidence percentage. OPTIONAL \u2014 OMITTED entirely when the seller has no forecast data source (policy 2); never fabricated."
           },
           "availableTargeting": {
             "anyOf": [
@@ -5210,7 +5224,8 @@
                 "type": "null"
               }
             ],
-            "title": "Availabletargeting"
+            "title": "Availabletargeting",
+            "description": "Targeting dimensions the product supports; omitted when the product declares none."
           }
         },
         "type": "object",
@@ -5221,7 +5236,7 @@
           "totalCost"
         ],
         "title": "AvailsResponse",
-        "description": "OpenDirect availability check response.\n\n``productid`` follows the OpenDirect 2.1 spec-lowercase wire name\n(coordinated Tier-1 rename); the non-spec extension\nfields keep their camelCase names pending the Tier-2 restructure.\n``deliveryConfidence`` is always null: the seller has no delivery\nforecast data source, and the reference implementation does not\nfabricate one."
+        "description": "Response body for ``POST /products/avails``.\n\nHonest-availability policy: every number is derived from catalog\ndata \u2014 nothing is fabricated. Optional fields with no value are\nOMITTED from the wire, not sent as ``null`` (readers tolerate ``null``\nfrom pre-contract emitters)."
       },
       "BulkDealOperation": {
         "properties": {

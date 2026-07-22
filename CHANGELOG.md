@@ -5,6 +5,20 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 ## [Unreleased]
 
 ### Added
+- Avails endpoint (`POST /products/avails`) adopted the shared avails wire
+  contract: request/response models are now
+  `iab_agentic_primitives.protocol.AvailsRequest`/`AvailsResponse`
+  (re-exported through `ad_seller.interfaces.api.schemas`), the canonical
+  home of the contract. Same wire dialect and field set.
+
+### Changed
+- Avails responses no longer null-pad valueless optionals: per the shared
+  contract policy, `deliveryConfidence` is omitted entirely (this
+  reference seller has no forecast data source), `guaranteedImpressions`
+  appears only for PG-capable products, and `availableTargeting` is
+  omitted when the product declares no targeting dicts. Readers that
+  parsed the previous explicit nulls parse the omitted form identically
+  under the shared models. Regenerated `docs/api/openapi.json`.
 - MCP Streamable HTTP transport at `/mcp` (current MCP standard, protocol 2025-06-18) — resolves buyer agent 405 errors on MCP connection
 - Legacy HTTP+SSE transport kept at `/mcp-sse/sse` for backwards compatibility with older Claude Desktop / ChatGPT clients
 - FreeWheel OAuth 2.1 PKCE authentication integration:

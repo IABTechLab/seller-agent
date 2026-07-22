@@ -6,12 +6,25 @@
 Extracted verbatim from ``interfaces/api/main.py`` (EP-3.1). Wire shapes
 are unchanged — these are the same Pydantic models the endpoints have
 always used.
+
+The avails models (``AvailsRequest``/``AvailsResponse``) are the shared
+contract classes from ``iab_agentic_primitives.protocol``, re-exported
+here so existing imports keep working (EP-12 adoption: one canonical home
+for the avails wire contract, no per-repo drift). Same wire dialect; the
+only behavior change is policy-conformant emission — optionals with no
+value are omitted, never null-padded (see
+``tests/unit/test_avails_contract_adoption.py``).
 """
 
-from datetime import datetime, timezone
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from iab_agentic_primitives.protocol import (
+    AvailsRequest as AvailsRequest,  # noqa: PLC0414 — explicit re-export
+)
+from iab_agentic_primitives.protocol import (
+    AvailsResponse as AvailsResponse,  # noqa: PLC0414 — explicit re-export
+)
+from pydantic import BaseModel
 
 
 class PricingRequest(BaseModel):
@@ -81,69 +94,6 @@ class DealResponse(BaseModel):
     pricing_model: str
     openrtb_params: dict[str, Any]
     activation_instructions: dict[str, str]
-
-
-class AvailsRequest(BaseModel):
-    """OpenDirect availability check request (POST /products/avails).
-
-    Spec-named fields use the OpenDirect 2.1 all-lowercase wire names
-    (``productid``/``startdate``/``enddate``), matching the buyer agent's
-    OpenDirect client (``AvailsRequest`` in the buyer's models; coordinated
-    Tier-1 rename). Non-spec extension fields
-    (``requestedImpressions``/``budget``/``targeting``) are unchanged
-    pending the Tier-2 restructure. ``targeting`` is accepted for wire
-    compatibility but not used for filtering in this reference
-    implementation — the static catalog has no per-slice availability data.
-    """
-
-    product_id: str = Field(..., alias="productid")
-    start_date: datetime = Field(..., alias="startdate")
-    end_date: datetime = Field(..., alias="enddate")
-    requested_impressions: Optional[int] = Field(
-        default=None, alias="requestedImpressions", ge=0
-    )
-    budget: Optional[float] = None
-    targeting: Optional[dict[str, Any]] = None
-
-    model_config = {"populate_by_name": True}
-
-    @model_validator(mode="after")
-    def _end_after_start(self) -> "AvailsRequest":
-        start, end = self.start_date, self.end_date
-        # Normalize mixed naive/aware datetimes (treat naive as UTC) so the
-        # comparison never raises.
-        if (start.tzinfo is None) != (end.tzinfo is None):
-            if start.tzinfo is None:
-                start = start.replace(tzinfo=timezone.utc)
-            if end.tzinfo is None:
-                end = end.replace(tzinfo=timezone.utc)
-        if end <= start:
-            raise ValueError("enddate must be after startdate")
-        return self
-
-
-class AvailsResponse(BaseModel):
-    """OpenDirect availability check response.
-
-    ``productid`` follows the OpenDirect 2.1 spec-lowercase wire name
-    (coordinated Tier-1 rename); the non-spec extension
-    fields keep their camelCase names pending the Tier-2 restructure.
-    ``deliveryConfidence`` is always null: the seller has no delivery
-    forecast data source, and the reference implementation does not
-    fabricate one.
-    """
-
-    product_id: str = Field(..., alias="productid")
-    available_impressions: int = Field(..., alias="availableImpressions")
-    guaranteed_impressions: Optional[int] = Field(default=None, alias="guaranteedImpressions")
-    estimated_cpm: float = Field(..., alias="estimatedCpm")
-    total_cost: float = Field(..., alias="totalCost")
-    delivery_confidence: Optional[float] = Field(
-        default=None, alias="deliveryConfidence", ge=0, le=100
-    )
-    available_targeting: Optional[list[str]] = Field(default=None, alias="availableTargeting")
-
-    model_config = {"populate_by_name": True}
 
 
 class DiscoveryRequest(BaseModel):

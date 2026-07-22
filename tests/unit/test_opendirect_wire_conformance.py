@@ -40,14 +40,17 @@ BUYER_AVAILS_REQUEST_WIRE = {
     "targeting": {"geo": ["US"], "device": ["mobile"]},
 }
 
+# Canonical policy shape: optionals with no value are OMITTED, never
+# null-padded (deliveryConfidence has no data source; this product is
+# PG-capable so guaranteedImpressions is present). Legacy null-padded
+# payloads (seller <= v2.1.x) are pinned as still-parseable in
+# test_avails_contract_adoption.py.
 SELLER_AVAILS_RESPONSE_WIRE = {
     "productid": "prod-display-001",
     "availableImpressions": 750000,
     "guaranteedImpressions": 500000,
     "estimatedCpm": 12.0,
     "totalCost": 6000.0,
-    "deliveryConfidence": None,
-    "availableTargeting": None,
 }
 
 
@@ -88,11 +91,10 @@ class TestAvailsResponseDialect:
             guaranteed_impressions=500000,
             estimated_cpm=12.0,
             total_cost=6000.0,
-            delivery_confidence=None,
-            available_targeting=None,
         )
-        # FastAPI serializes response_model by alias with nulls kept.
-        wire = json.loads(resp.model_dump_json(by_alias=True))
+        # The avails route serializes with response_model_exclude_none=True:
+        # valueless optionals are omitted, never null-padded.
+        wire = resp.model_dump(mode="json", by_alias=True, exclude_none=True)
         assert wire == SELLER_AVAILS_RESPONSE_WIRE
 
     def test_legacy_productid_case_not_emitted(self):
