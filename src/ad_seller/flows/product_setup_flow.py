@@ -76,6 +76,47 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         )
         self.state.seller_name = self._settings.seller_organization_name
 
+    @staticmethod
+    def _synced_package_id(source: str, key: str) -> str:
+        """Deterministic SYNCED-layer package id.
+
+        Keyed on layer ("synced") + ad server source + inventory type (or
+        mock-package slug) so repeated syncs upsert the same records
+        instead of minting fresh ``pkg-{uuid8}`` ids on every run
+        (issue #34: non-idempotent sync duplicated the whole layer).
+        """
+
+        def _slug(value: str) -> str:
+            return value.lower().replace("_", "-").replace(" ", "-")
+
+        return f"pkg-synced-{_slug(source)}-{_slug(key)}"
+
+    async def _upsert_synced_package(self, storage: Any, package: Package) -> None:
+        """Store a synced package, preserving created_at on re-seed.
+
+        With deterministic ids a re-sync overwrites the same record; keeping
+        the original created_at makes unchanged re-seeded packages stable
+        (identity + timestamps) across syncs.
+        """
+        existing = await storage.get_package(package.package_id)
+        if existing and existing.get("created_at"):
+            package.created_at = datetime.fromisoformat(existing["created_at"])
+        await storage.set_package(package.package_id, package.model_dump(mode="json"))
+        self.state.synced_segments.append(package.package_id)
+
+    async def _prune_stale_synced_packages(self, storage: Any) -> None:
+        """Delete SYNCED-layer packages not re-seeded by this sync run.
+
+        Only the synced layer converges to the ad server's current
+        inventory; curated/operator/dynamic packages are never touched.
+        """
+        keep = set(self.state.synced_segments)
+        for pkg in await storage.list_packages():
+            pkg_id = pkg.get("package_id")
+            if pkg.get("layer") == PackageLayer.SYNCED.value and pkg_id and pkg_id not in keep:
+                await storage.delete_package(pkg_id)
+                logger.info("Pruned stale synced package: %s", pkg_id)
+
     @listen(initialize_setup)
     async def sync_from_ad_server(self) -> None:
         """Sync inventory from ad server if configured.
@@ -83,6 +124,11 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         When an ad server is configured, imports inventory via
         AdServerClient.list_inventory() and creates Layer 1 synced packages.
         Otherwise, creates mock synced packages for development.
+
+        Idempotent (issue #34): synced packages use deterministic ids with
+        upsert semantics, and SYNCED-layer packages that are not re-seeded
+        by the current run are pruned, so repeated syncs converge to the
+        same package set instead of duplicating the layer.
         """
         if (
             not self._settings.gam_network_code
@@ -91,6 +137,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         ):
             self.state.warnings.append("No ad server configured, creating mock synced packages")
             await self._create_mock_synced_packages()
+            await self._finish_sync()
             return
 
         try:
@@ -135,7 +182,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
                 base_cpm = self._estimate_base_cpm(inv_type)
 
                 package = Package(
-                    package_id=f"pkg-{uuid.uuid4().hex[:8]}",
+                    package_id=self._synced_package_id(client.ad_server_type.value, inv_type),
                     name=f"{inv_type.replace('_', ' ').title()} - Synced",
                     description=f"Synced {inv_type} inventory ({len(inv_items)} ad units)",
                     layer=PackageLayer.SYNCED,
@@ -159,14 +206,22 @@ class ProductSetupFlow(Flow[ProductSetupState]):
                     is_featured=inv_type == "ctv",
                 )
 
-                await storage.set_package(package.package_id, package.model_dump(mode="json"))
-                self.state.synced_segments.append(package.package_id)
+                await self._upsert_synced_package(storage, package)
 
             logger.info("Synced %d packages from ad server", len(grouped))
 
         except Exception as e:
             self.state.warnings.append(f"Ad server sync failed, using mocks: {e}")
             await self._create_mock_synced_packages()
+
+        await self._finish_sync()
+
+    async def _finish_sync(self) -> None:
+        """Terminal step of every sync path: prune the stale synced layer."""
+        from ..storage.factory import get_storage
+
+        storage = await get_storage()
+        await self._prune_stale_synced_packages(storage)
 
     async def _create_mock_synced_packages(self) -> None:
         """Create mock Layer 1 packages for development without ad server creds."""
@@ -176,7 +231,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
 
         mock_packages = [
             Package(
-                package_id=f"pkg-{uuid.uuid4().hex[:8]}",
+                package_id=self._synced_package_id("mock", "display-network"),
                 name="Display Network Bundle",
                 description="Standard and high-impact display across web and mobile web",
                 layer=PackageLayer.SYNCED,
@@ -207,7 +262,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
                 is_featured=False,
             ),
             Package(
-                package_id=f"pkg-{uuid.uuid4().hex[:8]}",
+                package_id=self._synced_package_id("mock", "video-suite"),
                 name="Video Suite",
                 description="Pre-roll and mid-roll video across desktop and mobile",
                 layer=PackageLayer.SYNCED,
@@ -232,7 +287,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
                 is_featured=False,
             ),
             Package(
-                package_id=f"pkg-{uuid.uuid4().hex[:8]}",
+                package_id=self._synced_package_id("mock", "ctv-premium"),
                 name="CTV Premium Bundle",
                 description="Connected TV inventory on premium streaming apps",
                 layer=PackageLayer.SYNCED,
@@ -257,7 +312,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
                 is_featured=True,
             ),
             Package(
-                package_id=f"pkg-{uuid.uuid4().hex[:8]}",
+                package_id=self._synced_package_id("mock", "linear-tv-nbcu"),
                 name="NBCU Linear TV Broadcast Bundle",
                 description="Linear TV inventory across NBC broadcast and NBCU cable networks",
                 layer=PackageLayer.SYNCED,
@@ -296,8 +351,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         ]
 
         for pkg in mock_packages:
-            await storage.set_package(pkg.package_id, pkg.model_dump(mode="json"))
-            self.state.synced_segments.append(pkg.package_id)
+            await self._upsert_synced_package(storage, pkg)
 
         logger.info("Created %d mock synced packages", len(mock_packages))
 

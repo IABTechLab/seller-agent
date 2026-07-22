@@ -285,17 +285,25 @@ class MediaKitService:
         self,
         name: str,
         product_ids: list[str],
+        products: Optional[list[ProductDefinition]] = None,
     ) -> Optional[Package]:
         """Assemble a dynamic package from product IDs.
 
         Fetches products, merges their inventory characteristics,
         computes blended pricing, and creates an ephemeral package.
+
+        When ``products`` is supplied, the caller has already resolved the
+        ids (e.g. the API router's catalog-first resolution, issue #34) and
+        the storage lookup is skipped; otherwise ids resolve via storage.
         """
-        products: list[ProductDefinition] = []
-        for pid in product_ids:
-            data = await self._storage.get_product(pid)
-            if data:
-                products.append(ProductDefinition(**data))
+        if products is None:
+            products = []
+            for pid in product_ids:
+                data = await self._storage.get_product(pid)
+                if data:
+                    products.append(ProductDefinition(**data))
+        else:
+            products = list(products)
 
         if not products:
             return None

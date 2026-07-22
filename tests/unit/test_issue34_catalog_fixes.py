@@ -155,7 +155,12 @@ class TestCreatePackageResolution:
 
             resp = await c.post(
                 "/packages",
-                json={"name": "Q3 Sports Bundle", "product_ids": product_ids, "base_price": 20.0, "floor_price": 12.0},
+                json={
+                    "name": "Q3 Sports Bundle",
+                    "product_ids": product_ids,
+                    "base_price": 20.0,
+                    "floor_price": 12.0,
+                },
             )
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -189,7 +194,12 @@ class TestCreatePackageResolution:
         async with client as c:
             resp = await c.post(
                 "/packages",
-                json={"name": "Partial Bundle", "product_ids": [good_id, "prod-nope-9"], "base_price": 20.0, "floor_price": 12.0},
+                json={
+                    "name": "Partial Bundle",
+                    "product_ids": [good_id, "prod-nope-9"],
+                    "base_price": 20.0,
+                    "floor_price": 12.0,
+                },
             )
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -206,7 +216,12 @@ class TestCreatePackageResolution:
         async with client as c:
             resp = await c.post(
                 "/packages",
-                json={"name": "Negotiated Bundle", "product_ids": [prod["product_id"]], "base_price": 20.0, "floor_price": 12.0},
+                json={
+                    "name": "Negotiated Bundle",
+                    "product_ids": [prod["product_id"]],
+                    "base_price": 20.0,
+                    "floor_price": 12.0,
+                },
             )
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -310,9 +325,7 @@ async def _run_sync_once(storage, settings) -> list[str]:
 
 
 async def _synced_layer_ids(storage) -> set[str]:
-    return {
-        p["package_id"] for p in await storage.list_packages() if p.get("layer") == "synced"
-    }
+    return {p["package_id"] for p in await storage.list_packages() if p.get("layer") == "synced"}
 
 
 class _FakeInventoryItem:
@@ -351,8 +364,7 @@ class TestSyncIdempotency:
         after_second = await _synced_layer_ids(storage)
 
         assert after_first == after_second, (
-            f"sync is not idempotent: first={sorted(after_first)} "
-            f"second={sorted(after_second)}"
+            f"sync is not idempotent: first={sorted(after_first)} second={sorted(after_second)}"
         )
         assert set(first_ids) == set(second_ids)
         assert len(await storage.list_packages()) == len(after_first)
