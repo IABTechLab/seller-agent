@@ -23,7 +23,7 @@ This public endpoint returns an **agent card** --- a machine-readable descriptio
     "url": "https://seller.example.com"
   },
   "capabilities": {
-    "protocols": ["opendirect21", "a2a"],
+    "protocols": ["opendirect21"],
     "streaming": false,
     "push_notifications": false
   },
@@ -76,7 +76,7 @@ This public endpoint returns an **agent card** --- a machine-readable descriptio
 | `url` | Base URL for all protocol endpoints |
 | `version` | Agent version |
 | `provider.name` | Organization operating the seller agent |
-| `capabilities.protocols` | Supported protocols (`opendirect21`, `a2a`) |
+| `capabilities.protocols` | Supported protocols (`opendirect21`; `a2a` will be listed once an inbound A2A server ships) |
 | `skills` | List of capabilities the agent supports (discovery, pricing, proposals, negotiation, deals) |
 | `authentication.schemes` | Accepted auth methods (`api_key`, `bearer`) |
 | `inventory_types` | Types of inventory available (dynamically populated from the product catalog) |
@@ -122,7 +122,7 @@ A buyer agent discovers a seller through the following steps:
 1. **Fetch the agent card** --- `GET https://seller.example.com/.well-known/agent.json`
 2. **Inspect capabilities** --- Check supported protocols, skills, inventory types, and deal types
 3. **Obtain an API key** --- `POST /auth/api-keys` with buyer identity
-4. **Choose a protocol** --- Use [MCP](mcp.md) for structured operations or [A2A](a2a.md) for conversational interactions
+4. **Choose a protocol** --- Use [MCP](mcp.md) for structured operations ([A2A](a2a.md) is designed but not yet served)
 5. **Start transacting** --- Browse products, request pricing, submit proposals, book deals
 
 ### Registry Endpoints (Operator-Facing)
@@ -139,6 +139,6 @@ Seller operators manage the agent registry through these endpoints:
 ## See Also
 
 - [MCP Protocol](mcp.md) --- structured tool call interface
-- [A2A Protocol](a2a.md) --- conversational agent-to-agent interface
+- [A2A Protocol](a2a.md) --- conversational agent-to-agent interface (designed, not yet implemented)
 - [Authentication](authentication.md) --- API keys and access tiers
 - [Buyer Agent Discovery](https://iabtechlab.github.io/buyer-agent/) --- buyer-side discovery documentation

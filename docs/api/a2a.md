@@ -1,5 +1,11 @@
 # A2A (Agent-to-Agent Protocol)
 
+!!! warning "Status: designed, not implemented"
+    The A2A endpoints described on this page are **not served by the current
+    release** — this page documents the planned interface. The agent card no
+    longer advertises `a2a`; it will again once an inbound A2A server ships.
+    Use [MCP](mcp.md) or the OpenDirect REST surface today.
+
 A2A is the **conversational agentic interface** for the seller agent. It enables natural language communication between buyer and seller agents over JSON-RPC 2.0. The seller agent interprets requests, selects appropriate tools, and responds with mixed text and structured data.
 
 ## Endpoints
