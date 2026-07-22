@@ -3561,7 +3561,7 @@
           "Packages"
         ],
         "summary": "Assemble Package",
-        "description": "Assemble a dynamic package (Layer 3) from product IDs.",
+        "description": "Assemble a dynamic package (Layer 3) from product IDs.\n\nProduct ids resolve catalog-first with storage fallback (issue #34) \u2014\nthe same resolution as ``POST /packages``. Zero resolution is a 422\nnaming the unresolved ids; partial resolution surfaces\n``unresolved_ids``/``warnings`` on the response.",
         "operationId": "assemble_package_packages_assemble_post",
         "requestBody": {
           "content": {

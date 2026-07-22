@@ -170,6 +170,65 @@ async def search_media_kit(
 # =============================================================================
 
 
+async def _resolve_package_products(product_ids: list[str], storage):
+    """Resolve product ids to ProductDefinitions, catalog-first.
+
+    ``GET /products`` serves the in-memory static catalog
+    (``deps.get_product_catalog()``), which is never persisted to storage —
+    so package endpoints must resolve ids against that same catalog first,
+    falling back to ``storage.get_product`` for products persisted by the
+    negotiation flow (issue #34: storage-only resolution silently produced
+    packages with empty placements).
+
+    Returns ``(resolved, unresolved_ids)`` preserving input order.
+    """
+    from ....models.flow_state import ProductDefinition
+
+    catalog_products = deps.get_product_catalog()["products"]
+    resolved = []
+    unresolved: list[str] = []
+    for pid in product_ids:
+        prod = catalog_products.get(pid)
+        if prod is None:
+            data = await storage.get_product(pid)
+            if data:
+                prod = ProductDefinition(**data)
+        if prod is None:
+            unresolved.append(pid)
+        else:
+            resolved.append(prod)
+    return resolved, unresolved
+
+
+def _require_some_resolution(product_ids: list[str], resolved: list, unresolved: list[str]):
+    """422 when product_ids were supplied but NONE resolved (fail loudly)."""
+    if product_ids and not resolved:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "unresolvable_product_ids",
+                "message": (
+                    "None of the supplied product_ids could be resolved to "
+                    f"known products: {', '.join(unresolved)}. Use ids from "
+                    "GET /products or products persisted via negotiation."
+                ),
+                "unresolved_ids": unresolved,
+            },
+        )
+
+
+def _partial_resolution_extras(unresolved: list[str]) -> dict[str, Any]:
+    """Response fields surfacing partially-unresolved product_ids."""
+    if not unresolved:
+        return {}
+    return {
+        "unresolved_ids": unresolved,
+        "warnings": [
+            f"Skipped {len(unresolved)} unresolved product_id(s): {', '.join(unresolved)}."
+        ],
+    }
+
+
 @router.get("/packages", tags=["Packages"])
 async def list_packages(
     buyer_tier: str = "public",
@@ -265,22 +324,20 @@ async def create_package(request: PackageCreateRequest):
 
     storage = await get_storage()
 
-    # Build placements from product_ids
-    placements = []
-    for pid in request.product_ids:
-        prod_data = await storage.get_product(pid)
-        if prod_data:
-            from ....models.flow_state import ProductDefinition
-
-            prod = ProductDefinition(**prod_data)
-            placements.append(
-                PackagePlacement(
-                    product_id=prod.product_id,
-                    product_name=prod.name,
-                    ad_formats=request.ad_formats or _default_ad_formats(prod.inventory_type),
-                    device_types=request.device_types or _default_device_types(prod.inventory_type),
-                )
-            )
+    # Build placements from product_ids — catalog-first resolution with
+    # storage fallback (issue #34: storage-only lookups silently dropped
+    # every id sourced from GET /products, yielding placements: []).
+    resolved, unresolved = await _resolve_package_products(request.product_ids, storage)
+    _require_some_resolution(request.product_ids, resolved, unresolved)
+    placements = [
+        PackagePlacement(
+            product_id=prod.product_id,
+            product_name=prod.name,
+            ad_formats=request.ad_formats or _default_ad_formats(prod.inventory_type),
+            device_types=request.device_types or _default_device_types(prod.inventory_type),
+        )
+        for prod in resolved
+    ]
 
     # Build kwargs for Package -- prefer the new typed audience_capabilities
     # when supplied; otherwise pass the legacy audience_segment_ids and let
@@ -320,7 +377,7 @@ async def create_package(request: PackageCreateRequest):
         payload={"package_id": created.package_id, "name": created.name, "layer": "curated"},
     )
 
-    return created.model_dump(mode="json")
+    return created.model_dump(mode="json") | _partial_resolution_extras(unresolved)
 
 
 @router.put("/packages/{package_id}", tags=["Packages"])
@@ -354,12 +411,28 @@ async def delete_package(package_id: str):
 
 @router.post("/packages/assemble", tags=["Packages"])
 async def assemble_package(request: DynamicPackageRequest):
-    """Assemble a dynamic package (Layer 3) from product IDs."""
+    """Assemble a dynamic package (Layer 3) from product IDs.
+
+    Product ids resolve catalog-first with storage fallback (issue #34) —
+    the same resolution as ``POST /packages``. Zero resolution is a 422
+    naming the unresolved ids; partial resolution surfaces
+    ``unresolved_ids``/``warnings`` on the response.
+    """
+    from ....storage.factory import get_storage
+
+    storage = await get_storage()
+    resolved, unresolved = await _resolve_package_products(request.product_ids, storage)
+    _require_some_resolution(request.product_ids, resolved, unresolved)
+
     service = await deps._get_media_kit_service()
-    package = await service.assemble_dynamic_package(request.name, request.product_ids)
+    package = await service.assemble_dynamic_package(
+        request.name, request.product_ids, products=resolved
+    )
     if not package:
+        # Products resolved but none are priceable (or none supplied) —
+        # the service refuses to fabricate a price.
         raise HTTPException(status_code=400, detail="No valid products found for assembly")
-    return package.model_dump(mode="json")
+    return package.model_dump(mode="json") | _partial_resolution_extras(unresolved)
 
 
 @router.post("/packages/sync", tags=["Packages"])
