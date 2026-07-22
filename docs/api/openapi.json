@@ -727,13 +727,21 @@
           "Products"
         ],
         "summary": "Check Avails",
-        "description": "OpenDirect availability check for a product (shared avails contract).\n\nRequest/response models are the canonical\n``iab_agentic_primitives.protocol`` avails messages (EP-12 adoption).\nCalled by the buyer agent's OpenDirect client (``check_avails``).\nAvailability is derived honestly from the cached static catalog:\nrequested impressions come from ``requestedImpressions``, else are\nbudget-derived at the product CPM, else fall back to the product's\n``minimum_impressions``; ``maximum_impressions`` (when set) caps\navailability. ``deliveryConfidence`` is OMITTED (no forecast data\nsource \u2014 never fabricated) and products with neither ``base_cpm`` nor\n``floor_cpm`` are a 422 \u2014 never a fabricated price. The request's\n``targeting`` field is accepted but not used for filtering.\nSee :func:`ad_seller.services.catalog_service.check_avails` for the\nfull policy.",
+        "description": "OpenDirect availability check (shared avails contract, BOTH dialects).\n\nRequest/response models are the canonical\n``iab_agentic_primitives.protocol`` avails messages (EP-12 adoption).\nThe published OpenDirect 2.1 ``ProductAvailsSearch`` (multi-product\n``productids`` array + required ``accountid``/``advertiserbrandid``)\nand the legacy simplified profile (scalar ``productid``) are both\naccepted, discriminated by their mutually-exclusive required fields;\nthe response dialect follows the request dialect.\n\nAvailability is derived honestly from the cached static catalog:\nrequested impressions come from ``requestedImpressions`` (legacy) or\nthe minted Investment ``producttargeting`` entries (spec), else are\nbudget-derived at the product CPM, else fall back to the product's\n``minimum_impressions``; ``maximum_impressions`` (when set) caps\navailability. ``deliveryConfidence`` is OMITTED (no forecast data\nsource \u2014 never fabricated) and products with neither ``base_cpm`` nor\n``floor_cpm`` are a 422 \u2014 never a fabricated price. The request's\n``targeting`` field is accepted but not used for filtering.\nSee :func:`ad_seller.services.catalog_service.check_avails` for the\nfull policy.",
         "operationId": "check_avails_products_avails_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AvailsRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ProductAvailsSearch"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AvailsRequest"
+                  }
+                ],
+                "title": "Request"
               }
             }
           },
@@ -745,7 +753,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AvailsResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AvailsCollection"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AvailsResponse"
+                    }
+                  ],
+                  "title": "Response Check Avails Products Avails Post"
                 }
               }
             }
@@ -5095,6 +5111,104 @@
         "title": "AudienceFilterModel",
         "description": "Optional audience filter sub-object on `POST /media-kit/search`.\n\nMirrors the query-param triple on `GET /packages`: type + id + version.\nWhen present, search results are restricted to packages whose\n`audience_capabilities` match. See proposal \u00a75.7."
       },
+      "Avails": {
+        "properties": {
+          "productid": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Productid",
+            "description": "Product the availability + pricing is for (spec-required)."
+          },
+          "accountid": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Accountid",
+            "description": "Echo of the requesting account (spec-required)."
+          },
+          "availability": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Availability",
+            "description": "Quantity available for booking in the date range."
+          },
+          "availsstatus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvailsStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Availability grouping (Available / Partially Available / Unavailable)."
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency",
+            "description": "ISO-4217 currency code."
+          },
+          "price": {
+            "type": "number",
+            "title": "Price",
+            "description": "The product's price (spec-required; OpenDirect 2.1 float dialect, FD-11 exception)."
+          },
+          "startdate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Startdate",
+            "description": "Echo of the requested delivery start (spec-required)."
+          },
+          "enddate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enddate",
+            "description": "Echo of the requested delivery end (spec-required)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "productid",
+          "accountid",
+          "price",
+          "startdate",
+          "enddate"
+        ],
+        "title": "Avails",
+        "description": "Spec per-product RESPONSE record for ``POST /products/avails``.\n\n``price`` stays a float per the OpenDirect 2.1 decimal dialect (the\nFD-11 exception documented in the module docstring)."
+      },
+      "AvailsCollection": {
+        "properties": {
+          "avails": {
+            "items": {
+              "$ref": "#/components/schemas/Avails"
+            },
+            "type": "array",
+            "title": "Avails",
+            "description": "One Avails record per product in the request."
+          }
+        },
+        "type": "object",
+        "required": [
+          "avails"
+        ],
+        "title": "AvailsCollection",
+        "description": "Spec response envelope: the ``avails`` collection object.\n\nPer the spec's Collection Objects table the ``POST /products/avails``\nresponse must be an object whose array property is named ``avails``\n(one record per requested product; empty when nothing matches)."
+      },
       "AvailsRequest": {
         "properties": {
           "productid": {
@@ -5237,6 +5351,97 @@
         ],
         "title": "AvailsResponse",
         "description": "Response body for ``POST /products/avails``.\n\nHonest-availability policy: every number is derived from catalog\ndata \u2014 nothing is fabricated. Optional fields with no value are\nOMITTED from the wire, not sent as ``null`` (readers tolerate ``null``\nfrom pre-contract emitters)."
+      },
+      "AvailsStatus": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/AvailsStatusValue",
+            "description": "Available, Partially Available, or Unavailable."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvailsStatusReason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Spec-enumerated reason when Partially Available or Unavailable."
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment",
+            "description": "Free-text availability comment."
+          },
+          "context": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProductTargeting"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context",
+            "description": "ProductTargeting entries describing the context of a Partially Available or Unavailable status."
+          },
+          "producttargeting": {
+            "items": {
+              "$ref": "#/components/schemas/ProductTargeting"
+            },
+            "type": "array",
+            "title": "Producttargeting",
+            "description": "ProductTargeting entries describing the inventory at this status (spec-required)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "producttargeting"
+        ],
+        "title": "AvailsStatus",
+        "description": "Spec ``Object: AvailsStatus`` \u2014 availability grouping for a product."
+      },
+      "AvailsStatusReason": {
+        "type": "string",
+        "enum": [
+          "Booked",
+          "Optioned",
+          "Excluded",
+          "OutOfCharge",
+          "Prohibited",
+          "Manual Trade Only",
+          "InvalidPeriodLength",
+          "InvalidFrameID",
+          "InvalidBudget",
+          "InvalidPrice",
+          "ClientDuplication",
+          "LocationDuplication",
+          "LocationJuxta"
+        ],
+        "title": "AvailsStatusReason",
+        "description": "Spec ``AvailsStatus.reason``: why inventory is not fully available."
+      },
+      "AvailsStatusValue": {
+        "type": "string",
+        "enum": [
+          "Available",
+          "Partially Available",
+          "Unavailable"
+        ],
+        "title": "AvailsStatusValue",
+        "description": "Spec ``AvailsStatus.status`` (note the space in the middle value)."
       },
       "BulkDealOperation": {
         "properties": {
@@ -8099,6 +8304,127 @@
         "title": "Product",
         "description": "Sellable unit of publisher inventory.\n\nMerges the buyer's OpenDirect (the IAB direct-buying API standard)\n``Product`` with the seller's taxonomy-driven ``Product``. Targeting\nintent uses the three IAB (Interactive Advertising Bureau) taxonomies:\nAudience (who sees the ad), Ad Product (what is advertised), and\nContent (where ads appear).\n\n``base_price`` is the seller's public/list price signal, if disclosed;\nthe private negotiated rate for a buyer/seller pair lives on their\nRateCard (flagged decision FD-9), never here.\n\nID minting: ``product_id`` is seller-issued."
       },
+      "ProductAvailsSearch": {
+        "properties": {
+          "productids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Productids",
+            "description": "Products to get availability + pricing for (spec-required, non-empty)."
+          },
+          "targeting": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targeting",
+            "description": "AdCOM Segment object array ({\"name\": <dimension>, \"value\": <value>})."
+          },
+          "producttargeting": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProductTargeting"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Producttargeting",
+            "description": "ProductTargeting entries to target for the availability request."
+          },
+          "accountid": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Accountid",
+            "description": "Account identifying the buyer, advertiser, and other stakeholders (spec-required)."
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency",
+            "description": "ISO-4217 currency code."
+          },
+          "advertiserbrandid": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Advertiserbrandid",
+            "description": "Brand being advertised (spec-required)."
+          },
+          "availabilityfields": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProductTargeting"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Availabilityfields",
+            "description": "ProductTargeting metrics availability is returned as."
+          },
+          "grouping": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProductTargeting"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grouping",
+            "description": "ProductTargeting metrics the availability output is grouped by."
+          },
+          "startdate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Startdate",
+            "description": "Desired delivery start (ISO-8601)."
+          },
+          "enddate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enddate",
+            "description": "Desired delivery end (ISO-8601); must be after startdate."
+          }
+        },
+        "type": "object",
+        "required": [
+          "productids",
+          "accountid",
+          "advertiserbrandid",
+          "startdate",
+          "enddate"
+        ],
+        "title": "ProductAvailsSearch",
+        "description": "Spec REQUEST body for ``POST /products/avails``.\n\nThe published multi-product form: ``productids`` is an array, and\n``accountid``/``advertiserbrandid`` are required. Use\n:meth:`to_simplified` to bridge to the legacy single-product queries\n(one per product id), recovering any minted Investment extension\nentries (requested volume / budget) and the Segment-array targeting."
+      },
       "ProductListResponse": {
         "properties": {
           "products": {
@@ -8166,6 +8492,117 @@
         ],
         "title": "ProductRef",
         "description": "Lightweight product summary embedded in quotes and deals."
+      },
+      "ProductTargeting": {
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/TargetingDimension",
+            "description": "What is described: Inventory, Delivery, Distribution, Investment, or Prohibitions."
+          },
+          "type": {
+            "$ref": "#/components/schemas/TargetingUnit",
+            "description": "How it is quantified: Frames, Audience, Investment, or Total."
+          },
+          "datasource": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Datasource",
+            "description": "Data source that defines the target vocabulary (third-party schemas welcome by design)."
+          },
+          "target": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Target",
+            "description": "The targeted metric within datasource."
+          },
+          "targetvalues": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Targetvalues",
+            "description": "One or more values for the target (strings on the wire)."
+          },
+          "selectable": {
+            "type": "boolean",
+            "title": "Selectable",
+            "description": "Whether a buyer may select from targetvalues or the values are fixed."
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count",
+            "description": "Count of targetvalues."
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum",
+            "description": "Minimum number of selectable targetvalues."
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum",
+            "description": "Maximum number of selectable targetvalues."
+          },
+          "increment": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Increment",
+            "description": "Permitted increment between target values."
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default",
+            "description": "Default targetvalue(s) when the buyer selects none."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "datasource",
+          "target",
+          "targetvalues",
+          "selectable"
+        ],
+        "title": "ProductTargeting",
+        "description": "Spec ``Object: ProductTargeting`` \u2014 dimensional targeting/metrics.\n\nAll-lowercase wire names per the normative table; the six starred\nattributes are required."
       },
       "ProposalRequest": {
         "properties": {
@@ -9305,6 +9742,29 @@
         ],
         "title": "SupplyChainResponse",
         "description": "Supply chain transparency response (sellers.json-like self-description)."
+      },
+      "TargetingDimension": {
+        "type": "string",
+        "enum": [
+          "Inventory",
+          "Delivery",
+          "Distribution",
+          "Investment",
+          "Prohibitions"
+        ],
+        "title": "TargetingDimension",
+        "description": "Spec ``ProductTargeting.name``: what the entry describes."
+      },
+      "TargetingUnit": {
+        "type": "string",
+        "enum": [
+          "Frames",
+          "Audience",
+          "Investment",
+          "Total"
+        ],
+        "title": "TargetingUnit",
+        "description": "Spec ``ProductTargeting.type``: how the entry is quantified."
       },
       "TransitionOrderRequest": {
         "properties": {
