@@ -288,15 +288,15 @@ class TestListDeals:
         await self.client.list_deals(status=SSPDealStatus.ACTIVE)
 
         _, args = self.client._mcp_client.call_tool.call_args[0]
-        assert args["sellerStatus"] == 0  # ACTIVE maps to sellerStatus=0
+        assert args["status"] == 0  # ACTIVE maps to status=0 (deals-api-mcp schema)
 
     @pytest.mark.asyncio
-    async def test_no_status_filter_omits_seller_status_param(self):
+    async def test_no_status_filter_omits_status_param(self):
         self.client._mcp_client.call_tool.return_value = {"deals": []}
         await self.client.list_deals()
 
         _, args = self.client._mcp_client.call_tool.call_args[0]
-        assert "sellerStatus" not in args
+        assert "status" not in args
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_on_non_dict_response(self):
@@ -382,6 +382,41 @@ class TestCloneDeal:
         create_call = self.client._mcp_client.call_tool.call_args_list[1]
         _, args = create_call[0]
         assert args["dealFloor"] == 12.0
+
+
+# ---------------------------------------------------------------------------
+# update_deal
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateDeal:
+    def setup_method(self):
+        self.client = _make_client()
+
+    @pytest.mark.asyncio
+    async def test_passes_id_and_updates_to_mcp(self):
+        self.client._mcp_client.call_tool.return_value = {
+            "deal": {"id": "u1", "externalDealId": "ext-u1", "sellerStatus": 0, "terms": {"dealFloor": 12.0}}
+        }
+        await self.client.update_deal("u1", {"name": "Updated Name", "dealFloor": 12.0})
+
+        tool_name, args = self.client._mcp_client.call_tool.call_args[0]
+        assert tool_name == "deals_update"
+        assert args["id"] == "u1"
+        assert args["name"] == "Updated Name"
+        assert args["dealFloor"] == 12.0
+
+    @pytest.mark.asyncio
+    async def test_returns_updated_ssp_deal(self):
+        self.client._mcp_client.call_tool.return_value = {
+            "deal": {"id": "u2", "externalDealId": "ext-u2", "sellerStatus": 0, "terms": {"dealFloor": 5.0}}
+        }
+        result = await self.client.update_deal("u2", {"dealFloor": 5.0})
+
+        assert result.deal_id == "u2"
+        assert result.external_deal_id == "ext-u2"
+        assert result.cpm == 5.0
+        assert result.status == SSPDealStatus.ACTIVE
 
 
 # ---------------------------------------------------------------------------

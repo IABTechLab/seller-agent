@@ -318,7 +318,7 @@ class DealsAPIMCPClient(DealSyncClient):
     ) -> list[SSPDeal]:
         args: dict[str, Any] = {"pageSize": min(limit, 100)}
         if status is not None and status in _STATUS_TO_SELLER_INT:
-            args["sellerStatus"] = _STATUS_TO_SELLER_INT[status]
+            args["status"] = _STATUS_TO_SELLER_INT[status]
         raw = await self._call_tool("deals_list", args)
         if isinstance(raw, dict):
             items = raw.get("deals", raw.get("items", []))
