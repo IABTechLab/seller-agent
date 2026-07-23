@@ -133,7 +133,7 @@ sequenceDiagram
 !!! note "Persistent session"
     `DealsAPIMCPClient` keeps a **class-level persistent background task** so the MCP session is created on first use and reused across subsequent `async with` blocks without re-initializing.
 
-    If the connection drops (or the MCP URL changes), the next `__aenter__` stops the old background task and starts a fresh session — no process restart required.
+    If the connection drops, the stale session is detected on the next tool call (via a 30 s timeout), the background task is restarted, and the call is retried automatically — no process restart required. The first request after a drop may take up to 30 seconds while reconnection completes; subsequent requests are unaffected.
 
 ## Related
 

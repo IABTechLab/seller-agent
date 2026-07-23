@@ -38,6 +38,10 @@ from .ssp_base import (
 
 logger = logging.getLogger(__name__)
 
+
+class _StaleSessionError(Exception):
+    """Internal sentinel raised when a tool call signals the session is gone."""
+
 # deals-api-mcp sellerStatus integer → SSPDealStatus
 # SellerStatus enum: 0=Active, 1=Paused, 2=Pending, 4=Complete, 5=Archived
 _SELLER_STATUS_MAP: dict[int, SSPDealStatus] = {
@@ -214,6 +218,52 @@ class DealsAPIMCPClient(DealSyncClient):
         cls._session_task = asyncio.create_task(_run_session())
         await cls._session_ready.wait()
 
+    # ── Tool call wrapper ──────────────────────────────────────────────────
+
+    async def _call_tool(self, tool_name: str, args: dict[str, Any]) -> Any:
+        """Call an MCP tool, detecting stale sessions and reconnecting once.
+
+        Two failure modes after a server restart:
+        - Hang: tool call POST gets 400 but SDK waits for SSE response that
+          never arrives (session_alive lied — SDK reconnect loop kept the
+          background task running with the old session ID). A timeout breaks
+          the hang and triggers reconnect.
+        - Immediate error: SDK raises httpx.HTTPStatusError(400/404). Caught
+          here and also triggers reconnect.
+        """
+        import httpx
+
+        _TOOL_TIMEOUT = 30.0  # seconds before treating a call as hung/stale
+
+        async def _attempt() -> Any:
+            try:
+                return await asyncio.wait_for(
+                    self._mcp_client.call_tool(tool_name, args),
+                    timeout=_TOOL_TIMEOUT,
+                )
+            except (TimeoutError, asyncio.TimeoutError):
+                raise _StaleSessionError("tool call timed out — stale session suspected")
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (400, 404):
+                    raise _StaleSessionError(str(exc)) from exc
+                raise
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "400" in msg or "404" in msg or "bad request" in msg or "not found" in msg:
+                    raise _StaleSessionError(str(exc)) from exc
+                raise
+
+        try:
+            return await _attempt()
+        except _StaleSessionError:
+            logger.info("Stale MCP session detected — reconnecting to %s", self._mcp_url)
+            async with self._get_lock():
+                await self._start_shared_session()
+            if DealsAPIMCPClient._session_error:
+                raise DealsAPIMCPClient._session_error
+            self._mcp_client = DealsAPIMCPClient._shared_mcp  # type: ignore[assignment]
+            return await _attempt()
+
     # ── Deal Operations ────────────────────────────────────────────────────
 
     async def create_deal(self, request: SSPDealCreateRequest) -> SSPDeal:
@@ -248,7 +298,7 @@ class DealsAPIMCPClient(DealSyncClient):
         if getattr(request, "currency", None):
             args["currency"] = request.currency
 
-        raw = await self._mcp_client.call_tool("deals_create", args)
+        raw = await self._call_tool("deals_create", args)
         deal = self._parse_deal(raw)
         # deals-api-mcp has no dealType concept — echo back the requested type
         # so callers aren't silently told every deal is PMP.
@@ -257,7 +307,7 @@ class DealsAPIMCPClient(DealSyncClient):
         return deal
 
     async def get_deal(self, deal_id: str) -> SSPDeal:
-        raw = await self._mcp_client.call_tool("deals_status", {"dealId": deal_id})
+        raw = await self._call_tool("deals_status", {"dealId": deal_id})
         return self._parse_deal(raw)
 
     async def list_deals(
@@ -269,7 +319,7 @@ class DealsAPIMCPClient(DealSyncClient):
         args: dict[str, Any] = {"pageSize": min(limit, 100)}
         if status is not None and status in _STATUS_TO_SELLER_INT:
             args["sellerStatus"] = _STATUS_TO_SELLER_INT[status]
-        raw = await self._mcp_client.call_tool("deals_list", args)
+        raw = await self._call_tool("deals_list", args)
         if isinstance(raw, dict):
             items = raw.get("deals", raw.get("items", []))
             return [self._parse_deal({"deal": d}) for d in items]
@@ -281,7 +331,7 @@ class DealsAPIMCPClient(DealSyncClient):
         overrides: Optional[dict[str, Any]] = None,
     ) -> SSPDeal:
         """Clone by fetching the source deal and creating a new one with overrides."""
-        source_raw = await self._mcp_client.call_tool("deals_status", {"dealId": source_deal_id})
+        source_raw = await self._call_tool("deals_status", {"dealId": source_deal_id})
 
         # Build create args from source deal's terms, apply overrides
         source_deal = source_raw.get("deal", {}) if isinstance(source_raw, dict) else {}
@@ -306,15 +356,15 @@ class DealsAPIMCPClient(DealSyncClient):
         if overrides:
             args.update(overrides)
 
-        raw = await self._mcp_client.call_tool("deals_create", args)
+        raw = await self._call_tool("deals_create", args)
         return self._parse_deal(raw)
 
     async def update_deal(self, deal_id: str, updates: dict[str, Any]) -> SSPDeal:
-        raw = await self._mcp_client.call_tool("deals_update", {"id": deal_id, **updates})
+        raw = await self._call_tool("deals_update", {"id": deal_id, **updates})
         return self._parse_deal(raw)
 
     async def troubleshoot_deal(self, deal_id: str) -> SSPTroubleshootResult:
-        raw = await self._mcp_client.call_tool("deals_status", {"dealId": deal_id})
+        raw = await self._call_tool("deals_status", {"dealId": deal_id})
 
         issues: list[str] = []
         if isinstance(raw, dict):
