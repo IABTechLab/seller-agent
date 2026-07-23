@@ -38,6 +38,7 @@ class SSPType(str, Enum):
     INDEX_EXCHANGE = "index_exchange"
     OPENX = "openx"
     XANDR = "xandr"
+    DEAL_SYNC = "deal_sync"  # IAB Deal Sync API hub (e.g. deals-api-mcp)
     CUSTOM = "custom"
 
 
@@ -65,6 +66,7 @@ class SSPDeal(BaseModel):
     """Normalized deal representation from an SSP."""
 
     deal_id: str
+    external_deal_id: Optional[str] = None  # OpenRTB / IAB deal ID (e.g. "IAB-...")
     name: Optional[str] = None
     deal_type: SSPDealType = SSPDealType.PMP
     status: SSPDealStatus = SSPDealStatus.CREATED
