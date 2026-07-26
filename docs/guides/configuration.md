@@ -86,7 +86,7 @@ ad-seller freewheel-login --provider bc
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `DEFAULT_LLM_MODEL` | `str` | `"anthropic/claude-sonnet-4-5-20250929"` | Model for specialist agents (pricing, negotiation, etc.) |
-| `MANAGER_LLM_MODEL` | `str` | `"anthropic/claude-opus-4-20250514"` | Model for manager/orchestrator agents |
+| `MANAGER_LLM_MODEL` | `str` | `"anthropic/claude-opus-4-8"` | Model for manager/orchestrator agents |
 | `LLM_TEMPERATURE` | `float` | `0.3` | LLM temperature (lower = more deterministic) |
 | `LLM_MAX_TOKENS` | `int` | `4096` | Maximum tokens per LLM response |
 | `OPENAI_COMPATIBLE_LLM_API_KEY` | `str` | `None` | API key for a [custom OpenAI-compatible endpoint](#custom-openai-compatible-endpoints) (optional — some endpoints don't require one) |
@@ -263,7 +263,7 @@ GAM_API_VERSION=v202505
 # LLM
 # =============================================================================
 DEFAULT_LLM_MODEL=anthropic/claude-sonnet-4-5-20250929
-MANAGER_LLM_MODEL=anthropic/claude-opus-4-20250514
+MANAGER_LLM_MODEL=anthropic/claude-opus-4-8
 LLM_TEMPERATURE=0.3
 LLM_MAX_TOKENS=4096
 
