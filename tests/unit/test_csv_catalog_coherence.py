@@ -215,6 +215,16 @@ class TestNonCsvModesUnchanged:
         second = catalog_service.get_static_product_catalog()
         assert list(first["products"].keys()) == list(second["products"].keys())
 
+    def test_default_mode_ids_survive_cache_reset(self, default_mode):
+        # Proxy for multi-worker and restart behavior (issue #34): each uvicorn
+        # worker builds its own catalog cache, so ids must be deterministic
+        # across independent builds, not merely stable within one cache.
+        first = catalog_service.get_static_product_catalog()
+        catalog_service.reset_catalog_cache()
+        second = catalog_service.get_static_product_catalog()
+        assert list(first["products"].keys()) == list(second["products"].keys())
+        assert len(set(first["products"])) == len(catalog_service.DEFAULT_PRODUCT_CONFIGS)
+
 
 # =============================================================================
 # API surface — CSV mode
