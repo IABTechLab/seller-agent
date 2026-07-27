@@ -1101,6 +1101,13 @@ async def _resume_ssp_distribution(request, response):
     create_request = SSPDealCreateRequest(**snapshot["create_request"])
     create_request.dsp_id = selected_dsp_id
 
+    # Any other create_request field the human supplies at decision time
+    # (e.g. account_id, name, targeting) — fields the SSP needs that
+    # distribute_deal_via_ssp never had a value for when the gate fired.
+    for field, value in response.modifications.items():
+        if field != "selected_dsp_id" and hasattr(create_request, field):
+            setattr(create_request, field, value)
+
     registry = build_ssp_registry()
     ssp = registry.get_client(snapshot["ssp_name"])
 
@@ -4533,6 +4540,7 @@ class SSPDealDistributeRequest(BaseModel):
     advertiser: Optional[str] = None
     cpm: Optional[float] = None
     buyer_seat_ids: Optional[list[str]] = None
+    account_id: Optional[int] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     targeting: Optional[list[dict[str, Any]]] = None
@@ -4630,6 +4638,7 @@ async def distribute_deal_via_ssp(request: SSPDealDistributeRequest):
     """
     from ...clients.ssp_base import SSPDealCreateRequest, SSPDealType
     from ...clients.ssp_factory import build_ssp_registry
+    from ...storage.factory import get_storage
 
     registry = build_ssp_registry()
 
@@ -4666,28 +4675,37 @@ async def distribute_deal_via_ssp(request: SSPDealDistributeRequest):
         "PMP": SSPDealType.PMP,
         "PG": SSPDealType.PG,
         "PREFERRED": SSPDealType.PREFERRED,
+        "AUCTION_PACKAGE": SSPDealType.AUCTION_PACKAGE,
         "pmp": SSPDealType.PMP,
         "pg": SSPDealType.PG,
         "preferred": SSPDealType.PREFERRED,
+        "auction_package": SSPDealType.AUCTION_PACKAGE,
     }
+
+    # Same fallback push_deal_to_buyers already uses: no MCP tool lets the
+    # LLM set buyer_seat_ids on this route, so without this a stored deal's
+    # seat IDs (set at creation time) would never reach DSP resolution.
+    storage = await get_storage()
+    stored_deal = await storage.get_deal(request.deal_id)
 
     create_request = SSPDealCreateRequest(
         deal_type=deal_type_map.get(request.deal_type or "PMP", SSPDealType.PMP),
         name=request.name,
         advertiser=request.advertiser,
         cpm=request.cpm,
-        buyer_seat_ids=request.buyer_seat_ids or [],
-        start_date=request.start_date,
-        end_date=request.end_date,
+        buyer_seat_ids=request.buyer_seat_ids or (stored_deal or {}).get("buyer_seat_ids", []),
+        account_id=request.account_id or (stored_deal or {}).get("account_id"),
+        start_date=request.start_date or (stored_deal or {}).get("flight_start"),
+        end_date=request.end_date or (stored_deal or {}).get("flight_end"),
         targeting=request.targeting,
         external_deal_id=request.deal_id,
     )
 
-    pending = await _resolve_dsp_id_or_pending_approval(ssp, create_request, request.deal_id)
-    if pending is not None:
-        return pending
-
     async with ssp:
+        pending = await _resolve_dsp_id_or_pending_approval(ssp, create_request, request.deal_id)
+        if pending is not None:
+            return pending
+
         result = await ssp.create_deal(create_request)
 
     return {
