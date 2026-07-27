@@ -15,10 +15,18 @@ All tools use the polymorphic ad server abstraction — never import
 GAM or FreeWheel directly.
 
 Usage:
-    # Standalone:
+    # Standalone, stdio transport (default) — for local MCP clients that
+    # spawn this process directly, e.g. Claude Desktop / Claude Code. Opens
+    # no network port; the client talks to it over the process's stdin/stdout.
     python -m ad_seller.interfaces.mcp_server
 
-    # Mounted in FastAPI (see mount_mcp_sse in api/main.py):
+    # Standalone, network transport:
+    python -m ad_seller.interfaces.mcp_server --transport sse
+
+    # Mounted in FastAPI (see lifespan() in api/main.py), streamable HTTP
+    # and legacy SSE — used for remote/hosted deployments and for
+    # machine-to-machine callers (e.g. a buyer agent) that can't spawn
+    # this process locally:
     from ad_seller.interfaces.mcp_server import mcp
 """
 
@@ -1414,4 +1422,34 @@ def _update_env(key: str, value: str) -> None:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="sse")
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run the seller agent MCP server standalone."
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http"],
+        default="stdio",
+        help=(
+            "Transport to serve over. 'stdio' (default) is for local MCP "
+            "clients that spawn this process directly (e.g. Claude Desktop's "
+            "claude_desktop_config.json 'command'/'args', or Claude Code) — "
+            "no network port is opened. 'sse' and 'streamable-http' bind a "
+            "local TCP port instead; prefer running the full FastAPI app "
+            "(ad_seller.interfaces.api.main:app) for those, since it also "
+            "wires up the session manager lifecycle these transports need."
+        ),
+    )
+    args = parser.parse_args()
+    try:
+        mcp.run(transport=args.transport)
+    finally:
+        # Without this, the aiosqlite connection's background worker thread
+        # is never joined, and Python's interpreter shutdown hangs forever
+        # waiting for it once the client (stdin) disconnects.
+        import asyncio
+
+        from ..storage.factory import close_storage
+
+        asyncio.run(close_storage())

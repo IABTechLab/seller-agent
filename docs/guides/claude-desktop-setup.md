@@ -31,7 +31,7 @@ Works on both **Claude Desktop** and **Claude on the web** (claude.ai):
 
 ### Option B: Local Development Server
 
-For seller agents running on `localhost`:
+Claude Desktop's JSON config method launches the server as a local **stdio** subprocess — Claude spawns it directly and talks over its stdin/stdout, so no network port is opened and there's nothing to allowlist.
 
 1. Open Claude Desktop
 2. Go to **Settings > Developer > Edit Config**
@@ -41,8 +41,8 @@ For seller agents running on `localhost`:
 {
   "mcpServers": {
     "seller-agent": {
-      "command": "uvicorn",
-      "args": ["ad_seller.interfaces.api.main:app", "--port", "8000"],
+      "command": "python",
+      "args": ["-m", "ad_seller.interfaces.mcp_server"],
       "env": {
         "ANTHROPIC_API_KEY": "your-key"
       }
