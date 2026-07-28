@@ -76,6 +76,7 @@ nav:
   - Integration:
       - Buyer Agent Guide: integration/buyer-agent.md
       - Negotiation Protocol: integration/negotiation.md
+      - deals-api-mcp: integration/deals-api-mcp.md
   - AI Assistant Setup:
       - Claude (Desktop & Web): guides/claude-desktop-setup.md
       - ChatGPT, Codex & AI IDEs: guides/chatgpt-setup.md

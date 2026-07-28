@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""Protocol clients for OpenDirect 2.1, A2A, GAM, SSP, and ad server abstraction."""
+"""Protocol clients for OpenDirect 2.1, A2A, GAM, SSP, deal-sync, and ad server abstraction."""
 
 from .a2a_client import A2AClient, A2AResponse
 from .ad_server_base import (
@@ -16,6 +16,9 @@ from .ad_server_base import (
     get_ad_server_client,
 )
 from .csv_adapter import CSVAdServerClient
+from .deal_sync_base import DealSyncClient, DealSyncProvider, DealSyncRegistry
+from .deal_sync_factory import build_deal_sync_registry
+from .deals_api_mcp_client import DealsAPIMCPClient
 from .freewheel_adapter import FreeWheelAdServerClient
 from .gam_rest_client import GAMRestClient
 from .gam_soap_client import GAMSoapClient
@@ -65,4 +68,10 @@ __all__ = [
     "RESTSSPClient",
     "build_ssp_registry",
     "IndexExchangeSSPClient",
+    # Deal-sync abstraction
+    "DealSyncClient",
+    "DealSyncProvider",
+    "DealSyncRegistry",
+    "DealsAPIMCPClient",
+    "build_deal_sync_registry",
 ]
