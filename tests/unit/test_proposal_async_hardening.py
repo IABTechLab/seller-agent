@@ -90,7 +90,10 @@ class TestSubmitProposalAsyncHardening:
 
         assert result["recommendation"] == "reject"
         assert result["status"] == "failed"
-        assert any("crew exploded" in e for e in result["errors"])
+        # Causeful taxonomy (issue #34): errors[] entries are structured
+        # {stage, code, detail} objects; a whole-flow crash is `internal`.
+        assert any("crew exploded" in e["detail"] for e in result["errors"])
+        assert all(e["stage"] == "flow" and e["code"] == "internal" for e in result["errors"])
 
     async def test_missing_recommendation_defaults_to_reject(self):
         """A flow that completes without a recommendation must not KeyError."""
