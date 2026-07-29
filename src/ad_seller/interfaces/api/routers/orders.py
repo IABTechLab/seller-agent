@@ -77,12 +77,13 @@ async def get_order_history(
 async def transition_order(
     order_id: str,
     request: TransitionOrderRequest,
-    _auth: None = Depends(deps._get_optional_api_key_record),
+    _operator=Depends(deps._require_operator_api_key_record),
 ):
     """Transition an order to a new state.
 
     Validates the transition against the state machine rules and
-    records the change in the audit log.
+    records the change in the audit log. Requires an operator
+    credential — state transitions drive billing-relevant lifecycle.
     """
     return await order_service.transition_order(
         order_id=order_id,

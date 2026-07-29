@@ -4,6 +4,62 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### BREAKING — 2.4.0: admin surface now requires operator credentials
+
+API keys now carry a role (`buyer` or `operator`), and every
+seller-side admin/mutation surface requires an operator-role key.
+Requests without a key get `401`; requests with a buyer-role key get
+`403`. Buyer-facing paths (discovery, products, avails, pricing,
+quotes, proposals, negotiation, deal booking reads, order/CR reads,
+change-request submission) are unchanged.
+
+Operator-gated REST endpoints:
+
+- API key lifecycle: `POST/GET /auth/api-keys`,
+  `GET/DELETE /auth/api-keys/{key_id}`, `POST /auth/api-keys/operator`
+- Event log: `GET /events`, `GET /events/{event_id}`
+- Rate card writes: `PUT /api/v1/rate-card` (reads stay public)
+- Agent registry mutations: `PUT /registry/agents/{agent_id}/trust`,
+  `DELETE /registry/agents/{agent_id}` (reads stay public)
+- Package mutations: `POST /packages`, `PUT/DELETE /packages/{package_id}`,
+  `POST /packages/assemble`, `POST /packages/sync`
+- Inventory sync trigger: `POST /api/v1/inventory-sync/trigger`
+- Deal push/distribution and curator registration:
+  `POST /api/v1/deals/push`, `POST /api/v1/deals/distribute`,
+  `POST /api/v1/curators`
+- Inventory-type overrides:
+  `POST/DELETE /api/v1/products/{product_id}/inventory-type`
+  (`GET` stays on the buyer-facing surface)
+- Change-request decisions: `POST /api/v1/change-requests/{cr_id}/review`,
+  `POST /api/v1/change-requests/{cr_id}/apply` (submission and reads
+  stay buyer-facing)
+- Order state transitions: `POST /api/v1/orders/{order_id}/transition`
+  (order reads/audit stay buyer-facing)
+
+The 19 admin MCP tools are gated the same way over HTTP transports
+(Streamable HTTP `/mcp` and legacy SSE): `set_publisher_identity`,
+`sync_inventory`, `create_package`, `update_rate_card`,
+`list_gam_orders`, `get_gam_delivery_report`, `push_deal_to_buyers`,
+`distribute_deal_via_ssp`, `transition_order`, `approve_or_reject`,
+`set_approval_gates`, `register_buyer_agent`, `set_agent_trust`,
+`create_api_key`, `list_api_keys`, `revoke_api_key`, `list_sessions`,
+`get_inbound_queue`, `get_buyer_activity`. Local stdio MCP access
+(no HTTP request context) remains trusted, same model as the CLI.
+
+Migration:
+
+1. Mint the first operator key out-of-band on the server host with
+   `ad-seller create-operator-key`, running with the SAME storage
+   configuration as the server (it writes the key record directly to
+   storage — no network surface).
+2. Send that key on admin calls as `Authorization: Bearer <key>` or
+   `X-Api-Key: <key>` (for MCP over HTTP, e.g.
+   `mcp-remote --header "Authorization: Bearer <key>"`). Additional
+   operator keys can then be minted via `POST /auth/api-keys/operator`.
+3. Existing (legacy) API keys deserialize with the default `buyer`
+   role — they keep working on buyer-facing paths but are never
+   silently promoted to operator.
+
 ### Added
 - OpenDirect 2.1 spec dialect on `POST /products/avails` (dialect
   convergence, shared avails contract): the published

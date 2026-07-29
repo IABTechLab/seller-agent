@@ -6,7 +6,7 @@
 Routes registered on the FastAPI application
 (`ad_seller.interfaces.api.main:app`), enumerated from the router table.
 
-**Total: 87 endpoints**
+**Total: 88 endpoints**
 
 | Method | Path | Handler |
 | --- | --- | --- |
@@ -59,8 +59,8 @@ Routes registered on the FastAPI application
 | `POST` | `/approvals/{approval_id}/decide` | `decide_approval` |
 | `POST` | `/approvals/{approval_id}/resume` | `resume_flow` |
 | `GET` | `/auth/api-keys` | `list_api_keys` |
-| `POST` | `/auth/api-keys` | `create_api_key` (buyer key; operator auth required) |
-| `POST` | `/auth/api-keys/operator` | `create_operator_api_key` (operator auth required) |
+| `POST` | `/auth/api-keys` | `create_api_key` |
+| `POST` | `/auth/api-keys/operator` | `create_operator_api_key` |
 | `DELETE` | `/auth/api-keys/{key_id}` | `revoke_api_key` |
 | `GET` | `/auth/api-keys/{key_id}` | `get_api_key_details` |
 | `POST` | `/deals` | `generate_deal` |

@@ -18,6 +18,10 @@ Covers:
     against storage directly.
 (e) Admin MCP tools deny non-operator HTTP callers but allow local
     stdio access (no HTTP request context).
+(f) The remaining mutation surface is gated: inventory-type override
+    write/delete, change-request review/apply, and order transitions
+    (REST endpoint and its MCP twin) — while the corresponding
+    buyer-facing reads and CR submission stay on the optional-key path.
 """
 
 import sys
@@ -399,3 +403,276 @@ class TestMcpOperatorGate:
         assert not [
             k for k in mock_storage._store if k.startswith(API_KEY_STORAGE_PREFIX)
         ]
+
+
+# =============================================================================
+# (f) Remaining mutation surface: inventory-type overrides, change-request
+#     review/apply, order transitions (REST + MCP twin)
+# =============================================================================
+
+
+class TestInventoryTypeOverrideRequiresOperator:
+    async def test_anonymous_override_is_401(self, client, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/products/prod-1/inventory-type",
+                json={"product_id": "prod-1", "inventory_type": "ctv"},
+            )
+        assert resp.status_code == 401
+
+    async def test_buyer_key_override_is_403(self, client, mock_storage):
+        buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/products/prod-1/inventory-type",
+                json={"product_id": "prod-1", "inventory_type": "ctv"},
+                headers=_auth(buyer_key),
+            )
+        assert resp.status_code == 403
+        assert "Operator credential required" in resp.text
+
+    async def test_operator_key_override_passes_auth(self, client, mock_storage):
+        op_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.catalog_service.override_inventory_type",
+                new=AsyncMock(
+                    return_value={
+                        "previous_type": "display",
+                        "applied_at": "2026-07-29T00:00:00Z",
+                    }
+                ),
+            ),
+        ):
+            resp = await client.post(
+                "/api/v1/products/prod-1/inventory-type",
+                json={"product_id": "prod-1", "inventory_type": "ctv"},
+                headers=_auth(op_key),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["new_type"] == "ctv"
+
+    async def test_anonymous_delete_override_is_401(self, client, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.delete("/api/v1/products/prod-1/inventory-type")
+        assert resp.status_code == 401
+
+    async def test_buyer_key_delete_override_is_403(self, client, mock_storage):
+        buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.delete(
+                "/api/v1/products/prod-1/inventory-type", headers=_auth(buyer_key)
+            )
+        assert resp.status_code == 403
+
+    async def test_operator_key_delete_override_passes_auth(self, client, mock_storage):
+        op_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.catalog_service.delete_inventory_type_override",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            resp = await client.delete(
+                "/api/v1/products/prod-1/inventory-type", headers=_auth(op_key)
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "removed"
+
+    async def test_override_read_stays_open(self, client, mock_storage):
+        """GET stays on the buyer-facing (optional-key) surface — 404 for a
+        product with no override, never 401."""
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.catalog_service.get_inventory_type_override",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            resp = await client.get("/api/v1/products/prod-1/inventory-type")
+        assert resp.status_code == 404
+
+
+class TestChangeRequestDecisionsRequireOperator:
+    """Submitting a CR stays buyer-facing; deciding/applying is seller admin."""
+
+    async def test_anonymous_review_is_401(self, client, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/change-requests/cr-1/review", json={"decision": "approve"}
+            )
+        assert resp.status_code == 401
+
+    async def test_buyer_key_review_is_403(self, client, mock_storage):
+        buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/change-requests/cr-1/review",
+                json={"decision": "approve"},
+                headers=_auth(buyer_key),
+            )
+        assert resp.status_code == 403
+
+    async def test_operator_key_review_passes_auth(self, client, mock_storage):
+        op_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.order_service.review_change_request",
+                new=AsyncMock(return_value={"cr_id": "cr-1", "status": "approved"}),
+            ),
+        ):
+            resp = await client.post(
+                "/api/v1/change-requests/cr-1/review",
+                json={"decision": "approve"},
+                headers=_auth(op_key),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "approved"
+
+    async def test_anonymous_apply_is_401(self, client, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post("/api/v1/change-requests/cr-1/apply")
+        assert resp.status_code == 401
+
+    async def test_buyer_key_apply_is_403(self, client, mock_storage):
+        buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/change-requests/cr-1/apply", headers=_auth(buyer_key)
+            )
+        assert resp.status_code == 403
+
+    async def test_operator_key_apply_passes_auth(self, client, mock_storage):
+        op_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.order_service.apply_change_request",
+                new=AsyncMock(return_value={"cr_id": "cr-1", "status": "applied"}),
+            ),
+        ):
+            resp = await client.post(
+                "/api/v1/change-requests/cr-1/apply", headers=_auth(op_key)
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "applied"
+
+    async def test_create_and_read_change_requests_stay_buyer_facing(
+        self, client, mock_storage
+    ):
+        """POST /change-requests and the reads remain on the optional-key
+        surface — anonymous callers are not rejected by auth."""
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.order_service.list_change_requests",
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            resp = await client.get("/api/v1/change-requests")
+        assert resp.status_code == 200
+
+
+class TestOrderTransitionRequiresOperator:
+    async def test_anonymous_transition_is_401(self, client, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/orders/ord-1/transition", json={"to_status": "approved"}
+            )
+        assert resp.status_code == 401
+
+    async def test_buyer_key_transition_is_403(self, client, mock_storage):
+        buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/orders/ord-1/transition",
+                json={"to_status": "approved"},
+                headers=_auth(buyer_key),
+            )
+        assert resp.status_code == 403
+
+    async def test_operator_key_transition_passes_auth(self, client, mock_storage):
+        op_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.order_service.transition_order",
+                new=AsyncMock(return_value={"order_id": "ord-1", "status": "approved"}),
+            ),
+        ):
+            resp = await client.post(
+                "/api/v1/orders/ord-1/transition",
+                json={"to_status": "approved"},
+                headers=_auth(op_key),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "approved"
+
+    async def test_order_reads_stay_buyer_facing(self, client, mock_storage):
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.order_service.list_orders",
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            resp = await client.get("/api/v1/orders")
+        assert resp.status_code == 200
+
+
+class TestMcpTransitionOrderGated:
+    """The MCP twin of POST /orders/{id}/transition is operator-gated."""
+
+    async def test_http_without_key_is_denied_and_service_untouched(self):
+        from ad_seller.interfaces import mcp_server
+
+        service_mock = AsyncMock()
+        ctx = _fake_mcp_context(headers={})
+        with (
+            patch.object(mcp_server.mcp, "get_context", return_value=ctx),
+            patch(
+                "ad_seller.services.order_service.transition_order",
+                new=service_mock,
+            ),
+        ):
+            result = await mcp_server.transition_order(
+                order_id="ord-1", new_status="approved"
+            )
+        assert "authentication_required" in result
+        service_mock.assert_not_awaited()
+
+    async def test_http_with_buyer_key_is_denied(self, mock_storage):
+        from ad_seller.interfaces import mcp_server
+
+        buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
+        ctx = _fake_mcp_context(headers={"authorization": f"Bearer {buyer_key}"})
+        with (
+            patch.object(mcp_server.mcp, "get_context", return_value=ctx),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            result = await mcp_server.transition_order(
+                order_id="ord-1", new_status="approved"
+            )
+        assert "operator_required" in result
+
+    async def test_http_with_operator_key_is_allowed(self, mock_storage):
+        from ad_seller.interfaces import mcp_server
+
+        op_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
+        ctx = _fake_mcp_context(headers={"x-api-key": op_key})
+        with (
+            patch.object(mcp_server.mcp, "get_context", return_value=ctx),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.order_service.transition_order",
+                new=AsyncMock(return_value={"order_id": "ord-1", "status": "approved"}),
+            ),
+        ):
+            result = await mcp_server.transition_order(
+                order_id="ord-1", new_status="approved"
+            )
+        assert "approved" in result
+        assert "operator_required" not in result

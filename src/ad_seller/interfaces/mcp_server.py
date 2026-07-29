@@ -894,6 +894,10 @@ async def list_orders(limit: int | None = 50) -> str:
 @mcp.tool()
 async def transition_order(order_id: str, new_status: str, reason: str = "") -> str:
     """Transition an order to a new state (e.g., draft→approved→delivering)."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..services import order_service
 
     return await _service_json(
@@ -1163,7 +1167,7 @@ async def set_agent_trust(agent_id: str, trust_level: str) -> str:
 
 @mcp.tool()
 async def create_api_key(name: str = "buyer", seat_id: str = "", agency_id: str = "") -> str:
-    """Create an API key for a buyer or agent."""
+    """Create a buyer API key (operator auth required over HTTP)."""
     denied = await _deny_unless_operator()
     if denied:
         return denied
