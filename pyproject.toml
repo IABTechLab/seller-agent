@@ -54,7 +54,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=5.0.0",
     "pytest-timeout>=2.3.0",
-    "ruff>=0.6.0",
+    "ruff>=0.15,<0.16",
     "mypy>=1.11.0",
     # hypothesis is used by property-based tests in tests/unit/agentcore/
     # (test_routing_mode, test_deploy_modes, test_workshop_data, test_s3_csv_adapter).
