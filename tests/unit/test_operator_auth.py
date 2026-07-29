@@ -12,8 +12,10 @@ Covers:
 (c) The admin REST surface is gated: /auth/api-keys, /events, rate-card
     writes, registry mutations, package mutations, inventory-sync
     trigger, deal push/distribute, curator registration.
-(d) The CLI bootstrap (``ad-seller create-operator-key``) mints an
-    OPERATOR-role key directly in storage.
+(d) Operator keys are minted via ``OperatorApiKeyCreateRequest`` /
+    ``POST /auth/api-keys/operator`` (no buyer identity fields). The CLI
+    bootstrap (``ad-seller create-operator-key``) uses the same path
+    against storage directly.
 (e) Admin MCP tools deny non-operator HTTP callers but allow local
     stdio access (no HTTP request context).
 """
@@ -144,7 +146,7 @@ class TestApiKeyEndpointsRequireOperator:
         assert resp.status_code == 403
         assert "Operator credential required" in resp.text
 
-    async def test_operator_key_creates_buyer_and_operator_keys(self, client, mock_storage):
+    async def test_operator_key_creates_buyer_key(self, client, mock_storage):
         raw_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             buyer_resp = await client.post(
@@ -152,25 +154,55 @@ class TestApiKeyEndpointsRequireOperator:
                 json={"label": "buyer key", "agency_id": "agy-2"},
                 headers=_auth(raw_key),
             )
-            op_resp = await client.post(
-                "/auth/api-keys",
-                json={"label": "second operator", "role": "operator"},
-                headers=_auth(raw_key),
-            )
         assert buyer_resp.status_code == 200
         assert buyer_resp.json()["role"] == "buyer"
-        assert op_resp.status_code == 200
-        assert op_resp.json()["role"] == "operator"
+        assert buyer_resp.json()["identity"]["agency_id"] == "agy-2"
 
-    async def test_invalid_role_is_400(self, client, mock_storage):
+    async def test_operator_endpoint_mints_operator_key(self, client, mock_storage):
+        """POST /auth/api-keys/operator creates an operator key (no buyer identity)."""
+        raw_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            op_resp = await client.post(
+                "/auth/api-keys/operator",
+                json={"label": "second operator"},
+                headers=_auth(raw_key),
+            )
+        assert op_resp.status_code == 200
+        body = op_resp.json()
+        assert body["role"] == "operator"
+        assert body["label"] == "second operator"
+        # Empty BuyerIdentity — operator keys carry no seat/agency/advertiser.
+        assert body["identity"].get("agency_id") in (None, "")
+        assert body["identity"].get("seat_id") in (None, "")
+
+    async def test_buyer_create_endpoint_ignores_role_field(self, client, mock_storage):
+        """role is not on CreateApiKeyRequest — extra fields are ignored; always buyer."""
         raw_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/auth/api-keys",
-                json={"label": "x", "role": "superadmin"},
+                json={"label": "x", "role": "operator", "agency_id": "agy-sneak"},
                 headers=_auth(raw_key),
             )
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        assert resp.json()["role"] == "buyer"
+
+    async def test_anonymous_operator_endpoint_is_401(self, client, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/auth/api-keys/operator", json={"label": "x"}
+            )
+        assert resp.status_code == 401
+
+    async def test_buyer_key_cannot_mint_operator_key(self, client, mock_storage):
+        buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/auth/api-keys/operator",
+                json={"label": "x"},
+                headers=_auth(buyer_key),
+            )
+        assert resp.status_code == 403
 
     async def test_list_and_revoke_require_operator(self, client, mock_storage):
         buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER, key_id="key-b")
@@ -277,6 +309,22 @@ class TestCliBootstrap:
         assert len(records) == 1
         assert records[0]["role"] == "operator"
         assert records[0]["label"] == "bootstrap test"
+        # Operator keys carry an empty BuyerIdentity (no seat/agency).
+        assert not records[0]["identity"].get("agency_id")
+        assert not records[0]["identity"].get("seat_id")
+
+
+class TestOperatorApiKeyCreateRequest:
+    def test_has_no_buyer_identity_fields(self):
+        from ad_seller.models.api_key import OperatorApiKeyCreateRequest
+
+        fields = set(OperatorApiKeyCreateRequest.model_fields)
+        assert fields == {"label", "expires_in_days"}
+
+    def test_buyer_create_request_has_no_role_field(self):
+        from ad_seller.models.api_key import ApiKeyCreateRequest
+
+        assert "role" not in ApiKeyCreateRequest.model_fields
 
 
 # =============================================================================

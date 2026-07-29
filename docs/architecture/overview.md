@@ -194,7 +194,7 @@ graph LR
     end
 
     BA -->|"1. Discover (GET /.well-known/agent.json)"| SA
-    BA -->|"2. Get API Key (POST /auth/api-keys)"| SA
+    BA -->|"2. Receive buyer API key (operator mints via POST /auth/api-keys)"| SA
     BA -->|"3. MCP: Structured tool calls (/mcp/ Streamable HTTP)"| SA
     BA -->|"4. A2A: Natural language (/a2a/seller/jsonrpc)"| SA
     BA -->|"5. REST: Browse, quote, book, negotiate"| SA

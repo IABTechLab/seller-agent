@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from .. import deps
 from ..schemas import (
     CreateApiKeyRequest,
+    CreateOperatorApiKeyRequest,
     RateCardEntry,
     RateCardResponse,
     SupplyChainNodeModel,
@@ -85,26 +86,17 @@ async def create_api_key(
     request: CreateApiKeyRequest,
     _operator=Depends(deps._require_operator_api_key_record),
 ):
-    """Create a new API key for a buyer (or another operator).
+    """Create a new BUYER-role API key for a buyer identity.
 
-    Requires an operator credential. Bootstrap the first operator key
-    with ``ad-seller create-operator-key`` (writes directly to storage).
+    Requires an operator credential. Operator keys are created via
+    ``POST /auth/api-keys/operator``.
 
     The response contains the full API key which is shown ONLY ONCE.
     Store it securely — it cannot be retrieved again.
     """
     from ....auth.api_key_service import ApiKeyService
-    from ....models.api_key import ApiKeyCreateRequest, ApiKeyRole
+    from ....models.api_key import ApiKeyCreateRequest
     from ....storage.factory import get_storage
-
-    try:
-        role = ApiKeyRole(request.role)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid role: {request.role}. Valid values: "
-            f"{[r.value for r in ApiKeyRole]}",
-        )
 
     storage = await get_storage()
     service = ApiKeyService(storage)
@@ -118,12 +110,41 @@ async def create_api_key(
         agency_holding_company=request.agency_holding_company,
         advertiser_id=request.advertiser_id,
         advertiser_name=request.advertiser_name,
-        role=role,
         label=request.label,
         expires_in_days=request.expires_in_days,
     )
 
     response = await service.create_key(create_req)
+    return response.model_dump(mode="json")
+
+
+@router.post("/auth/api-keys/operator", tags=["Authentication"])
+async def create_operator_api_key(
+    request: CreateOperatorApiKeyRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
+    """Create a new OPERATOR-role API key (no buyer identity).
+
+    Requires an existing operator credential. Bootstrap the FIRST
+    operator key with ``ad-seller create-operator-key`` (writes directly
+    to storage, no network surface).
+
+    The response contains the full API key which is shown ONLY ONCE.
+    Store it securely — it cannot be retrieved again.
+    """
+    from ....auth.api_key_service import ApiKeyService
+    from ....models.api_key import OperatorApiKeyCreateRequest
+    from ....storage.factory import get_storage
+
+    storage = await get_storage()
+    service = ApiKeyService(storage)
+
+    response = await service.create_operator_key(
+        OperatorApiKeyCreateRequest(
+            label=request.label,
+            expires_in_days=request.expires_in_days,
+        )
+    )
     return response.model_dump(mode="json")
 
 

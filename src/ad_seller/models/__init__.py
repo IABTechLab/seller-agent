@@ -20,6 +20,8 @@ from .api_key import (
     ApiKeyCreateResponse,
     ApiKeyInfo,
     ApiKeyRecord,
+    ApiKeyRole,
+    OperatorApiKeyCreateRequest,
 )
 from .audience_capabilities import (
     AgenticCapabilities,
@@ -351,4 +353,6 @@ __all__ = [
     "ApiKeyCreateResponse",
     "ApiKeyInfo",
     "ApiKeyRecord",
+    "ApiKeyRole",
+    "OperatorApiKeyCreateRequest",
 ]

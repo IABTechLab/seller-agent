@@ -7,14 +7,27 @@ authentication and managing **agent trust** for agent-to-agent interactions.
 
 ## API Key Management
 
-API keys tie buyer identity (seat, agency, advertiser) to requests. When a buyer
-presents an API key, the seller agent resolves their identity and applies the
-appropriate pricing tier.
+API keys have a **role**:
 
-### Create an API Key
+| Role | Purpose |
+|------|---------|
+| `buyer` | Ties seat/agency/advertiser identity to requests for tiered pricing |
+| `operator` | Publisher control-plane credential (key management, trust, packages, sync) |
+
+All `/auth/api-keys*` routes require an existing **operator** credential. Bootstrap
+the first operator key with the CLI (no HTTP auth):
+
+```bash
+ad-seller create-operator-key --label "Primary operator"
+```
+
+See [Authentication](../api/authentication.md) for the full operator surface.
+
+### Create a Buyer API Key
 
 ```bash
 curl -X POST http://localhost:8000/auth/api-keys \
+  -H "Authorization: Bearer <operator_api_key>" \
   -H "Content-Type: application/json" \
   -d '{
     "seat_id": "seat-mediamath-001",
@@ -35,12 +48,14 @@ Response:
 ```json
 {
   "key_id": "key-abc12345",
-  "api_key": "sk-seller-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "seat_id": "seat-mediamath-001",
-  "agency_id": "agency-groupm-001",
-  "advertiser_id": "adv-cocacola-001",
+  "api_key": "ask_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "identity": {
+    "seat_id": "seat-mediamath-001",
+    "agency_id": "agency-groupm-001",
+    "advertiser_id": "adv-cocacola-001"
+  },
+  "role": "buyer",
   "label": "GroupM - Coca-Cola Q1 2026",
-  "created_at": "2026-03-10T12:00:00Z",
   "expires_at": "2026-06-08T12:00:00Z"
 }
 ```
@@ -49,7 +64,22 @@ Response:
     The full `api_key` value is returned **only once** at creation time. It
     cannot be retrieved again. If lost, revoke the key and create a new one.
 
-### Available Fields
+### Create an Operator API Key
+
+```bash
+curl -X POST http://localhost:8000/auth/api-keys/operator \
+  -H "Authorization: Bearer <operator_api_key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "label": "Ops secondary key",
+    "expires_in_days": 365
+  }'
+```
+
+Operator keys have no buyer identity fields — only `label` and optional
+`expires_in_days`.
+
+### Available Fields (Buyer Keys)
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -74,7 +104,8 @@ The identity fields determine the buyer's access tier:
 ### List API Keys
 
 ```bash
-curl http://localhost:8000/auth/api-keys
+curl http://localhost:8000/auth/api-keys \
+  -H "Authorization: Bearer <operator_api_key>"
 ```
 
 Response (metadata only, no secrets):
@@ -84,9 +115,7 @@ Response (metadata only, no secrets):
   "keys": [
     {
       "key_id": "key-abc12345",
-      "seat_id": "seat-mediamath-001",
-      "agency_id": "agency-groupm-001",
-      "advertiser_id": "adv-cocacola-001",
+      "role": "buyer",
       "label": "GroupM - Coca-Cola Q1 2026",
       "created_at": "2026-03-10T12:00:00Z",
       "expires_at": "2026-06-08T12:00:00Z",
@@ -100,13 +129,15 @@ Response (metadata only, no secrets):
 ### Get Key Details
 
 ```bash
-curl http://localhost:8000/auth/api-keys/{key_id}
+curl http://localhost:8000/auth/api-keys/{key_id} \
+  -H "Authorization: Bearer <operator_api_key>"
 ```
 
 ### Revoke an API Key
 
 ```bash
-curl -X DELETE http://localhost:8000/auth/api-keys/{key_id}
+curl -X DELETE http://localhost:8000/auth/api-keys/{key_id} \
+  -H "Authorization: Bearer <operator_api_key>"
 ```
 
 Response:
@@ -152,6 +183,7 @@ To onboard a new buyer agent, discover it by URL:
 
 ```bash
 curl -X POST http://localhost:8000/registry/agents/discover \
+  -H "Authorization: Bearer <operator_api_key>" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_url": "https://buyer-agent.example.com"
@@ -221,6 +253,7 @@ Promote an agent from `unknown` to `approved`:
 
 ```bash
 curl -X PUT http://localhost:8000/registry/agents/{agent_id}/trust \
+  -H "Authorization: Bearer <operator_api_key>" \
   -H "Content-Type: application/json" \
   -d '{
     "trust_status": "approved",
@@ -243,6 +276,7 @@ Response:
 
 ```bash
 curl -X PUT http://localhost:8000/registry/agents/{agent_id}/trust \
+  -H "Authorization: Bearer <operator_api_key>" \
   -H "Content-Type: application/json" \
   -d '{
     "trust_status": "blocked",
@@ -255,7 +289,8 @@ Blocked agents receive `403 Forbidden` on all requests.
 ### Remove an Agent
 
 ```bash
-curl -X DELETE http://localhost:8000/registry/agents/{agent_id}
+curl -X DELETE http://localhost:8000/registry/agents/{agent_id} \
+  -H "Authorization: Bearer <operator_api_key>"
 ```
 
 Response:
@@ -284,7 +319,7 @@ sequenceDiagram
     Note right of Buyer: Discovers seller capabilities
 
     Op->>Seller: POST /registry/agents/discover
-    Note right of Op: {"agent_url": "https://buyer.example.com"}
+    Note right of Op: Operator credential required
     Seller->>Buyer: GET /.well-known/agent.json
     Seller->>Registry: Verify agent registration
     Registry-->>Seller: Registered / Not found
@@ -293,14 +328,14 @@ sequenceDiagram
     Note over Op: Agent starts as "unknown" or "registered"
 
     Op->>Seller: PUT /registry/agents/{id}/trust
-    Note right of Op: {"trust_status": "approved"}
+    Note right of Op: {"trust_status": "approved"} (operator auth)
 
     Op->>Seller: POST /auth/api-keys
-    Note right of Op: Create key with buyer identity
+    Note right of Op: Create buyer key with identity (operator auth)
 
-    Op-->>Buyer: Share API key securely
+    Op-->>Buyer: Share buyer API key securely
 
-    Buyer->>Seller: POST /proposals (with API key)
+    Buyer->>Seller: POST /proposals (with buyer API key)
     Note right of Buyer: Full access at approved tier
 ```
 
@@ -310,8 +345,9 @@ sequenceDiagram
    from the seller to learn about capabilities and supported protocols.
 
 2. **Operator discovers buyer** -- The publisher operator calls
-   `POST /registry/agents/discover` with the buyer agent's URL. The seller
-   fetches the buyer's agent card and checks external registries.
+   `POST /registry/agents/discover` (operator credential required) with the
+   buyer agent's URL. The seller fetches the buyer's agent card and checks
+   external registries.
 
 3. **Agent is registered locally** -- The agent starts as `unknown` (PUBLIC access)
    or `registered` (SEAT access) depending on whether it was found in an
@@ -321,11 +357,13 @@ sequenceDiagram
    calls `PUT /registry/agents/{id}/trust` to upgrade the agent to `approved`
    or `preferred`.
 
-5. **Operator creates API key** -- The operator creates an API key with the
-   buyer's identity (seat, agency, advertiser) via `POST /auth/api-keys`.
+5. **Operator creates a buyer API key** -- The operator creates a **buyer** key
+   with the buyer's identity (seat, agency, advertiser) via
+   `POST /auth/api-keys`. (Operator keys use `POST /auth/api-keys/operator` or
+   `ad-seller create-operator-key` for bootstrap.)
 
-6. **Key is shared securely** -- The operator shares the API key with the buyer
-   through a secure channel.
+6. **Key is shared securely** -- The operator shares the buyer API key with the
+   buyer through a secure channel.
 
 7. **Buyer transacts** -- The buyer agent uses the API key for all subsequent
    requests, receiving pricing and access appropriate to their tier.

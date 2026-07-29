@@ -55,7 +55,7 @@ For seller agents running on `localhost`:
 
 > **Note**: The JSON config method is for **local stdio servers only**. Remote servers must use the Settings > Integrations UI.
 
-Alternatively, if you are running the seller agent as an HTTP server (`uvicorn ad_seller.interfaces.api.main:app --port 8000`), use `mcp-remote` to bridge it:
+Alternatively, if you are running the seller agent as an HTTP server (`uvicorn ad_seller.interfaces.api.main:app --port 8000`), use `mcp-remote` to bridge it. Pass your operator API key so admin tools work:
 
 **Using npx (Node.js required):**
 ```json
@@ -63,7 +63,12 @@ Alternatively, if you are running the seller agent as an HTTP server (`uvicorn a
   "mcpServers": {
     "seller-agent": {
       "command": "npx",
-      "args": ["mcp-remote", "http://localhost:8000/mcp/"]
+      "args": [
+        "mcp-remote",
+        "http://localhost:8000/mcp/",
+        "--header",
+        "Authorization: Bearer <operator-api-key>"
+      ]
     }
   }
 }
@@ -75,13 +80,20 @@ Alternatively, if you are running the seller agent as an HTTP server (`uvicorn a
   "mcpServers": {
     "seller-agent": {
       "command": "uvx",
-      "args": ["mcp-remote", "http://localhost:8000/mcp/"]
+      "args": [
+        "mcp-remote",
+        "http://localhost:8000/mcp/",
+        "--header",
+        "Authorization: Bearer <operator-api-key>"
+      ]
     }
   }
 }
 ```
 
-> The trailing slash on `/mcp/` is required.
+> The trailing slash on `/mcp/` is required. Mint the operator key with
+> `ad-seller create-operator-key` (see [Developer Setup](developer-setup.md)
+> and [Authentication](../api/authentication.md)).
 
 ## Step 2: First-Run Setup Wizard
 

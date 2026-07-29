@@ -309,19 +309,18 @@ def create_operator_key(
     rate card, agent trust, packages, inventory sync, deal push) and for
     admin MCP tools over HTTP. This command writes directly to storage —
     no network surface — so it is the safe way to create the FIRST
-    operator key. Subsequent keys can be minted via POST /auth/api-keys
-    using an existing operator credential.
+    operator key. Subsequent operator keys can be minted via
+    POST /auth/api-keys/operator using an existing operator credential.
     """
     from ...auth.api_key_service import ApiKeyService
-    from ...models.api_key import ApiKeyCreateRequest, ApiKeyRole
+    from ...models.api_key import OperatorApiKeyCreateRequest
     from ...storage.factory import get_storage
 
     async def _mint():
         storage = await get_storage()
         service = ApiKeyService(storage)
-        return await service.create_key(
-            ApiKeyCreateRequest(
-                role=ApiKeyRole.OPERATOR,
+        return await service.create_operator_key(
+            OperatorApiKeyCreateRequest(
                 label=label,
                 expires_in_days=expires_in_days,
             )

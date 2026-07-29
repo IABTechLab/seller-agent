@@ -46,7 +46,7 @@ async def _require_operator_api_key_record(
     Anonymous → 401. Invalid/revoked/expired key → 401. Valid buyer-role
     key → 403. Only an operator credential (minted via
     ``ad-seller create-operator-key`` or by an existing operator through
-    ``POST /auth/api-keys`` with ``role="operator"``) passes.
+    ``POST /auth/api-keys/operator``) passes.
 
     Same Header-binding rationale as ``_get_optional_api_key_record``.
     Tests override this function object via ``app.dependency_overrides``.

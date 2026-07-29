@@ -99,7 +99,11 @@ class ApiKeyRecord(BaseModel):
 
 
 class ApiKeyCreateRequest(BaseModel):
-    """Request to create a new API key (operator-facing)."""
+    """Request to create a new BUYER-role API key.
+
+    Operator keys are created via :class:`OperatorApiKeyCreateRequest`
+    (they carry no buyer identity), so this request has no role field.
+    """
 
     # Identity fields for the buyer this key authenticates
     seat_id: Optional[str] = None
@@ -112,7 +116,17 @@ class ApiKeyCreateRequest(BaseModel):
     advertiser_name: Optional[str] = None
 
     # Key metadata
-    role: ApiKeyRole = ApiKeyRole.BUYER
+    label: str = ""
+    expires_in_days: Optional[int] = None  # None = never expires
+
+
+class OperatorApiKeyCreateRequest(BaseModel):
+    """Request to create an OPERATOR-role API key.
+
+    Operator keys authenticate the publisher's own control plane — they
+    have no buyer identity (no seat/agency/advertiser fields).
+    """
+
     label: str = ""
     expires_in_days: Optional[int] = None  # None = never expires
 

@@ -38,6 +38,16 @@ bearer_token_env_var = "SELLER_AGENT_API_KEY"
 
 See full setup guides: [Claude](../guides/claude-desktop-setup.md) | [ChatGPT, Codex & AI IDEs](../guides/chatgpt-setup.md)
 
+### Operator credentials for admin tools
+
+Admin MCP tools (API key management, trust updates, package/rate-card writes,
+inventory sync, deal push/distribute, GAM reporting, etc.) require an
+**operator** API key over HTTP transports. Pass it as
+`Authorization: Bearer <key>` or `X-Api-Key: <key>` (see Cursor/Codex examples
+above). Bootstrap the first key with `ad-seller create-operator-key` —
+[Authentication](authentication.md). Local stdio MCP access is trusted like
+the CLI and does not require a header.
+
 ## Available Tools (41)
 
 ### Setup & Status
@@ -114,9 +124,12 @@ See full setup guides: [Claude](../guides/claude-desktop-setup.md) | [ChatGPT, C
 
 ### API Keys
 
+Operator auth required over HTTP. Buyer keys only via MCP — mint additional
+operator keys with `POST /auth/api-keys/operator` or the CLI.
+
 | Tool | Description |
 |------|-------------|
-| `create_api_key` | Create an API key for a buyer or agent |
+| `create_api_key` | Create a **buyer** API key |
 | `list_api_keys` | List active keys |
 | `revoke_api_key` | Revoke a key |
 

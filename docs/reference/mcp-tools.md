@@ -12,7 +12,7 @@ enumerated from the live FastMCP registry.
 | --- | --- |
 | `approve_or_reject` | Submit an approval decision. decision: 'approve', 'reject', or 'counter'. |
 | `bulk_deal_operations` | Process multiple deal operations in one batch. |
-| `create_api_key` | Create an API key for a buyer or agent. |
+| `create_api_key` | Create a buyer API key (operator auth required over HTTP). |
 | `create_curated_deal` | Create a deal with curator overlay. The curator's fee is added on top. |
 | `create_deal_from_template` | Create a deal directly from parameters (one-step, no quote needed). |
 | `create_package` | Create a new curated package in the media kit. |

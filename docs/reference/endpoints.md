@@ -59,7 +59,8 @@ Routes registered on the FastAPI application
 | `POST` | `/approvals/{approval_id}/decide` | `decide_approval` |
 | `POST` | `/approvals/{approval_id}/resume` | `resume_flow` |
 | `GET` | `/auth/api-keys` | `list_api_keys` |
-| `POST` | `/auth/api-keys` | `create_api_key` |
+| `POST` | `/auth/api-keys` | `create_api_key` (buyer key; operator auth required) |
+| `POST` | `/auth/api-keys/operator` | `create_operator_api_key` (operator auth required) |
 | `DELETE` | `/auth/api-keys/{key_id}` | `revoke_api_key` |
 | `GET` | `/auth/api-keys/{key_id}` | `get_api_key_details` |
 | `POST` | `/deals` | `generate_deal` |
