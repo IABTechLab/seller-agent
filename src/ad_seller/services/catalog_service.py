@@ -392,11 +392,15 @@ def build_static_product_catalog() -> dict[str, Any]:
     """Build a fresh catalog dict from ``DEFAULT_PRODUCT_CONFIGS`` (uncached).
 
     Returns ``{"products": {product_id: ProductDefinition}, "inventory_types": [...]}``
-    with newly generated product IDs.
+    with deterministic product IDs derived from each config's name, so every
+    process (and every uvicorn worker) serves the same ids. Random per-process
+    ids meant a list-then-get across two workers, or across a restart, could
+    404 on an id the server itself had just returned (issue #34).
     """
     products: dict[str, Any] = {}
     for cfg in DEFAULT_PRODUCT_CONFIGS:
-        product_def = product_from_config(cfg, f"prod-{uuid.uuid4().hex[:8]}")
+        stable = uuid.uuid5(uuid.NAMESPACE_URL, f"ad-seller-product:{cfg['name']}")
+        product_def = product_from_config(cfg, f"prod-{stable.hex[:8]}")
         products[product_def.product_id] = product_def
 
     inventory_types = sorted({p.inventory_type for p in products.values()})
