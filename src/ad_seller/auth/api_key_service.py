@@ -69,6 +69,7 @@ class ApiKeyService:
             key_hash=key_hash,
             key_prefix_hint=full_key[:12] + "...",
             identity=identity,
+            role=request.role,
             label=request.label,
             expires_at=expires_at,
         )
@@ -91,9 +92,10 @@ class ApiKeyService:
         await self._storage.set("api_key_list", all_keys)
 
         logger.info(
-            "API key %s created for %s (label: %s)",
+            "API key %s created for %s (role: %s, label: %s)",
             key_id,
             identity.identity_level.value,
+            request.role.value,
             request.label,
         )
 
@@ -101,6 +103,7 @@ class ApiKeyService:
             key_id=key_id,
             api_key=full_key,
             identity=identity,
+            role=request.role,
             label=request.label,
             expires_at=expires_at,
         )
@@ -153,6 +156,7 @@ class ApiKeyService:
             key_id=record.key_id,
             key_prefix_hint=record.key_prefix_hint,
             identity=record.identity,
+            role=record.role,
             label=record.label,
             created_at=record.created_at,
             expires_at=record.expires_at,

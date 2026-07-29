@@ -141,40 +141,41 @@ _INTERNAL_API_KEY = None
 
 
 def _create_internal_api_key():
-    """Create an internal API key by calling the seller's /auth/api-keys endpoint.
+    """Mint an internal API key directly via ApiKeyService (in-process).
 
     This key is used by tools like CreateDealTool that call endpoints
     requiring authentication. The key is stored in the module-level
     _INTERNAL_API_KEY variable and in the INTERNAL_API_KEY env var
     so crew_tools.py can access it.
+
+    Minted in-process rather than via POST /auth/api-keys: that endpoint
+    requires an operator credential, which this bootstrap does not have.
     """
     global _INTERNAL_API_KEY
-    import httpx
+    import asyncio
+
+    async def _mint():
+        from ...auth.api_key_service import ApiKeyService
+        from ...models.api_key import ApiKeyCreateRequest
+        from ...storage.factory import get_storage
+
+        storage = await get_storage()
+        service = ApiKeyService(storage)
+        return await service.create_key(
+            ApiKeyCreateRequest(
+                seat_id="INTERNAL-AGENTCORE",
+                seat_name="AgentCore Internal",
+                agency_id="AGY-INTERNAL",
+                agency_name="AgentCore Runtime",
+                label="AgentCore internal tool-auth key",
+            )
+        )
 
     try:
-        resp = httpx.post(
-            f"http://localhost:{_INTERNAL_PORT}/auth/api-keys",
-            json={
-                "buyer_tier": "preferred_agency",
-                "seat_id": "INTERNAL-AGENTCORE",
-                "seat_name": "AgentCore Internal",
-                "agency_id": "AGY-INTERNAL",
-                "agency_name": "AgentCore Runtime",
-            },
-            timeout=10,
-        )
-        if resp.status_code in (200, 201):
-            data = resp.json()
-            _INTERNAL_API_KEY = data.get("api_key", data.get("key", ""))
-            if _INTERNAL_API_KEY:
-                os.environ["INTERNAL_API_KEY"] = _INTERNAL_API_KEY
-                logger.info("Internal API key created for tool auth")
-            else:
-                logger.warning("API key response missing key field: %s", data)
-        else:
-            logger.warning(
-                "Failed to create internal API key: %d %s", resp.status_code, resp.text[:200]
-            )
+        response = asyncio.run(_mint())
+        _INTERNAL_API_KEY = response.api_key
+        os.environ["INTERNAL_API_KEY"] = _INTERNAL_API_KEY
+        logger.info("Internal API key created for tool auth")
     except Exception as e:
         logger.warning("Could not create internal API key (non-fatal): %s", e)
 

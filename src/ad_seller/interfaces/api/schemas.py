@@ -270,7 +270,7 @@ class ApprovalDecisionRequest(BaseModel):
 
 
 class CreateApiKeyRequest(BaseModel):
-    """Request to create a new API key for a buyer."""
+    """Request to create a new API key for a buyer (or another operator)."""
 
     seat_id: Optional[str] = None
     seat_name: Optional[str] = None
@@ -280,6 +280,7 @@ class CreateApiKeyRequest(BaseModel):
     agency_holding_company: Optional[str] = None
     advertiser_id: Optional[str] = None
     advertiser_name: Optional[str] = None
+    role: str = "buyer"  # "buyer" | "operator"
     label: str = ""
     expires_in_days: Optional[int] = None
 

@@ -60,6 +60,17 @@ def _reset_catalog_cache():
 
 
 @pytest.fixture(autouse=True)
+def _bypass_operator_gate():
+    """/packages/sync now requires an operator key; these tests exercise
+    flow-kickoff behavior, not auth, so bypass the operator dependency."""
+    from ad_seller.interfaces.api import deps as api_deps
+
+    app.dependency_overrides[api_deps._require_operator_api_key_record] = lambda: None
+    yield
+    app.dependency_overrides.pop(api_deps._require_operator_api_key_record, None)
+
+
+@pytest.fixture(autouse=True)
 def _fail_if_flow_kickoff_called(monkeypatch):
     """Hard-fail the test if any code path calls ProductSetupFlow().kickoff()."""
 

@@ -486,6 +486,9 @@ class TestCounterEndpointCeiling:
 
     async def test_api_key_identity_is_not_floored(self, client, mock_storage):
         """EP-4.5 verified principal: seller-issued key identity survives."""
+        # This test needs REAL key validation; drop the fixture's
+        # anonymous override so the seeded X-Api-Key is honored.
+        app.dependency_overrides.pop(_get_optional_api_key_record, None)
         raw_key = _seed_api_key(
             mock_storage._store, BuyerIdentity(agency_id="agency-001")
         )
@@ -803,6 +806,8 @@ class TestProposalEndpointCeiling:
 class TestDealFromTemplateCeiling:
     async def test_registry_ceiling_caps_api_key_identity(self, client, mock_storage):
         """Defense in depth: key identity (AGENCY) capped by registry (SEAT)."""
+        # Needs REAL key validation; drop the fixture's anonymous override.
+        app.dependency_overrides.pop(_get_optional_api_key_record, None)
         raw_key = _seed_api_key(
             mock_storage._store, BuyerIdentity(agency_id="agency-001")
         )
@@ -833,6 +838,8 @@ class TestDealFromTemplateCeiling:
         assert len(_trust_records(mock_storage)) == 1
 
     async def test_api_key_identity_kept_without_agent_url(self, client, mock_storage):
+        # Needs REAL key validation; drop the fixture's anonymous override.
+        app.dependency_overrides.pop(_get_optional_api_key_record, None)
         raw_key = _seed_api_key(
             mock_storage._store, BuyerIdentity(agency_id="agency-001")
         )

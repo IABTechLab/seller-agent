@@ -288,6 +288,65 @@ def freewheel_login(
         console.print(f"Access token expires at [cyan]{state.expires_at}[/cyan]")
 
 
+@app.command("create-operator-key")
+def create_operator_key(
+    label: str = typer.Option(
+        "Operator key",
+        "--label",
+        "-l",
+        help="Human-readable label for the key",
+    ),
+    expires_in_days: Optional[int] = typer.Option(
+        None,
+        "--expires-in-days",
+        "-e",
+        help="Days until the key expires (default: never)",
+    ),
+):
+    """Mint an OPERATOR-role API key directly in storage (bootstrap).
+
+    Operator keys are required for admin endpoints (API key management,
+    rate card, agent trust, packages, inventory sync, deal push) and for
+    admin MCP tools over HTTP. This command writes directly to storage —
+    no network surface — so it is the safe way to create the FIRST
+    operator key. Subsequent keys can be minted via POST /auth/api-keys
+    using an existing operator credential.
+    """
+    from ...auth.api_key_service import ApiKeyService
+    from ...models.api_key import ApiKeyCreateRequest, ApiKeyRole
+    from ...storage.factory import get_storage
+
+    async def _mint():
+        storage = await get_storage()
+        service = ApiKeyService(storage)
+        return await service.create_key(
+            ApiKeyCreateRequest(
+                role=ApiKeyRole.OPERATOR,
+                label=label,
+                expires_in_days=expires_in_days,
+            )
+        )
+
+    try:
+        response = asyncio.run(_mint())
+    except Exception as exc:
+        console.print(f"[red]Failed to create operator key: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    console.print(Panel("Operator API key created", title="Bootstrap"))
+    console.print(f"Key ID:  [cyan]{response.key_id}[/cyan]")
+    console.print(f"Label:   {response.label}")
+    if response.expires_at:
+        console.print(f"Expires: {response.expires_at}")
+    console.print(f"\n[bold]API key (shown once — store securely):[/bold]\n{response.api_key}")
+    console.print(
+        "\nUse it on admin endpoints and MCP:\n"
+        "  Authorization: Bearer <key>   or   X-Api-Key: <key>\n"
+        "Run this with the same storage config (.env) as the server so the\n"
+        "key lands in the storage backend the server reads."
+    )
+
+
 @app.command()
 def chat():
     """Start interactive chat mode for buyer interactions."""

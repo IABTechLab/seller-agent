@@ -37,6 +37,25 @@ async def _get_optional_api_key_record(
     return await get_api_key_record(authorization, x_api_key)
 
 
+async def _require_operator_api_key_record(
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="X-Api-Key"),
+):
+    """FastAPI dependency: require a valid OPERATOR-role API key.
+
+    Anonymous → 401. Invalid/revoked/expired key → 401. Valid buyer-role
+    key → 403. Only an operator credential (minted via
+    ``ad-seller create-operator-key`` or by an existing operator through
+    ``POST /auth/api-keys`` with ``role="operator"``) passes.
+
+    Same Header-binding rationale as ``_get_optional_api_key_record``.
+    Tests override this function object via ``app.dependency_overrides``.
+    """
+    from ...auth.dependencies import require_operator_key
+
+    return await require_operator_key(authorization, x_api_key)
+
+
 def _build_buyer_context(
     buyer_tier: str = "public",
     agency_id: Optional[str] = None,

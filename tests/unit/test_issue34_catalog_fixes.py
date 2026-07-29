@@ -111,6 +111,15 @@ def _reset_catalog_cache():
     api_main._STATIC_PRODUCT_CATALOG = None
 
 
+@pytest.fixture(autouse=True)
+def _bypass_operator_gate():
+    """Package mutations now require an operator key; these tests exercise
+    catalog resolution, not auth, so bypass the operator dependency."""
+    app.dependency_overrides[deps._require_operator_api_key_record] = lambda: None
+    yield
+    app.dependency_overrides.pop(deps._require_operator_api_key_record, None)
+
+
 @pytest.fixture
 def client(storage):
     """ASGI client with storage + event emission patched hermetically."""

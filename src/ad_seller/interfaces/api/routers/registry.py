@@ -5,7 +5,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from .. import deps
 from ..schemas import DiscoverAgentRequest, UpdateTrustRequest
@@ -145,7 +145,10 @@ async def get_registered_agent(agent_id: str):
 
 
 @router.post("/registry/agents/discover", tags=["Agent Registry"])
-async def discover_agent(request: DiscoverAgentRequest):
+async def discover_agent(
+    request: DiscoverAgentRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Discover an agent by URL.
 
     Fetches the agent's card from .well-known/agent.json, checks
@@ -169,7 +172,11 @@ async def discover_agent(request: DiscoverAgentRequest):
 
 
 @router.put("/registry/agents/{agent_id}/trust", tags=["Agent Registry"])
-async def update_agent_trust(agent_id: str, request: UpdateTrustRequest):
+async def update_agent_trust(
+    agent_id: str,
+    request: UpdateTrustRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Update an agent's trust status.
 
     Use this to approve, prefer, or block agents. Trust status determines
@@ -206,7 +213,10 @@ async def update_agent_trust(agent_id: str, request: UpdateTrustRequest):
 
 
 @router.delete("/registry/agents/{agent_id}", tags=["Agent Registry"])
-async def remove_registered_agent(agent_id: str):
+async def remove_registered_agent(
+    agent_id: str,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Remove an agent from the local registry."""
     service = await deps._get_registry_service()
     removed = await service.remove_agent(agent_id)

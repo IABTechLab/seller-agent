@@ -313,7 +313,10 @@ async def get_package(
 
 
 @router.post("/packages", tags=["Packages"])
-async def create_package(request: PackageCreateRequest):
+async def create_package(
+    request: PackageCreateRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Create a curated package (Layer 2)."""
     import uuid as _uuid
 
@@ -381,7 +384,11 @@ async def create_package(request: PackageCreateRequest):
 
 
 @router.put("/packages/{package_id}", tags=["Packages"])
-async def update_package(package_id: str, updates: dict[str, Any]):
+async def update_package(
+    package_id: str,
+    updates: dict[str, Any],
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Update an existing package."""
     from ....events.helpers import emit_event
     from ....events.models import EventType
@@ -400,7 +407,10 @@ async def update_package(package_id: str, updates: dict[str, Any]):
 
 
 @router.delete("/packages/{package_id}", tags=["Packages"])
-async def delete_package(package_id: str):
+async def delete_package(
+    package_id: str,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Archive a package (soft delete)."""
     service = await deps._get_media_kit_service()
     deleted = await service.delete_package(package_id)
@@ -410,7 +420,10 @@ async def delete_package(package_id: str):
 
 
 @router.post("/packages/assemble", tags=["Packages"])
-async def assemble_package(request: DynamicPackageRequest):
+async def assemble_package(
+    request: DynamicPackageRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Assemble a dynamic package (Layer 3) from product IDs.
 
     Product ids resolve catalog-first with storage fallback (issue #34) —
@@ -436,7 +449,9 @@ async def assemble_package(request: DynamicPackageRequest):
 
 
 @router.post("/packages/sync", tags=["Packages"])
-async def sync_packages():
+async def sync_packages(
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Trigger ad server inventory sync (Layer 1)."""
     from ....events.helpers import emit_event
     from ....events.models import EventType
