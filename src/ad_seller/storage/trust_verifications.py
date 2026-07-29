@@ -95,9 +95,7 @@ class TrustVerificationStore:
             fallback["record_type"] = "trust_verification"
             fallback["storage_error"] = str(e)
             write_audit_fallback(fallback)
-            logger.warning(
-                "Trust-verification storage write failed; wrote audit fallback: %s", e
-            )
+            logger.warning("Trust-verification storage write failed; wrote audit fallback: %s", e)
 
         return record
 

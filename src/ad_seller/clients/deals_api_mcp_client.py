@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 class _StaleSessionError(Exception):
     """Internal sentinel raised when a tool call signals the session is gone."""
 
+
 # deals-api-mcp sellerStatus integer → SSPDealStatus
 # SellerStatus enum: 0=Active, 1=Paused, 2=Pending, 4=Complete, 5=Archived
 _SELLER_STATUS_MAP: dict[int, SSPDealStatus] = {

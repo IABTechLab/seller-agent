@@ -283,9 +283,7 @@ class TestLowballRoundBound:
         actions = []
         # Drive one more evaluation than the bound allows
         for _ in range(max_rounds + 1):
-            rnd = engine.evaluate_buyer_offer(
-                history, buyer_price=75.0, buyer_context=public_buyer
-            )
+            rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=public_buyer)
             history = engine.record_round(history, rnd)
             actions.append(rnd.action)
             if rnd.action == NegotiationAction.REJECT:
@@ -309,9 +307,7 @@ class TestLowballRoundBound:
             floor_price=80.0,
         )
         for _ in range(history.limits.max_rounds - 1):
-            rnd = engine.evaluate_buyer_offer(
-                history, buyer_price=75.0, buyer_context=public_buyer
-            )
+            rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=public_buyer)
             history = engine.record_round(history, rnd)
             assert rnd.action == NegotiationAction.COUNTER
 
@@ -333,9 +329,7 @@ class TestLowballRoundBound:
         max_rounds = history.limits.max_rounds
         actions = []
         for _ in range(max_rounds + 1):
-            rnd = engine.evaluate_buyer_offer(
-                history, buyer_price=10.0, buyer_context=public_buyer
-            )
+            rnd = engine.evaluate_buyer_offer(history, buyer_price=10.0, buyer_context=public_buyer)
             history = engine.record_round(history, rnd)
             actions.append(rnd.action)
             if rnd.action == NegotiationAction.REJECT:
@@ -359,9 +353,7 @@ class TestLowballRoundBound:
             floor_price=80.0,
         )
         for _ in range(history.limits.max_rounds):
-            rnd = engine.evaluate_buyer_offer(
-                history, buyer_price=75.0, buyer_context=public_buyer
-            )
+            rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=public_buyer)
             history = engine.record_round(history, rnd)
 
         rnd = engine.evaluate_buyer_offer(history, buyer_price=80.0, buyer_context=public_buyer)

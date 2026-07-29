@@ -340,9 +340,7 @@ class TestCrewPathUnchanged:
 
 @pytest.mark.asyncio
 class TestFallbackPersistence:
-    async def test_budget_fallback_persists_proposal_and_history_cold(
-        self, client, mock_storage
-    ):
+    async def test_budget_fallback_persists_proposal_and_history_cold(self, client, mock_storage):
         """End-to-end with the REAL flow and a slow crew: POST /proposals
         answers within budget with a deterministic decision, persists the
         proposal + product (persistence invariants — exactly as the crew path

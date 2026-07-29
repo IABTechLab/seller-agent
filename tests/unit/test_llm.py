@@ -65,9 +65,7 @@ class TestCustomOpenAICompatibleEndpoint:
                 openai_compatible_llm_api_base_url="https://integrate.api.nvidia.com/v1",
             ),
         )
-        llm = build_llm(
-            model="meta/llama-3.1-70b-instruct", temperature=0.3, max_tokens=4096
-        )
+        llm = build_llm(model="meta/llama-3.1-70b-instruct", temperature=0.3, max_tokens=4096)
         assert llm.provider == "openai"
         assert llm.model == "meta/llama-3.1-70b-instruct"
         assert llm.base_url == "https://integrate.api.nvidia.com/v1"
@@ -76,9 +74,7 @@ class TestCustomOpenAICompatibleEndpoint:
     def test_local_ollama_needs_no_key(self, monkeypatch):
         monkeypatch.setattr(
             "ad_seller.llm.get_settings",
-            lambda: _settings(
-                openai_compatible_llm_api_base_url="http://localhost:11434/v1"
-            ),
+            lambda: _settings(openai_compatible_llm_api_base_url="http://localhost:11434/v1"),
         )
         llm = build_llm(model="llama3", temperature=0.3, max_tokens=4096)
         assert llm.provider == "openai"

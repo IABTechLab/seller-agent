@@ -172,8 +172,7 @@ class NegotiationEngine:
                 concession_pct=0.0,
                 cumulative_concession_pct=cumulative_concession,
                 rationale=(
-                    f"Buyer price ${buyer_price:.2f} is not a valid offer. "
-                    f"Cannot negotiate."
+                    f"Buyer price ${buyer_price:.2f} is not a valid offer. Cannot negotiate."
                 ),
             )
 
@@ -217,8 +216,7 @@ class NegotiationEngine:
                 concession_pct=incremental,
                 cumulative_concession_pct=cumulative_concession + incremental,
                 rationale=(
-                    f"Final offer at our floor price ${floor_counter:.2f} CPM. "
-                    f"We cannot go lower."
+                    f"Final offer at our floor price ${floor_counter:.2f} CPM. We cannot go lower."
                     if is_last_round
                     else (
                         f"Buyer offer ${buyer_price:.2f} is below our floor. "

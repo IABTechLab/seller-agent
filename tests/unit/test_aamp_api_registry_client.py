@@ -77,9 +77,7 @@ def client(double_app):
 
 class TestVerifyRegistration:
     async def test_known_endpoint_url_is_registered(self, client):
-        registered, ext_id = await client.verify_registration(
-            "https://buyer.acme.example.com/"
-        )
+        registered, ext_id = await client.verify_registration("https://buyer.acme.example.com/")
         assert registered is True
         assert ext_id == "1"
 
@@ -94,9 +92,7 @@ class TestVerifyRegistration:
             auth_token=None,
             transport=httpx.ASGITransport(app=double_app),
         )
-        registered, ext_id = await client.verify_registration(
-            "https://buyer.acme.example.com"
-        )
+        registered, ext_id = await client.verify_registration("https://buyer.acme.example.com")
         assert registered is False
         assert ext_id is None
 

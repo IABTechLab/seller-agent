@@ -47,9 +47,7 @@ logger = logging.getLogger(__name__)
 PACKAGE_IMMUTABLE_FIELDS: frozenset[str] = frozenset(
     {"package_id", "layer", "created_at", "updated_at", "ad_server_source"}
 )
-PACKAGE_MUTABLE_FIELDS: frozenset[str] = (
-    frozenset(Package.model_fields) - PACKAGE_IMMUTABLE_FIELDS
-)
+PACKAGE_MUTABLE_FIELDS: frozenset[str] = frozenset(Package.model_fields) - PACKAGE_IMMUTABLE_FIELDS
 # Deprecated flat input still accepted by the Package model's
 # legacy-migration validator (folded into audience_capabilities, AT 1.1).
 PACKAGE_LEGACY_UPDATE_ALIASES: frozenset[str] = frozenset({"audience_segment_ids"})

@@ -155,9 +155,7 @@ def mock_storage():
     )
     storage.get_proposal = AsyncMock(side_effect=lambda pid: store.get(f"proposal:{pid}"))
     storage.get_product = AsyncMock(side_effect=lambda pid: store.get(f"product:{pid}"))
-    storage.get_negotiation = AsyncMock(
-        side_effect=lambda pid: store.get(f"negotiation:{pid}")
-    )
+    storage.get_negotiation = AsyncMock(side_effect=lambda pid: store.get(f"negotiation:{pid}"))
     storage.set_negotiation = AsyncMock(
         side_effect=lambda pid, data: store.__setitem__(f"negotiation:{pid}", data)
     )
@@ -194,9 +192,7 @@ def _patch_card(card):
 
 
 def _trust_records(mock_storage) -> list[dict]:
-    return [
-        v for k, v in mock_storage._store.items() if k.startswith("verified_trust:")
-    ]
+    return [v for k, v in mock_storage._store.items() if k.startswith("verified_trust:")]
 
 
 def _seed_api_key(store, identity: BuyerIdentity) -> str:
@@ -223,9 +219,7 @@ def _seed_api_key(store, identity: BuyerIdentity) -> str:
 
 
 class TestVerifyBuyerTrust:
-    async def test_registered_agent_gets_seat_ceiling_and_verified_primitive(
-        self, mock_storage
-    ):
+    async def test_registered_agent_gets_seat_ceiling_and_verified_primitive(self, mock_storage):
         service = _service(mock_storage, FakeRegistryClient(registered=True))
         with _patch_card(_agent_card()):
             agent, ceiling, verdict = await service.verify_buyer_trust(BUYER_URL)
@@ -386,9 +380,7 @@ class TestTrustVerificationStore:
         store = TrustVerificationStore(mock_storage)
         verdict = VerifiedTrust(agent_id="ext-1", verified=True)
 
-        with patch(
-            "ad_seller.storage.trust_verifications.write_audit_fallback"
-        ) as fallback:
+        with patch("ad_seller.storage.trust_verifications.write_audit_fallback") as fallback:
             await store.record_verification(
                 verdict,
                 agent_url=BUYER_URL,
@@ -432,9 +424,7 @@ class TestCounterEndpointCeiling:
         reached the negotiation engine at ADVERTISER tier.
         """
         counter = AsyncMock(return_value={"ok": True})
-        with patch(
-            "ad_seller.services.negotiation_service.counter_proposal", new=counter
-        ):
+        with patch("ad_seller.services.negotiation_service.counter_proposal", new=counter):
             async with client as c:
                 resp = await c.post(
                     "/proposals/prop-1/counter",
@@ -450,16 +440,12 @@ class TestCounterEndpointCeiling:
         ctx = counter.await_args.kwargs["buyer_context"]
         assert ctx.effective_tier == AccessTier.PUBLIC
 
-    async def test_registered_agent_claiming_advertiser_capped_at_seat(
-        self, client, mock_storage
-    ):
+    async def test_registered_agent_claiming_advertiser_capped_at_seat(self, client, mock_storage):
         """agent_url present -> registry ceiling (SEAT) caps the claim."""
         counter = AsyncMock(return_value={"ok": True})
         service = _service(mock_storage, FakeRegistryClient(registered=True))
         with (
-            patch(
-                "ad_seller.services.negotiation_service.counter_proposal", new=counter
-            ),
+            patch("ad_seller.services.negotiation_service.counter_proposal", new=counter),
             _patch_registry(service),
             _patch_card(_agent_card()),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
@@ -486,14 +472,10 @@ class TestCounterEndpointCeiling:
 
     async def test_api_key_identity_is_not_floored(self, client, mock_storage):
         """EP-4.5 verified principal: seller-issued key identity survives."""
-        raw_key = _seed_api_key(
-            mock_storage._store, BuyerIdentity(agency_id="agency-001")
-        )
+        raw_key = _seed_api_key(mock_storage._store, BuyerIdentity(agency_id="agency-001"))
         counter = AsyncMock(return_value={"ok": True})
         with (
-            patch(
-                "ad_seller.services.negotiation_service.counter_proposal", new=counter
-            ),
+            patch("ad_seller.services.negotiation_service.counter_proposal", new=counter),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
             async with client as c:
@@ -558,9 +540,7 @@ class TestNegotiationMessagesCeiling:
                 "rounds_remaining": 4,
             }
         )
-        with patch(
-            "ad_seller.services.negotiation_service.counter_proposal", new=counter
-        ):
+        with patch("ad_seller.services.negotiation_service.counter_proposal", new=counter):
             async with client as c:
                 resp = await c.post(
                     "/api/v1/negotiations/messages",
@@ -596,9 +576,7 @@ class TestQuoteEndpointCeiling:
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         )
 
-    async def test_self_asserted_advertiser_identity_floors_to_public(
-        self, client, mock_storage
-    ):
+    async def test_self_asserted_advertiser_identity_floors_to_public(self, client, mock_storage):
         catalog_patch, storage_patch = self._patches(mock_storage)
         with catalog_patch, storage_patch:
             async with client as c:
@@ -621,9 +599,7 @@ class TestQuoteEndpointCeiling:
         assert quote["buyer_tier"] == "public"
         assert quote["pricing"]["tier_discount_pct"] == 0.0
 
-    async def test_registered_agent_claiming_advertiser_capped_at_seat(
-        self, client, mock_storage
-    ):
+    async def test_registered_agent_claiming_advertiser_capped_at_seat(self, client, mock_storage):
         catalog_patch, storage_patch = self._patches(mock_storage)
         service = _service(mock_storage, FakeRegistryClient(registered=True))
         with (
@@ -710,9 +686,7 @@ class TestQuoteEndpointCeiling:
 
         assert resp.status_code == 403
 
-    async def test_verification_outcome_persisted_as_primitive(
-        self, client, mock_storage
-    ):
+    async def test_verification_outcome_persisted_as_primitive(self, client, mock_storage):
         catalog_patch, storage_patch = self._patches(mock_storage)
         service = _service(mock_storage, FakeRegistryClient(registered=True))
         with (
@@ -803,9 +777,7 @@ class TestProposalEndpointCeiling:
 class TestDealFromTemplateCeiling:
     async def test_registry_ceiling_caps_api_key_identity(self, client, mock_storage):
         """Defense in depth: key identity (AGENCY) capped by registry (SEAT)."""
-        raw_key = _seed_api_key(
-            mock_storage._store, BuyerIdentity(agency_id="agency-001")
-        )
+        raw_key = _seed_api_key(mock_storage._store, BuyerIdentity(agency_id="agency-001"))
         service = _service(mock_storage, FakeRegistryClient(registered=True))
         with (
             patch(
@@ -833,9 +805,7 @@ class TestDealFromTemplateCeiling:
         assert len(_trust_records(mock_storage)) == 1
 
     async def test_api_key_identity_kept_without_agent_url(self, client, mock_storage):
-        raw_key = _seed_api_key(
-            mock_storage._store, BuyerIdentity(agency_id="agency-001")
-        )
+        raw_key = _seed_api_key(mock_storage._store, BuyerIdentity(agency_id="agency-001"))
         with (
             patch(
                 "ad_seller.interfaces.api.main._get_static_product_catalog",

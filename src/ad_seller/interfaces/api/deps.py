@@ -99,9 +99,7 @@ async def _get_registry_service():
 
     storage = await get_storage()
     settings = _get_api_settings()
-    return AgentRegistryService(
-        storage, registry_clients=build_registry_clients(settings)
-    )
+    return AgentRegistryService(storage, registry_clients=build_registry_clients(settings))
 
 
 def _get_api_settings():

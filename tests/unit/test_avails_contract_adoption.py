@@ -121,9 +121,7 @@ class TestPolicyConformantEmission:
     async def test_delivery_confidence_omitted_not_null(self, client):
         """Policy 2: no forecast data source -> the key is ABSENT."""
         with _patch_catalog(_catalog_with(_make_product())):
-            resp = await client.post(
-                "/products/avails", json=_body(requestedImpressions=500000)
-            )
+            resp = await client.post("/products/avails", json=_body(requestedImpressions=500000))
 
         assert resp.status_code == 200
         data = resp.json()
@@ -135,9 +133,7 @@ class TestPolicyConformantEmission:
 
         product = _make_product(supported_deal_types=[DealType.PREFERRED_DEAL])
         with _patch_catalog(_catalog_with(product)):
-            resp = await client.post(
-                "/products/avails", json=_body(requestedImpressions=100000)
-            )
+            resp = await client.post("/products/avails", json=_body(requestedImpressions=100000))
 
         assert resp.status_code == 200
         assert "guaranteedImpressions" not in resp.json()
@@ -147,9 +143,7 @@ class TestPolicyConformantEmission:
         with no targeting dicts: exactly the required fields plus
         guaranteedImpressions — nothing null-padded."""
         with _patch_catalog(_catalog_with(_make_product())):
-            resp = await client.post(
-                "/products/avails", json=_body(requestedImpressions=500000)
-            )
+            resp = await client.post("/products/avails", json=_body(requestedImpressions=500000))
 
         assert resp.status_code == 200
         assert resp.json() == {
@@ -163,9 +157,7 @@ class TestPolicyConformantEmission:
     async def test_available_impressions_always_present(self, client):
         """Policy 1: uncapped product reports requested-as-available."""
         with _patch_catalog(_catalog_with(_make_product(maximum_impressions=None))):
-            resp = await client.post(
-                "/products/avails", json=_body(requestedImpressions=99000000)
-            )
+            resp = await client.post("/products/avails", json=_body(requestedImpressions=99000000))
 
         assert resp.status_code == 200
         assert resp.json()["availableImpressions"] == 99000000

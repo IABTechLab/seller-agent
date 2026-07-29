@@ -122,9 +122,7 @@ async def _registry_service():
 
     storage = await _get_storage()
     settings = _get_settings()
-    return AgentRegistryService(
-        storage, registry_clients=build_registry_clients(settings)
-    )
+    return AgentRegistryService(storage, registry_clients=build_registry_clients(settings))
 
 
 async def _api_key_service():
@@ -615,9 +613,7 @@ async def list_gam_orders(limit: int = 50, agent_created_only: bool = False) -> 
     from ..services import gam_reporting_service
 
     return await _service_json(
-        gam_reporting_service.list_gam_orders(
-            limit=limit, agent_created_only=agent_created_only
-        )
+        gam_reporting_service.list_gam_orders(limit=limit, agent_created_only=agent_created_only)
     )
 
 
@@ -634,9 +630,7 @@ async def get_gam_delivery_report(order_ids: str, days: int = 30) -> str:
     """
     from ..services import gam_reporting_service
 
-    return await _service_json(
-        gam_reporting_service.get_gam_delivery_report(order_ids, days=days)
-    )
+    return await _service_json(gam_reporting_service.get_gam_delivery_report(order_ids, days=days))
 
 
 @mcp.tool()

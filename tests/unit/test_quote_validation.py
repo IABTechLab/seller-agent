@@ -28,13 +28,9 @@ def mock_storage():
     store: dict = {}
     storage = AsyncMock()
     storage.get = AsyncMock(side_effect=lambda k: store.get(k))
-    storage.set = AsyncMock(
-        side_effect=lambda k, v, ttl=None: store.__setitem__(k, v)
-    )
+    storage.set = AsyncMock(side_effect=lambda k, v, ttl=None: store.__setitem__(k, v))
     storage.keys = AsyncMock(
-        side_effect=lambda pattern="*": [
-            k for k in store if k.startswith(pattern.replace("*", ""))
-        ]
+        side_effect=lambda pattern="*": [k for k in store if k.startswith(pattern.replace("*", ""))]
     )
     storage._store = store
     return storage
@@ -73,9 +69,7 @@ class TestRecordQuote:
         assert "expires_at" in record
 
     @pytest.mark.asyncio
-    async def test_multiple_quotes_for_same_buyer_product(
-        self, quote_history
-    ):
+    async def test_multiple_quotes_for_same_buyer_product(self, quote_history):
         """Multiple quotes for the same buyer+product should all be stored."""
         await quote_history.record_quote(
             quote_id="qt-001",
@@ -92,9 +86,7 @@ class TestRecordQuote:
             expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
         )
 
-        quotes = await quote_history.find_quotes(
-            buyer_id="buyer-001", product_id="prod-A"
-        )
+        quotes = await quote_history.find_quotes(buyer_id="buyer-001", product_id="prod-A")
         assert len(quotes) >= 2
 
 

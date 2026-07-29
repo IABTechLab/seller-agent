@@ -223,7 +223,11 @@ class TestSnapshotResponseShape:
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
-                json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"], "audience_plan": plan},
+                json={
+                    "idempotency_key": "idem-snap",
+                    "quote_id": quote["quote_id"],
+                    "audience_plan": plan,
+                },
                 headers={"Content-Type": _UCP},
             )
 
@@ -311,7 +315,11 @@ class TestPlanIdLogging:
             with caplog.at_level(logging.INFO, logger="ad_seller.audience.booking"):
                 resp = await client.post(
                     "/api/v1/deals",
-                    json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"], "audience_plan": plan},
+                    json={
+                        "idempotency_key": "idem-snap",
+                        "quote_id": quote["quote_id"],
+                        "audience_plan": plan,
+                    },
                 )
 
         assert resp.status_code == 200
@@ -329,7 +337,10 @@ class TestPlanIdLogging:
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             with caplog.at_level(logging.INFO, logger="ad_seller.audience.booking"):
-                await client.post("/api/v1/deals", json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"]})
+                await client.post(
+                    "/api/v1/deals",
+                    json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"]},
+                )
 
         assert [r for r in caplog.records if r.name == "ad_seller.audience.booking"] == []
 
@@ -353,7 +364,11 @@ class TestSnapshotPersistence:
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
-                json={"idempotency_key": "idem-snap", "quote_id": quote["quote_id"], "audience_plan": plan},
+                json={
+                    "idempotency_key": "idem-snap",
+                    "quote_id": quote["quote_id"],
+                    "audience_plan": plan,
+                },
             )
 
         deal_id = resp.json()["deal"]["deal_id"]

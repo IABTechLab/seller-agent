@@ -250,8 +250,10 @@ class TestAuthHeaderBinding:
         from fastapi.routing import APIRoute
 
         for route in app.routes:
-            if isinstance(route, APIRoute) and route.path == "/api/v1/quotes" and (
-                "POST" in route.methods
+            if (
+                isinstance(route, APIRoute)
+                and route.path == "/api/v1/quotes"
+                and ("POST" in route.methods)
             ):
                 query_param_names = {p.name for p in route.dependant.query_params}
                 for dep in route.dependant.dependencies:

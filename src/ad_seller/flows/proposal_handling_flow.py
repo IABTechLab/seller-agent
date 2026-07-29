@@ -395,9 +395,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         from ..services import catalog_service
 
         requested_impressions = self.state.proposal_data.get("impressions", 0)
-        avails = catalog_service.check_avails(
-            product, requested_impressions=requested_impressions
-        )
+        avails = catalog_service.check_avails(product, requested_impressions=requested_impressions)
         available_impressions = avails["available_impressions"]
 
         # Initialize evaluation with audience fields
@@ -421,7 +419,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             # Decision not made yet — synced when the crew/fallback decides.
             # (recommendation is REQUIRED on the model; omitting it made this
             # constructor raise and killed the whole evaluation chain cold —
-            #.)
+            # .)
             recommendation="",
         )
 
@@ -446,9 +444,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
 
     def _crew_time_budget(self) -> float:
         """Configured crew time budget in seconds; <= 0 disables the bound."""
-        return float(
-            getattr(self._settings, "proposal_flow_time_budget_seconds", 0.0) or 0.0
-        )
+        return float(getattr(self._settings, "proposal_flow_time_budget_seconds", 0.0) or 0.0)
 
     async def _run_crew_within_budget(self, crew: Any) -> Any:
         """Run the review crew bounded by the configured time budget.
@@ -504,8 +500,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             extra = time.monotonic() - abandoned_at
             if task.cancelled():
                 logger.warning(
-                    "Orphaned proposal-review crew for %s was cancelled "
-                    "%.1fs after abandonment.",
+                    "Orphaned proposal-review crew for %s was cancelled %.1fs after abandonment.",
                     proposal_id,
                     extra,
                 )
@@ -808,8 +803,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
            never auto-finalize.
         """
         toggle_on = getattr(settings, "approval_gate_enabled", False) and (
-            "proposal_decision"
-            in getattr(settings, "approval_required_flows", "").split(",")
+            "proposal_decision" in getattr(settings, "approval_required_flows", "").split(",")
         )
 
         threshold = getattr(settings, "approval_required_above_value", 0.0) or 0.0
