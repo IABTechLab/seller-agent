@@ -140,14 +140,20 @@ class TestCatalogService:
         }
         catalog_service.reset_catalog_cache()
 
-    def test_reset_generates_fresh_product_ids(self):
-        """Edge: resetting the cache regenerates product ids."""
+    def test_reset_preserves_stable_product_ids(self):
+        """Ids are deterministic: a cache reset must NOT mint new ids.
+
+        Contract change with the deterministic-id fix (issue #34): ids derive
+        from each product's name, so they are identical across resets and
+        across processes. The old fresh-ids-per-reset behavior is exactly what
+        broke follow-up lookups for external integrators.
+        """
         catalog_service.reset_catalog_cache()
         ids_before = set(catalog_service.get_static_product_catalog()["products"])
         catalog_service.reset_catalog_cache()
         ids_after = set(catalog_service.get_static_product_catalog()["products"])
 
-        assert ids_before.isdisjoint(ids_after)
+        assert ids_before == ids_after
         catalog_service.reset_catalog_cache()
 
     def test_flow_consumes_the_same_default_product_data(self):
