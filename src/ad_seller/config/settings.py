@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     #   gemini/gemini-2.5-flash                (requires GOOGLE_API_KEY)
     #   bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0 (requires AWS creds)
     default_llm_model: str = "anthropic/claude-sonnet-4-5-20250929"
-    manager_llm_model: str = "anthropic/claude-opus-4-20250514"
+    manager_llm_model: str = "anthropic/claude-opus-4-8"
     llm_temperature: float = 0.3
     llm_max_tokens: int = 4096
 
