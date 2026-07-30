@@ -1,6 +1,6 @@
 # MCP (Model Context Protocol)
 
-MCP is the **primary interface** for the seller agent. Publishers manage their agent from Claude (desktop or web), ChatGPT, Codex, Cursor, or any MCP-compatible assistant via 41 tools. Buyer agents also call seller tools through MCP for automated workflows.
+MCP is the **primary interface** for the seller agent. Publishers manage their agent from Claude (desktop or web), ChatGPT, Codex, Cursor, or any MCP-compatible assistant via 46 tools. Buyer agents also call seller tools through MCP for automated workflows.
 
 ## Connection
 

@@ -1,6 +1,6 @@
 # API Overview
 
-The Ad Seller System API exposes **59 endpoints** across **19 tags**. All endpoints are served from a single FastAPI application.
+The Ad Seller System API exposes **87 endpoints** across **25 tags**. All endpoints are served from a single FastAPI application. The complete auto-generated route inventory is in the [REST Endpoints reference](../reference/endpoints.md).
 
 **Base URL:** `http://localhost:8000`
 **OpenAPI docs:** `http://localhost:8000/docs`

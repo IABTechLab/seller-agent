@@ -432,8 +432,10 @@ def get_static_product_catalog() -> dict[str, Any]:
 def reset_catalog_cache() -> None:
     """Reset the cached catalog (rebuilt on next read).
 
-    Default mode regenerates fresh uuid product IDs; CSV mode re-reads the
-    CSV inventory, whose IDs are deterministic (the ``id`` column).
+    Product IDs are stable across resets in both modes: the default catalog
+    derives them deterministically (``uuid5`` of each config's name, issue
+    #34), and CSV mode re-reads the CSV inventory, whose IDs are the ``id``
+    column.
     """
     global _CATALOG_CACHE
     _CATALOG_CACHE = None
