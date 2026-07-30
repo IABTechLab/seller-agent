@@ -7,7 +7,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Dependencies are installed from uv.lock (uv sync --frozen), never resolved
+# Dependencies are installed from uv.lock (uv sync --locked), never resolved
 # fresh from pyproject ranges. This keeps CI byte-identical to the local
 # toolchain — a floating `pip install -e ".[dev]"` lets newer
 # crewai/fastapi/ruff releases break main without any code change.
@@ -36,13 +36,13 @@ jobs:
           enable-cache: true
 
       - name: Install locked dependencies
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Lint
-        run: uv run --frozen ruff check src/
+        run: uv run --locked ruff check src/
 
       - name: Format check
-        run: uv run --frozen ruff format --check src/ tests/
+        run: uv run --locked ruff format --check src/ tests/
 
       - name: Unit tests
         env:
@@ -55,7 +55,7 @@ jobs:
           OTEL_SDK_DISABLED: "true"
           ANONYMIZED_TELEMETRY: "False"
           POSTHOG_DISABLED: "1"
-        run: timeout --kill-after=10s 600s uv run --frozen pytest tests/unit/ -v --tb=short --timeout=30 --timeout-method=thread
+        run: timeout --kill-after=10s 600s uv run --locked pytest tests/unit/ -v --tb=short --timeout=30 --timeout-method=thread
 
       - name: Integration tests
         env:
@@ -67,4 +67,4 @@ jobs:
           OTEL_SDK_DISABLED: "true"
           ANONYMIZED_TELEMETRY: "False"
           POSTHOG_DISABLED: "1"
-        run: timeout --kill-after=10s 600s uv run --frozen pytest tests/integration/ -v --tb=short --timeout=60 --timeout-method=thread
+        run: timeout --kill-after=10s 600s uv run --locked pytest tests/integration/ -v --tb=short --timeout=60 --timeout-method=thread
