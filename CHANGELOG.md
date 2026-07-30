@@ -4,6 +4,43 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+## [2.3.3] — 2026-07-29
+
+### Fixed
+- Replaced the retired manager-LLM default: Anthropic retired
+  `claude-opus-4-20250514` on June 15, 2026, so fresh installs using an
+  Anthropic key failed with `model_not_found`. `MANAGER_LLM_MODEL` now
+  defaults to `claude-opus-4-8` (Bedrock inference profile
+  `us.anthropic.claude-opus-4-8`) across settings, `.env.example`, and
+  the configuration guide. (#35)
+- Ported the surgical toolResult stripping from buyer-agent, restoring
+  patch parity between the two agents. (#36)
+- Default-catalog product IDs are now derived deterministically
+  (`uuid5` of the product name) instead of minted randomly on every
+  catalog build, so product IDs are stable across restarts and cache
+  resets. The reset-ids test was updated to the deterministic-ID
+  contract. (#37, follow-up to issue #34)
+
+## [2.3.2] — 2026-07-28
+
+### Added
+- deals-api-mcp deal-sync integration (#32): a new deal-sync connector
+  family — `DealSyncClient` ABC and `DealSyncRegistry`
+  (`clients/deal_sync_base.py`), a peer of the SSP registry — with
+  `DealsAPIMCPClient` pushing negotiated deals to the IAB
+  [deals-api-mcp](https://github.com/IABTechLab/deals-api-mcp) server
+  (IAB Deal Sync API v1.0) over MCP Streamable HTTP. See
+  `docs/integration/deals-api-mcp.md`.
+
+## [2.3.1] — 2026-07-22
+
+### Fixed
+- Agent card (`/.well-known/agent.json`) advertises only the protocols
+  the server actually serves; A2A documentation marked
+  designed-not-implemented.
+
+## [2.3.0] — 2026-07-22
+
 ### Added
 - OpenDirect 2.1 spec dialect on `POST /products/avails` (dialect
   convergence, shared avails contract): the published
@@ -17,14 +54,31 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   byte-for-byte unchanged. Requested volume/budget arrive on the spec
   dialect as the contract's Investment `producttargeting` entries and
   feed the same honest-availability policy. Regenerated
-  `docs/api/openapi.json`.
+  `docs/api/openapi.json`. (primitives v0.5.0)
+
+## [2.2.2] — 2026-07-22
+
+### Fixed
+- Proposal availability is grounded in `check_avails`; volume
+  shortfalls now produce a counter-offer instead of a rejection.
+- CSV inventory is included in the product catalog; `update_package`
+  applies a field whitelist.
+
+## [2.2.1] — 2026-07-22
+
+### Fixed
+- Catalog-aware package resolution and idempotent inventory sync
+  (issue #34).
+
+## [2.2.0] — 2026-07-21
+
+### Changed
 - Avails endpoint (`POST /products/avails`) adopted the shared avails wire
   contract: request/response models are now
   `iab_agentic_primitives.protocol.AvailsRequest`/`AvailsResponse`
   (re-exported through `ad_seller.interfaces.api.schemas`), the canonical
-  home of the contract. Same wire dialect and field set.
-
-### Changed
+  home of the contract. Same wire dialect and field set. (primitives
+  v0.4.0)
 - Avails responses no longer null-pad valueless optionals: per the shared
   contract policy, `deliveryConfidence` is omitted entirely (this
   reference seller has no forecast data source), `guaranteedImpressions`
@@ -32,6 +86,30 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   omitted when the product declares no targeting dicts. Readers that
   parsed the previous explicit nulls parse the omitted form identically
   under the shared models. Regenerated `docs/api/openapi.json`.
+
+### Added
+- Leak-prevention guardrails: git hooks and hygiene CI; internal issue
+  tracker removed from the public tree.
+
+## [2.1.1] — 2026-07-21
+
+### Changed
+- Universal lowball counter: all below-floor offers are countered at
+  floor rather than rejected (spec change).
+- Bounded proposal-flow latency with a deterministic fallback.
+
+### Added
+- Cold-start negotiation surface: proposal persistence, quote-led
+  opens, and booking honors `ACCEPTED` proposals.
+- Grounded quote availability and enriched catalog metadata.
+
+### Fixed
+- Docs CI deploys without installing the app (private dependency); the
+  OpenAPI artifact is committed.
+
+## [2.1.0] — 2026-07-20
+
+### Added
 - MCP Streamable HTTP transport at `/mcp` (current MCP standard, protocol 2025-06-18) — resolves buyer agent 405 errors on MCP connection
 - Legacy HTTP+SSE transport kept at `/mcp-sse/sse` for backwards compatibility with older Claude Desktop / ChatGPT clients
 - FreeWheel OAuth 2.1 PKCE authentication integration:
@@ -43,19 +121,37 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 - CSV ad server adapter with full CRUD and atomic writes (61 tests)
 - 9 MCP prompts (slash commands) for Claude Desktop/web (/setup, /status, /inventory, /deals, /queue, /new-deal, /configure, /buyers, /help)
 - 3 composite tools: get_inbound_queue, get_buyer_activity, list_configurable_flows
+- Avails endpoint `POST /products/avails` with honest-availability policy
+- Auto-generated tool/endpoint/event inventories (`docs/reference/`) with a CI drift guard
+- Tested quickstart: smoke test boots the documented entrypoint and asserts core routes respond
+- Server-side trust-tier verification with `VerifiedTrust` persisted on price-moving paths; agent-registry wiring
+- Threshold-driven mandatory approval gates; approval endpoints authenticated and stamped with the verified principal
 - Comprehensive unit tests (86 new tests) and integration tests (38 new tests)
 - Troubleshooting guide
 - Buyer agent compatibility report
 
 ### Changed
+- Service layer extracted: MCP tools, CLI, and chat interface are thin adapters over it; background REST sidecar removed from the AgentCore MCP entrypoint
+- Shared iab-agentic-primitives contracts adopted at the Quote, Deal-booking, Negotiation, and Catalog wire edges
+- OpenDirect tier-1 wire aliases on the public wire surface
+- Two-way main/v2 reconciliation: GAM adapter restored, LLM provider configuration unified
 - Renamed "Deal Jockey" to "Deal Library" across codebase and documentation
 - Linted and formatted entire codebase with ruff
 - Removed `FREEWHEEL_BC_CLIENT_ID` and `FREEWHEEL_BC_CLIENT_SECRET` settings (Beeswax uses session cookie auth, not OAuth client_credentials)
 
 ### Fixed
+- CPM hallucination: `pricing_type` enum + quote validation (#7)
+- Route shadowing: `/api/v1/deals/export` registered before `/{deal_id}`
+- Auth header binding in `_get_optional_api_key_record`; audit trail fails closed
+- `MANAGER_LLM_MODEL` default: `opus-4-20250514` → `sonnet-4-5-20250929` (#19)
+- CrewAI shutdown telemetry hang disabled; agent memory respects `crew_memory_enabled` (#21, #22)
+- Shared `Product.ad_formats` populated from `inventory_type`
 - Documentation tool count (41 MCP tools, not "45+")
 - Documentation endpoint count (82 REST endpoints, not "70+")
 - Port typo in media-kit guide (8001 → 8000)
+
+### Removed
+- Unused `services/openrtb_parser.py` and `services/setup_wizard.py`; abandoned CrewAI tool subpackages (gam, pricing, proposal, availability, deal_library)
 
 ## [2.0.0] — 2026-03-23
 

@@ -77,7 +77,7 @@ Each event contains:
 | Field | Type | Description |
 |-------|------|-------------|
 | `event_id` | string | UUID |
-| `event_type` | EventType | One of the 21 event types above |
+| `event_type` | EventType | One of the 22 event types above |
 | `timestamp` | datetime | When the event occurred |
 | `flow_id` | string | Associated workflow flow ID |
 | `flow_type` | string | Type of flow (e.g., `proposal_handling`) |

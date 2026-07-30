@@ -20,7 +20,7 @@ graph LR
     subgraph "Seller Agent"
         MCP_S["/mcp/ (Streamable HTTP)<br/>MCP Server"]
         A2A_S["/a2a/seller/jsonrpc<br/>A2A Server"]
-        REST_S["REST API<br/>58 endpoints"]
+        REST_S["REST API<br/>87 endpoints"]
         NLP[NL Processing]
         TOOLS[Seller Tools]
         FLOWS[CrewAI Flows]
@@ -61,7 +61,7 @@ graph TB
         subgraph "Protocol Layer"
             MCP[MCP Server<br/>/mcp/ Streamable HTTP]
             A2A[A2A Server<br/>/a2a/seller/jsonrpc]
-            API[REST API<br/>58 endpoints, 19 tags]
+            API[REST API<br/>87 endpoints, 25 tags]
         end
 
         AUTH[Auth & API Keys]
@@ -135,7 +135,7 @@ graph TB
 
 ### API Layer
 
-**FastAPI application** with 58 endpoints across 19 OpenAPI tags. Handles HTTP routing, request validation, authentication, and response serialization. See [API Overview](../api/overview.md).
+**FastAPI application** with 87 endpoints across 25 OpenAPI tags. Handles HTTP routing, request validation, authentication, and response serialization. See [API Overview](../api/overview.md).
 
 ### Authentication and Agent Registry
 
@@ -156,9 +156,17 @@ graph TB
 - **DealGenerationFlow** --- Converts accepted proposals into deals with OpenRTB parameters.
 - **DiscoveryInquiryFlow** --- Handles natural-language inventory queries from buyers.
 
+### Connector Layer
+
+Three pluggable connector families move inventory and deals between the seller agent and external systems:
+
+- **AdServerClient** --- Inventory sync and deal setup in the publisher's ad server (Google Ad Manager, FreeWheel, CSV).
+- **SSPClient** --- Deal distribution through SSP exchanges to DSPs (PubMatic MCP, Index Exchange REST, Magnite REST).
+- **DealSyncClient** --- Deal sync through an external deal-sync service. Implementations register in the `DealSyncRegistry` (a peer of the SSP registry); the day-one implementation is `DealsAPIMCPClient`, which pushes negotiated deals to the IAB [deals-api-mcp](https://github.com/IABTechLab/deals-api-mcp) server (IAB Deal Sync API v1.0) over MCP Streamable HTTP. See [deals-api-mcp Integration](../integration/deals-api-mcp.md).
+
 ### Infrastructure
 
-- **Event Bus** --- Emits and stores events for all system activity. 21 event types across 7 categories. See [Event Bus](../event-bus/overview.md).
+- **Event Bus** --- Emits and stores events for all system activity. 22 event types across 7 categories. See [Event Bus](../event-bus/overview.md).
 - **Order State Machine** --- Formal state machine with 12 states and 20 transitions. Full audit trail. See [Order Lifecycle](../state-machines/order-lifecycle.md).
 - **Change Request Manager** --- Handles post-deal modifications with severity classification and approval routing. See [Change Requests](../api/change-requests.md).
 - **Approval Gate** --- Human-in-the-loop approval workflow for proposals and high-value decisions.

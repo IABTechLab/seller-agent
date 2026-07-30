@@ -62,7 +62,7 @@ Expected response:
 
 ## Browse the API Docs
 
-Open `http://localhost:8000/docs` in a browser for the auto-generated Swagger UI with all 58 endpoints.
+Open `http://localhost:8000/docs` in a browser for the auto-generated Swagger UI with all 87 endpoints.
 
 ## First API Calls
 
@@ -118,6 +118,6 @@ Returns a confirmed deal with a Deal ID, OpenRTB parameters, and DSP activation 
 
 ## Next Steps
 
-- [API Overview](../api/overview.md) --- see all 58 endpoints
+- [API Overview](../api/overview.md) --- see all 87 endpoints
 - [Authentication](../api/authentication.md) --- set up API keys for authenticated access
 - [Buyer Agent Integration](../integration/buyer-agent.md) --- connect a buyer agent

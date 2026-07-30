@@ -8,7 +8,7 @@ An AI-powered inventory management system for **publishers and SSPs** to automat
 
 ## What This Does
 
-- **Manage your seller agent from Claude** (desktop or web) — interactive setup wizard + 41 MCP tools for day-to-day operations
+- **Manage your seller agent from Claude** (desktop or web) — interactive setup wizard + 46 MCP tools for day-to-day operations
 - **Expose your inventory** via a tiered Media Kit with public and authenticated views
 - **Automate deal negotiations** with AI agents that understand your pricing rules
 - **Offer tiered pricing** based on buyer identity (public, seat, agency, advertiser)
@@ -29,9 +29,9 @@ The seller agent exposes four communication interfaces:
 
 | Interface | Protocol | Use Case |
 |-----------|----------|----------|
-| **MCP** | `/mcp` (Streamable HTTP), `/mcp-sse/sse` (legacy) | Primary interface — 41 tools for Claude, ChatGPT, Codex, Cursor, and buyer agents |
+| **MCP** | `/mcp` (Streamable HTTP), `/mcp-sse/sse` (legacy) | Primary interface — 46 tools for Claude, ChatGPT, Codex, Cursor, and buyer agents |
 | **A2A** | `/a2a/{agent}/jsonrpc` | Conversational JSON-RPC 2.0 for natural language queries |
-| **REST** | `/api/v1/*` | Programmatic access — 82 endpoints across 15 groups |
+| **REST** | `/api/v1/*` | Programmatic access — 87 endpoints across 25 groups |
 | **Chat** | `/chat` | Web-based conversational interface for human buyers |
 
 > [Protocol Documentation](https://iabtechlab.github.io/seller-agent/api/mcp/)
@@ -51,7 +51,7 @@ Buyer Agents ──→ A2A / REST ───────────────�
                     │                               │                      │
                     ▼                               ▼                      ▼
               Ad Server Layer               Storage (SQLite/PG)      Event Bus
-              ┌──────────────┐              (products, packages,     (16 event types)
+              ┌──────────────┐              (products, packages,     (22 event types)
               │ GAM    ✅    │               orders, sessions,
               │ FreeWheel ✅ │               deals, curators)
               │ CSV    ✅    │
@@ -67,6 +67,13 @@ Buyer Agents ──→ A2A / REST ───────────────�
               │ Your SSP*       │
               └──────────────────┘
               * Pluggable via SSPClient
+                    │
+              Deal Sync
+              ┌──────────────────┐
+              │ deals-api-mcp ✅ │
+              │ Your service*    │
+              └──────────────────┘
+              * Pluggable via DealSyncClient
 ```
 
 ### Agent Hierarchy
@@ -121,20 +128,24 @@ The wizard guides you through: publisher identity → agent behavior → media k
 
 ## Key Features
 
-### MCP Tools (41 tools for Claude / ChatGPT / Codex / Cursor)
+### MCP Tools (46 tools for Claude / ChatGPT / Codex / Cursor)
 
 | Category | Tools | Examples |
 |----------|-------|---------|
-| Setup | 4 | `get_setup_status`, `health_check`, `get_config` |
-| Inventory | 4 | `list_products`, `sync_inventory`, `list_inventory` |
-| Media Kit | 3 | `list_packages`, `create_package`, `search_packages` |
-| Pricing | 4 | `get_rate_card`, `update_rate_card`, `get_pricing` |
-| Deals | 12 | `create_deal_from_template`, `push_deal_to_buyers`, `distribute_deal_via_ssp`, `migrate_deal`, `deprecate_deal`, `get_deal_lineage` |
+| Setup | 4 | `get_setup_status`, `health_check`, `get_config`, `set_publisher_identity` |
+| Inventory | 4 | `list_products`, `sync_inventory`, `list_inventory`, `get_sync_status` |
+| Media Kit | 2 | `list_packages`, `create_package` |
+| Pricing & Quotes | 4 | `get_rate_card`, `update_rate_card`, `get_pricing`, `request_quote` |
+| Deals | 9 | `create_deal_from_template`, `push_deal_to_buyers`, `migrate_deal`, `deprecate_deal`, `get_deal_lineage`, `export_deals`, `bulk_deal_operations` |
+| Orders & Reporting | 4 | `list_orders`, `transition_order`, `list_gam_orders`, `get_gam_delivery_report` |
 | Approvals | 3 | `list_pending_approvals`, `approve_or_reject`, `set_approval_gates` |
-| Buyer Agents | 4 | `list_buyer_agents`, `register_buyer_agent`, `set_agent_trust` |
-| Curators | 3 | `list_curators`, `create_curated_deal` |
-| SSPs | 3 | `list_ssps`, `distribute_deal`, `troubleshoot_deal` |
-| Admin | 5 | `create_api_key`, `list_api_keys`, `list_sessions` |
+| Buyer Agents | 4 | `list_buyer_agents`, `register_buyer_agent`, `set_agent_trust`, `list_agents` |
+| Curators | 2 | `list_curators`, `create_curated_deal` |
+| SSPs | 3 | `list_ssps`, `distribute_deal_via_ssp`, `troubleshoot_deal` |
+| Admin & Sessions | 4 | `create_api_key`, `list_api_keys`, `revoke_api_key`, `list_sessions` |
+| Composite | 3 | `get_inbound_queue`, `get_buyer_activity`, `list_configurable_flows` |
+
+Full inventory: [MCP Tools reference](https://iabtechlab.github.io/seller-agent/reference/mcp-tools/).
 
 ### Deal Distribution (3 paths)
 
@@ -200,28 +211,37 @@ INDEX_EXCHANGE_API_URL=https://api.indexexchange.com
 
 ## API Reference
 
-82 endpoints across 15 groups:
+87 endpoints across 25 groups:
 
 | Group | Endpoints | Description |
 |-------|-----------|-------------|
 | Media Kit | 4 | Public inventory catalog (no auth) |
-| Packages | 7 | Tier-gated package CRUD |
-| Products | 5 | Product catalog + inventory type overrides |
+| Packages | 7 | Tier-gated package CRUD, assembly, and sync |
+| Products | 6 | Product catalog, avails, inventory type overrides |
 | Quotes | 2 | Non-binding price quotes (IAB Deals API) |
-| Deal Booking | 12 | Deals, from-template, push, distribute, migrate, deprecate, lineage, export |
-| Proposals | 6 | Proposal lifecycle + counter-offers |
-| Orders | 8 | Order CRUD + state transitions |
-| Change Requests | 5 | Post-deal modification requests |
-| Supply Chain | 1 | sellers.json-like self-description |
+| Deal Booking | 11 | Deals, from-template, push, distribute, migrate, deprecate, lineage, export |
+| Deals | 1 | Deal creation from accepted proposals |
 | Deal Performance | 1 | Delivery metrics |
 | Bulk Operations | 1 | Batch deal create/update/cancel |
+| Proposals | 1 | Proposal submission |
+| Negotiation | 3 | Counter-offers + negotiation state and messages |
+| Discovery | 1 | Natural-language inventory discovery |
+| Audience | 1 | Agentic audience matching |
+| Orders | 6 | Order CRUD, history, transitions, reporting |
+| Audit | 1 | Order audit trail |
+| Change Requests | 5 | Post-deal modification requests |
+| Approvals | 4 | Human-in-the-loop approval decisions |
+| Supply Chain | 1 | sellers.json-like self-description |
 | Curators | 4 | Curator registration + curated deals |
-| Sessions | 4 | Multi-turn session persistence |
-| Authentication | 3 | API key management |
-| Agent Registry | 5 | Agent trust + discovery |
+| Sessions | 5 | Multi-turn session persistence |
+| Authentication | 4 | API key management |
+| Agent Registry | 6 | Agent card, trust + discovery |
 | Pricing | 3 | Rate card + pricing calculation |
-| Inventory Sync | 3 | Scheduler status, trigger, watermark |
-| Core | 2 | Health check + root |
+| Events | 2 | Event log queries |
+| Reporting | 2 | GAM orders + delivery reports |
+| Core | 5 | Health check, root, inventory-sync status/trigger/watermark |
+
+Full inventory: [REST Endpoints reference](https://iabtechlab.github.io/seller-agent/reference/endpoints/).
 
 > [Full API Reference](https://iabtechlab.github.io/seller-agent/api/overview/)
 
