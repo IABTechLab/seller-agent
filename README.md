@@ -67,6 +67,13 @@ Buyer Agents ──→ A2A / REST ───────────────�
               │ Your SSP*       │
               └──────────────────┘
               * Pluggable via SSPClient
+                    │
+              Deal Sync
+              ┌──────────────────┐
+              │ deals-api-mcp ✅ │
+              │ Your service*    │
+              └──────────────────┘
+              * Pluggable via DealSyncClient
 ```
 
 ### Agent Hierarchy

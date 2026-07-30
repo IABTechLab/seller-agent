@@ -156,6 +156,14 @@ graph TB
 - **DealGenerationFlow** --- Converts accepted proposals into deals with OpenRTB parameters.
 - **DiscoveryInquiryFlow** --- Handles natural-language inventory queries from buyers.
 
+### Connector Layer
+
+Three pluggable connector families move inventory and deals between the seller agent and external systems:
+
+- **AdServerClient** --- Inventory sync and deal setup in the publisher's ad server (Google Ad Manager, FreeWheel, CSV).
+- **SSPClient** --- Deal distribution through SSP exchanges to DSPs (PubMatic MCP, Index Exchange REST, Magnite REST).
+- **DealSyncClient** --- Deal sync through an external deal-sync service. Implementations register in the `DealSyncRegistry` (a peer of the SSP registry); the day-one implementation is `DealsAPIMCPClient`, which pushes negotiated deals to the IAB [deals-api-mcp](https://github.com/IABTechLab/deals-api-mcp) server (IAB Deal Sync API v1.0) over MCP Streamable HTTP. See [deals-api-mcp Integration](../integration/deals-api-mcp.md).
+
 ### Infrastructure
 
 - **Event Bus** --- Emits and stores events for all system activity. 22 event types across 7 categories. See [Event Bus](../event-bus/overview.md).

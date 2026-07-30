@@ -77,6 +77,10 @@ nav:
       - Buyer Agent Guide: integration/buyer-agent.md
       - Negotiation Protocol: integration/negotiation.md
       - deals-api-mcp: integration/deals-api-mcp.md
+  - Reference:
+      - REST Endpoints: reference/endpoints.md
+      - MCP Tools: reference/mcp-tools.md
+      - Event Types: reference/event-types.md
   - AI Assistant Setup:
       - Claude (Desktop & Web): guides/claude-desktop-setup.md
       - ChatGPT, Codex & AI IDEs: guides/chatgpt-setup.md
@@ -91,4 +95,5 @@ nav:
       - Approval & HITL: guides/approval-rules.md
       - Buyer & Agent Management: guides/agent-management.md
       - Deployment: guides/deployment.md
+      - Troubleshooting: guides/troubleshooting.md
   - "Buyer Agent Docs →": https://iabtechlab.github.io/buyer-agent/
