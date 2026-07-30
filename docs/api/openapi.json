@@ -8604,6 +8604,30 @@
         "title": "ProductTargeting",
         "description": "Spec ``Object: ProductTargeting`` \u2014 dimensional targeting/metrics.\n\nAll-lowercase wire names per the normative table; the six starred\nattributes are required."
       },
+      "ProposalErrorDetail": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "code"
+        ],
+        "title": "ProposalErrorDetail",
+        "description": "Causeful machine-readable proposal error (seller issue #34).\n\nFD-6 structured-error house style: a stable snake_case ``code`` names\nthe cause (``missing_required_fields``, ``product_not_found``,\n``audience_validation``, ``pricing``, ``availability``,\n``crew_evaluation_error``, ``internal``), ``stage`` names the\nProposalHandlingFlow stage that failed the proposal, and ``detail``\ncarries the human-readable explanation."
+      },
       "ProposalRequest": {
         "properties": {
           "product_id": {
@@ -8736,7 +8760,7 @@
           },
           "errors": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/ProposalErrorDetail"
             },
             "type": "array",
             "title": "Errors",
@@ -8750,7 +8774,7 @@
           "status"
         ],
         "title": "ProposalResponse",
-        "description": "Proposal submission response."
+        "description": "Proposal submission response.\n\nWire-compat note: a failed evaluation still answers HTTP 200 with\n``status=\"failed\"`` \u2014 but ``errors[]`` is now guaranteed non-empty and\ncauseful whenever the status is ``failed`` (seller issue #34)."
       },
       "Quote": {
         "properties": {

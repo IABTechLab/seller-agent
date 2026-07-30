@@ -233,6 +233,43 @@ The seller agent's MCP endpoint uses Server-Sent Events. Connections must stay o
 
 ---
 
+## Failed Proposals
+
+A proposal that fails evaluation does **not** return an HTTP error — `POST /proposals` answers `200 OK` with `"status": "failed"`. The cause is in the `errors` array, which is guaranteed non-empty whenever the status is `failed`. Each entry is a structured object:
+
+- `stage` — the evaluation stage that failed the proposal
+- `code` — a stable, machine-readable snake_case cause
+- `detail` — a human-readable explanation
+
+```json
+{
+  "proposal_id": "prop-123",
+  "recommendation": "reject",
+  "status": "failed",
+  "errors": [
+    {
+      "stage": "validate_product",
+      "code": "product_not_found",
+      "detail": "Product not found: prod-999"
+    }
+  ]
+}
+```
+
+Branch on `code`, not `detail` — the detail text is free-form and may change.
+
+| Stage | Code | Likely cause |
+|-------|------|--------------|
+| `receive_proposal` | `missing_required_fields` | Request body is missing required proposal fields |
+| `validate_product` | `product_not_found` | `product_id` doesn't match any product in the catalog |
+| `validate_audience` | `audience_validation` | Audience targeting was hard-rejected by validation |
+| `evaluate_pricing` | `pricing` | Pricing evaluation raised an error |
+| `check_availability` | `availability` | Availability check raised an error |
+| `run_crew_evaluation` | `crew_evaluation_error` | Crew evaluation failed and the deterministic fallback also errored |
+| `flow` | `internal` | Unattributed failure or whole-flow crash — check server logs |
+
+---
+
 ## Logs
 
 ### Where to find logs
