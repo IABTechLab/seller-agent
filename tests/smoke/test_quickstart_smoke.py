@@ -23,23 +23,17 @@ executable contract behind that promise. It:
 If someone renames the module, moves ``app``, or breaks startup, the docs'
 entrypoint is now a lie and this test goes red.
 
-``ANTHROPIC_API_KEY`` is a *required* setting for this service (see
-``ad_seller/config/settings.py``), so the quickstart's ``.env`` step is not
-optional. We inject a dummy value here — the smoke path never calls the LLM,
-so no real key is needed, but the app will not import/boot without *some*
-value present. This mirrors what a developer's ``.env`` provides.
+``ANTHROPIC_API_KEY`` is *optional at startup* (see
+``ad_seller/config/settings.py``): a pristine clone with no ``.env`` must
+import and boot the app, and the deterministic endpoints exercised here do
+no LLM/network work. No key is injected — this test IS the keyless-startup
+contract. LLM-backed flows check for the key at use time instead
+(``ad_seller.llm.build_llm``).
 """
 
-import os
+from fastapi.testclient import TestClient
 
-# Must be set before the app (and its settings) import — settings.anthropic_api_key
-# has no default. A real key is NOT needed: the endpoints exercised below do no
-# LLM/network work. This is the same value CI uses (ANTHROPIC_API_KEY=test).
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-not-a-real-key")
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from ad_seller.interfaces.api.main import app  # noqa: E402
+from ad_seller.interfaces.api.main import app
 
 
 def test_documented_entrypoint_boots_and_serves():

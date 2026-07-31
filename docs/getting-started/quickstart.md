@@ -26,15 +26,15 @@ pip install -e ".[all]"
 
 ## Configure
 
-The seller agent reads settings from a `.env` file in the repo root. **`ANTHROPIC_API_KEY` is required** — the app fails to start with a `ValidationError` if it is missing. Copy the template and fill it in:
+The seller agent reads settings from a `.env` file in the repo root. **`ANTHROPIC_API_KEY` is optional to start the server** — deterministic endpoints (catalog, health, rule-based proposal evaluation) work without any key, and LLM-backed flows raise a clear error at use time if it is missing. Set it to enable the LLM-powered agents. Copy the template and fill it in:
 
 ```bash
 cp .env.example .env
-# then edit .env and set:
+# then edit .env and set (needed for LLM-backed flows):
 #   ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Every other setting has a sensible default (SQLite storage, CSV ad-server samples, no SSPs), so a single API key is enough to boot locally. See [Configuration](../guides/configuration.md) for the full list.
+Every other setting has a sensible default (SQLite storage, CSV ad-server samples, no SSPs), so the server boots locally with no configuration at all — add the API key when you want the LLM flows. See [Configuration](../guides/configuration.md) for the full list.
 
 ## Run the Server
 

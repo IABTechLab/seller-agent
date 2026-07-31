@@ -543,10 +543,12 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         if self.state.status == ExecutionStatus.FAILED:
             return
 
-        # Create and run the proposal review crew
-        crew = create_proposal_review_crew(self.state.proposal_data)
-
         try:
+            # Crew creation happens inside the try on purpose: on a keyless
+            # deployment build_llm raises MissingApiKeyError at construction
+            # time, and that must degrade to the SAME deterministic fallback
+            # as any other crew failure — the request still answers.
+            crew = create_proposal_review_crew(self.state.proposal_data)
             result = await self._run_crew_within_budget(crew)
 
             review: Optional[ProposalReviewOutput] = result.pydantic
