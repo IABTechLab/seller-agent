@@ -205,10 +205,7 @@ DEFAULT_PRODUCT_CONFIGS: list[dict[str, Any]] = [
     # the wire (never a fabricated price).
     {
         "name": "Digital Out-of-Home — Times Square Spectacular",
-        "description": (
-            "Iconic Times Square digital billboard takeover; "
-            "pricing on request only"
-        ),
+        "description": ("Iconic Times Square digital billboard takeover; pricing on request only"),
         "inventory_type": "dooh",
         "supported_deal_types": [DealType.PREFERRED_DEAL],
         "supported_pricing_models": [PricingModel.CPM],
@@ -515,7 +512,9 @@ def check_avails(
     else:
         available = min(requested, product.maximum_impressions)
 
-    guaranteed = available if DealType.PROGRAMMATIC_GUARANTEED in product.supported_deal_types else None
+    guaranteed = (
+        available if DealType.PROGRAMMATIC_GUARANTEED in product.supported_deal_types else None
+    )
 
     targeting_dicts = [
         product.audience_targeting,

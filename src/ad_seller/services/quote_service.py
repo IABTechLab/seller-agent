@@ -142,15 +142,11 @@ async def create_quote(
     # are a 422 here too, never a fabricated price.
     from . import catalog_service
 
-    avails = catalog_service.check_avails(
-        product, requested_impressions=request.impressions
-    )
+    avails = catalog_service.check_avails(product, requested_impressions=request.impressions)
     # Same requested-volume fallback as check_avails: explicit impressions,
     # else the product's minimum deal size.
     requested_volume = (
-        request.impressions
-        if request.impressions is not None
-        else product.minimum_impressions
+        request.impressions if request.impressions is not None else product.minimum_impressions
     )
     availability = QuoteAvailability(
         inventory_available=avails["available_impressions"] >= max(0, requested_volume),

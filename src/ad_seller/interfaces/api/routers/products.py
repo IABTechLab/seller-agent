@@ -55,9 +55,7 @@ async def list_products(
     )
 
 
-def _spec_avails_collection(
-    search: ProductAvailsSearch, catalog: dict
-) -> AvailsCollection:
+def _spec_avails_collection(search: ProductAvailsSearch, catalog: dict) -> AvailsCollection:
     """Serve the OpenDirect 2.1 spec dialect: one Avails per product.
 
     Requested volume/budget arrive as minted Investment

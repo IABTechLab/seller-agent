@@ -25,11 +25,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Docs deploys must not install the app: it depends on the private
-      # iab-agentic-primitives, which CI cannot clone. The OpenAPI JSON is a
+      # Docs deploys deliberately do not install the app; the OpenAPI JSON is a
       # committed artifact regenerated locally via scripts/generate_openapi.py.
-      - name: Install docs toolchain
-        run: pip install "mkdocs-material>=9.5.0" "mkdocs-mermaid2-plugin>=1.1.0"
+      # Versions are pinned to the ones recorded in uv.lock so the docs build
+      # cannot drift from the local toolchain — bump them together with `uv lock`.
+      - name: Install docs toolchain (pinned to uv.lock versions)
+        run: pip install "mkdocs-material==9.7.6" "mkdocs-mermaid2-plugin==1.2.3"
 
       - name: Deploy to GitHub Pages
         run: mkdocs gh-deploy --force

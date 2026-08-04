@@ -38,7 +38,9 @@ def build_negotiation_engine():
     return NegotiationEngine(pricing_engine, yield_opt)
 
 
-async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, Any]) -> dict[str, Any]:
+async def submit_proposal(
+    request: Any, buyer_context: Any, catalog: dict[str, Any]
+) -> dict[str, Any]:
     """Evaluate a submitted proposal.
 
     Product data now comes from the single cached catalog source (EP-3.3)
@@ -96,7 +98,7 @@ async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, A
     # Persist the proposal (and its product pricing) so the REST negotiation
     # surface is reachable cold — without this, POST /api/v1/negotiations/
     # messages 404'd ("Proposal not found") on every fresh negotiation
-    #.
+    # .
     await storage.set_proposal(
         proposal_id,
         {

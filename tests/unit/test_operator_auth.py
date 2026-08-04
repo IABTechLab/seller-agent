@@ -144,9 +144,7 @@ class TestApiKeyEndpointsRequireOperator:
     async def test_buyer_key_create_key_is_403(self, client, mock_storage):
         raw_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post(
-                "/auth/api-keys", json={"label": "x"}, headers=_auth(raw_key)
-            )
+            resp = await client.post("/auth/api-keys", json={"label": "x"}, headers=_auth(raw_key))
         assert resp.status_code == 403
         assert "Operator credential required" in resp.text
 
@@ -193,9 +191,7 @@ class TestApiKeyEndpointsRequireOperator:
 
     async def test_anonymous_operator_endpoint_is_401(self, client, mock_storage):
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post(
-                "/auth/api-keys/operator", json={"label": "x"}
-            )
+            resp = await client.post("/auth/api-keys/operator", json={"label": "x"})
         assert resp.status_code == 401
 
     async def test_buyer_key_cannot_mint_operator_key(self, client, mock_storage):
@@ -232,9 +228,7 @@ class TestAdminSurfaceGated:
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             anon = await client.put("/api/v1/rate-card", json=entries)
             op_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
-            allowed = await client.put(
-                "/api/v1/rate-card", json=entries, headers=_auth(op_key)
-            )
+            allowed = await client.put("/api/v1/rate-card", json=entries, headers=_auth(op_key))
         assert anon.status_code == 401
         assert allowed.status_code == 200
         assert allowed.json()["entries"][0]["base_cpm"] == 40.0
@@ -269,8 +263,9 @@ class TestAdminSurfaceGated:
             update = await client.put("/packages/pkg-x", json={"name": "Q"})
             delete = await client.delete("/packages/pkg-x")
             sync = await client.post("/packages/sync")
-        assert {create.status_code, update.status_code, delete.status_code,
-                sync.status_code} == {401}
+        assert {create.status_code, update.status_code, delete.status_code, sync.status_code} == {
+            401
+        }
 
     async def test_inventory_sync_trigger_requires_operator(self, client, mock_storage):
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
@@ -282,9 +277,7 @@ class TestAdminSurfaceGated:
             push = await client.post(
                 "/api/v1/deals/push", json={"deal_id": "d-1", "buyer_urls": []}
             )
-            distribute = await client.post(
-                "/api/v1/deals/distribute", json={"deal_id": "d-1"}
-            )
+            distribute = await client.post("/api/v1/deals/distribute", json={"deal_id": "d-1"})
             curator = await client.post(
                 "/api/v1/curators", json={"name": "C", "curator_id": "c-1", "fee_cpm": 1.0}
             )
@@ -306,9 +299,7 @@ class TestCliBootstrap:
             create_operator_key(label="bootstrap test", expires_in_days=None)
 
         records = [
-            v
-            for k, v in mock_storage._store.items()
-            if k.startswith(API_KEY_STORAGE_PREFIX)
+            v for k, v in mock_storage._store.items() if k.startswith(API_KEY_STORAGE_PREFIX)
         ]
         assert len(records) == 1
         assert records[0]["role"] == "operator"
@@ -400,9 +391,7 @@ class TestMcpOperatorGate:
             result = await mcp_server.create_api_key(seat_id="seat-x")
         assert "authentication_required" in result
         # Nothing was minted.
-        assert not [
-            k for k in mock_storage._store if k.startswith(API_KEY_STORAGE_PREFIX)
-        ]
+        assert not [k for k in mock_storage._store if k.startswith(API_KEY_STORAGE_PREFIX)]
 
 
 # =============================================================================
@@ -540,9 +529,7 @@ class TestChangeRequestDecisionsRequireOperator:
     async def test_buyer_key_apply_is_403(self, client, mock_storage):
         buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post(
-                "/api/v1/change-requests/cr-1/apply", headers=_auth(buyer_key)
-            )
+            resp = await client.post("/api/v1/change-requests/cr-1/apply", headers=_auth(buyer_key))
         assert resp.status_code == 403
 
     async def test_operator_key_apply_passes_auth(self, client, mock_storage):
@@ -554,15 +541,11 @@ class TestChangeRequestDecisionsRequireOperator:
                 new=AsyncMock(return_value={"cr_id": "cr-1", "status": "applied"}),
             ),
         ):
-            resp = await client.post(
-                "/api/v1/change-requests/cr-1/apply", headers=_auth(op_key)
-            )
+            resp = await client.post("/api/v1/change-requests/cr-1/apply", headers=_auth(op_key))
         assert resp.status_code == 200
         assert resp.json()["status"] == "applied"
 
-    async def test_create_and_read_change_requests_stay_buyer_facing(
-        self, client, mock_storage
-    ):
+    async def test_create_and_read_change_requests_stay_buyer_facing(self, client, mock_storage):
         """POST /change-requests and the reads remain on the optional-key
         surface — anonymous callers are not rejected by auth."""
         with (
@@ -638,9 +621,7 @@ class TestMcpTransitionOrderGated:
                 new=service_mock,
             ),
         ):
-            result = await mcp_server.transition_order(
-                order_id="ord-1", new_status="approved"
-            )
+            result = await mcp_server.transition_order(order_id="ord-1", new_status="approved")
         assert "authentication_required" in result
         service_mock.assert_not_awaited()
 
@@ -653,9 +634,7 @@ class TestMcpTransitionOrderGated:
             patch.object(mcp_server.mcp, "get_context", return_value=ctx),
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
-            result = await mcp_server.transition_order(
-                order_id="ord-1", new_status="approved"
-            )
+            result = await mcp_server.transition_order(order_id="ord-1", new_status="approved")
         assert "operator_required" in result
 
     async def test_http_with_operator_key_is_allowed(self, mock_storage):
@@ -671,8 +650,6 @@ class TestMcpTransitionOrderGated:
                 new=AsyncMock(return_value={"order_id": "ord-1", "status": "approved"}),
             ),
         ):
-            result = await mcp_server.transition_order(
-                order_id="ord-1", new_status="approved"
-            )
+            result = await mcp_server.transition_order(order_id="ord-1", new_status="approved")
         assert "approved" in result
         assert "operator_required" not in result

@@ -117,9 +117,7 @@ def unsupported_capability_detail(
 
 #: Media types the seller can price. ``linear_tv`` is deliberately absent —
 #: it is rejected structurally (FD-6) rather than silently mispriced.
-SUPPORTED_MEDIA_TYPES: frozenset[MediaType] = frozenset(
-    {MediaType.DIGITAL, MediaType.CTV}
-)
+SUPPORTED_MEDIA_TYPES: frozenset[MediaType] = frozenset({MediaType.DIGITAL, MediaType.CTV})
 
 
 def quote_request_to_internal(req: QuoteRequest) -> Any:
@@ -254,9 +252,7 @@ def _openrtb_to_shared(params: dict[str, Any] | None) -> Optional[OpenRTBParams]
         return None
     return OpenRTBParams(
         id=params.get("id", ""),
-        bidfloor=float_to_money(
-            params.get("bidfloor"), params.get("bidfloorcur", "USD")
-        )
+        bidfloor=float_to_money(params.get("bidfloor"), params.get("bidfloorcur", "USD"))
         or Money(amount_micros=0, currency=params.get("bidfloorcur", "USD")),
         at=params.get("at", 3),
         wseat=params.get("wseat", []) or [],
@@ -320,10 +316,8 @@ def negotiation_round_to_response(data: dict[str, Any]) -> NegotiationRoundRespo
         status=NegotiationStatus(data.get("status", "active")),
         round=NegotiationRound(
             round_number=data.get("round_number", 1),
-            buyer_price=float_to_money(data.get("buyer_price", 0.0))
-            or Money(amount_micros=0),
-            seller_price=float_to_money(data.get("seller_price", 0.0))
-            or Money(amount_micros=0),
+            buyer_price=float_to_money(data.get("buyer_price", 0.0)) or Money(amount_micros=0),
+            seller_price=float_to_money(data.get("seller_price", 0.0)) or Money(amount_micros=0),
             action=NegotiationAction(data.get("action", "counter")),
             concession_pct=data.get("concession_pct", 0.0),
             cumulative_concession_pct=data.get("cumulative_concession_pct", 0.0),

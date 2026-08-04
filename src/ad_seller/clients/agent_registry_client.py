@@ -338,9 +338,7 @@ class AampApiRegistryClient(BaseRegistryClient):
             return []
         if agent_type:
             wanted_role = agent_type.lower()
-            agents = [
-                a for a in agents if wanted_role in {r.lower() for r in a.industry_roles}
-            ]
+            agents = [a for a in agents if wanted_role in {r.lower() for r in a.industry_roles}]
         if inventory_types:
             wanted = {t.lower() for t in inventory_types}
             agents = [

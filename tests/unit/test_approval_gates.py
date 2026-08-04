@@ -138,17 +138,16 @@ class TestApprovalEndpointAuth:
         assert list_resp.status_code == 401
         assert resume_resp.status_code == 401
 
-    async def test_authenticated_decide_records_verified_principal(
-        self, client, mock_storage
-    ):
+    async def test_authenticated_decide_records_verified_principal(self, client, mock_storage):
         """A valid key authorizes the decision and the audit record stamps the
         VERIFIED principal, not the arbitrary ``decided_by`` body value."""
         raw_key = _seed_key(mock_storage._store, key_id="key-approver", agency_id="agency-approve")
         approval_id = _seed_pending_approval(mock_storage._store)
 
         bus = InMemoryEventBus()
-        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage), patch(
-            "ad_seller.events.bus.get_event_bus", new_callable=AsyncMock, return_value=bus
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.bus.get_event_bus", new_callable=AsyncMock, return_value=bus),
         ):
             resp = await client.post(
                 f"/approvals/{approval_id}/decide",

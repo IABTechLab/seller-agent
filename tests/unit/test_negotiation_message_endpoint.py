@@ -60,9 +60,7 @@ class TestSharedNegotiationMessage:
     async def test_counter_with_money_and_action_is_accepted(self, client):
         """A well-formed shared counter validates and returns the shared round."""
         counter = AsyncMock(return_value=_COUNTER_RESULT)
-        with patch(
-            "ad_seller.services.negotiation_service.counter_proposal", new=counter
-        ):
+        with patch("ad_seller.services.negotiation_service.counter_proposal", new=counter):
             async with client as c:
                 resp = await c.post(
                     "/api/v1/negotiations/messages",

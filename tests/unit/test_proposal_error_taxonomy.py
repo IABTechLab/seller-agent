@@ -199,9 +199,7 @@ class TestStageErrorTaxonomy:
         )
         assert result["status"] == "failed"
         assert result["errors"]
-        matches = _entries(
-            result, code="missing_required_fields", stage="receive_proposal"
-        )
+        matches = _entries(result, code="missing_required_fields", stage="receive_proposal")
         assert matches, result["errors"]
         assert "impressions" in matches[0]["detail"]
         # Distinctness pin: this cause is NOT the product-not-found cause.
@@ -293,9 +291,7 @@ class TestStageErrorTaxonomy:
             )
         assert result["status"] == "failed"
         assert result["errors"]
-        matches = _entries(
-            result, code="crew_evaluation_error", stage="run_crew_evaluation"
-        )
+        matches = _entries(result, code="crew_evaluation_error", stage="run_crew_evaluation")
         assert matches, result["errors"]
         assert "crew wiring broken" in matches[0]["detail"]
 
@@ -316,9 +312,7 @@ class TestStageErrorTaxonomy:
             )
         assert result["status"] == "failed"
         assert result["errors"]
-        matches = _entries(
-            result, code="crew_evaluation_error", stage="run_crew_evaluation"
-        )
+        matches = _entries(result, code="crew_evaluation_error", stage="run_crew_evaluation")
         assert matches, result["errors"]
 
     async def test_human_readable_strings_still_on_state(self):
@@ -388,9 +382,7 @@ class TestFailedNeverEmptyErrors:
                 return_value=store,
             ),
         ):
-            result = await negotiation_service.submit_proposal(
-                request, ctx, {"products": {}}
-            )
+            result = await negotiation_service.submit_proposal(request, ctx, {"products": {}})
 
         assert result["status"] == "failed"
         assert result["errors"]

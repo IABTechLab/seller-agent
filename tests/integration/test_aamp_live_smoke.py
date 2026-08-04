@@ -20,8 +20,7 @@ _TOKEN = os.environ.get("AAMP_REGISTRY_AUTH_TOKEN")
 
 pytestmark = pytest.mark.skipif(
     not (_URL and _TOKEN),
-    reason="live AAMP registry smoke requires AAMP_REGISTRY_URL and "
-    "AAMP_REGISTRY_AUTH_TOKEN",
+    reason="live AAMP registry smoke requires AAMP_REGISTRY_URL and AAMP_REGISTRY_AUTH_TOKEN",
 )
 
 

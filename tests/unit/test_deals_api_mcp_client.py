@@ -144,7 +144,9 @@ class TestCreateDeal:
 
     @pytest.mark.asyncio
     async def test_maps_request_fields_to_mcp_args(self):
-        self.client._mcp_client.call_tool.return_value = _deal_response(internal_id="new-uuid-1", deal_id="IAB-new-1")
+        self.client._mcp_client.call_tool.return_value = _deal_response(
+            internal_id="new-uuid-1", deal_id="IAB-new-1"
+        )
 
         request = SSPDealCreateRequest(
             name="Q3 Video",
@@ -225,7 +227,9 @@ class TestGetDeal:
 
     @pytest.mark.asyncio
     async def test_calls_deals_status_with_deal_id(self):
-        self.client._mcp_client.call_tool.return_value = _deal_response(internal_id="uuid-42", deal_id="IAB-42")
+        self.client._mcp_client.call_tool.return_value = _deal_response(
+            internal_id="uuid-42", deal_id="IAB-42"
+        )
         deal = await self.client.get_deal("uuid-42")
 
         self.client._mcp_client.call_tool.assert_called_once_with(
@@ -316,8 +320,12 @@ class TestCloneDeal:
 
     @pytest.mark.asyncio
     async def test_prefixes_name_with_copy_of(self):
-        source = _deal_response(internal_id="src-uuid-1", deal_id="IAB-src-1", name="Original Deal", floor=20.0)
-        new_deal = _deal_response(internal_id="clone-uuid-1", deal_id="IAB-clone-1", name="Copy of Original Deal")
+        source = _deal_response(
+            internal_id="src-uuid-1", deal_id="IAB-src-1", name="Original Deal", floor=20.0
+        )
+        new_deal = _deal_response(
+            internal_id="clone-uuid-1", deal_id="IAB-clone-1", name="Copy of Original Deal"
+        )
 
         # clone_deal: (1) deals_status for source, (2) deals_create
         self.client._mcp_client.call_tool.side_effect = [source, new_deal]
@@ -396,7 +404,12 @@ class TestUpdateDeal:
     @pytest.mark.asyncio
     async def test_passes_id_and_updates_to_mcp(self):
         self.client._mcp_client.call_tool.return_value = {
-            "deal": {"id": "u1", "externalDealId": "ext-u1", "sellerStatus": 0, "terms": {"dealFloor": 12.0}}
+            "deal": {
+                "id": "u1",
+                "externalDealId": "ext-u1",
+                "sellerStatus": 0,
+                "terms": {"dealFloor": 12.0},
+            }
         }
         await self.client.update_deal("u1", {"name": "Updated Name", "dealFloor": 12.0})
 
@@ -409,7 +422,12 @@ class TestUpdateDeal:
     @pytest.mark.asyncio
     async def test_returns_updated_ssp_deal(self):
         self.client._mcp_client.call_tool.return_value = {
-            "deal": {"id": "u2", "externalDealId": "ext-u2", "sellerStatus": 0, "terms": {"dealFloor": 5.0}}
+            "deal": {
+                "id": "u2",
+                "externalDealId": "ext-u2",
+                "sellerStatus": 0,
+                "terms": {"dealFloor": 5.0},
+            }
         }
         result = await self.client.update_deal("u2", {"dealFloor": 5.0})
 
@@ -436,8 +454,18 @@ class TestTroubleshootDeal:
             "status": {
                 "sellerStatus": "Active",
                 "buyerStatuses": [
-                    {"seatId": "seat-1", "providerId": "mock", "status": "Rejected", "platformDealId": None},
-                    {"seatId": "seat-2", "providerId": "mock", "status": "Approved", "platformDealId": None},
+                    {
+                        "seatId": "seat-1",
+                        "providerId": "mock",
+                        "status": "Rejected",
+                        "platformDealId": None,
+                    },
+                    {
+                        "seatId": "seat-2",
+                        "providerId": "mock",
+                        "status": "Approved",
+                        "platformDealId": None,
+                    },
                 ],
             },
         }
@@ -453,7 +481,12 @@ class TestTroubleshootDeal:
             "status": {
                 "sellerStatus": "Active",
                 "buyerStatuses": [
-                    {"seatId": "seat-1", "providerId": "mock", "status": "Approved", "platformDealId": None},
+                    {
+                        "seatId": "seat-1",
+                        "providerId": "mock",
+                        "status": "Approved",
+                        "platformDealId": None,
+                    },
                 ],
             },
         }

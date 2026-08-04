@@ -107,7 +107,10 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]},
+            )
 
         assert resp.status_code == 200
         # Shared DealBookingResponse envelope wraps the Deal primitive.
@@ -129,7 +132,10 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]},
+            )
 
         assert resp.status_code == 200
         deal_id = resp.json()["deal"]["deal_id"]
@@ -142,7 +148,10 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]},
+            )
 
         deal_id = resp.json()["deal"]["deal_id"]
         stored_deal = mock_storage._store[f"deal:{deal_id}"]
@@ -154,7 +163,10 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]},
+            )
 
         assert resp.status_code == 200
         assert resp.json()["deal"]["openrtb_params"]["at"] == 3
@@ -177,7 +189,10 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]},
+            )
         assert resp.status_code == 410
         assert resp.json()["detail"]["error"] == "quote_expired"
 
@@ -186,7 +201,10 @@ class TestBookDeal:
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
-            resp = await client.post("/api/v1/deals", json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]})
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]},
+            )
         assert resp.status_code == 409
         assert resp.json()["detail"]["error"] == "quote_already_booked"
 
@@ -256,7 +274,11 @@ class TestGetDeal:
             "quote_id": "qt-test123456",
             "product": {"product_id": "ctv-premium-sports", "name": "CTV", "inventory_type": "ctv"},
             "pricing": {"base_cpm": 35.0, "final_cpm": 28.26, "currency": "USD"},
-            "terms": {"impressions": 5000000, "flight_start": "2026-04-01", "flight_end": "2026-04-30"},
+            "terms": {
+                "impressions": 5000000,
+                "flight_start": "2026-04-01",
+                "flight_end": "2026-04-30",
+            },
             "expires_at": (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z",
         }
         mock_storage._store["deal:DEMO-EXPIREDONE1"] = deal_data
@@ -276,7 +298,11 @@ class TestGetDeal:
             "quote_id": "qt-test123456",
             "product": {"product_id": "ctv-premium-sports", "name": "CTV", "inventory_type": "ctv"},
             "pricing": {"base_cpm": 35.0, "final_cpm": 28.26, "currency": "USD"},
-            "terms": {"impressions": 5000000, "flight_start": "2026-04-01", "flight_end": "2026-04-30"},
+            "terms": {
+                "impressions": 5000000,
+                "flight_start": "2026-04-01",
+                "flight_end": "2026-04-30",
+            },
             "expires_at": (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z",
         }
         mock_storage._store["deal:DEMO-ACTIVEDEAL1"] = deal_data

@@ -108,8 +108,7 @@ class TestDealPerformanceRealGAMData:
         assert perf_a["impressions_served"] == 250000
         assert perf_b["impressions_served"] == 100000
         assert perf_a["impressions_served"] != perf_b["impressions_served"], (
-            "Distinct deals returned identical delivery stats — "
-            "placeholder regression"
+            "Distinct deals returned identical delivery stats — placeholder regression"
         )
 
     async def test_performance_fields_derive_from_gam_report(self):
@@ -248,12 +247,11 @@ class TestGamOrderIdPersistence:
         deals = {"DEMO-AAA": {"deal_id": "DEMO-AAA", "status": "proposed"}}
         storage = AsyncMock()
         storage.get_deal = AsyncMock(side_effect=lambda did: deals.get(did))
-        storage.set_deal = AsyncMock(
-            side_effect=lambda did, data: deals.__setitem__(did, data)
-        )
+        storage.set_deal = AsyncMock(side_effect=lambda did, data: deals.__setitem__(did, data))
 
-        with patch("ad_seller.clients.gam_adapter.GAMSoapClient"), patch(
-            "ad_seller.clients.gam_adapter.GAMRestClient"
+        with (
+            patch("ad_seller.clients.gam_adapter.GAMSoapClient"),
+            patch("ad_seller.clients.gam_adapter.GAMRestClient"),
         ):
             adapter = GAMAdServerClient()
 
@@ -276,8 +274,9 @@ class TestGamOrderIdPersistence:
         storage = AsyncMock()
         storage.get_deal = AsyncMock(side_effect=RuntimeError("storage down"))
 
-        with patch("ad_seller.clients.gam_adapter.GAMSoapClient"), patch(
-            "ad_seller.clients.gam_adapter.GAMRestClient"
+        with (
+            patch("ad_seller.clients.gam_adapter.GAMSoapClient"),
+            patch("ad_seller.clients.gam_adapter.GAMRestClient"),
         ):
             adapter = GAMAdServerClient()
 
@@ -311,9 +310,7 @@ class TestPerformanceEndpointEndToEnd:
         ):
             if _mod_name not in sys.modules:
                 _stub = ModuleType(_mod_name)
-                _cls = (
-                    _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
-                )
+                _cls = _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
                 setattr(_stub, _cls, type(_cls, (), {}))
                 sys.modules[_mod_name] = _stub
 
@@ -334,9 +331,7 @@ class TestPerformanceEndpointEndToEnd:
             patch("ad_seller.config.get_settings", return_value=_gam_settings()),
             patch("ad_seller.clients.gam_soap_client.GAMSoapClient", return_value=gam),
         ):
-            async with httpx.AsyncClient(
-                transport=transport, base_url="http://test"
-            ) as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get("/api/v1/deals/DEMO-AAA/performance")
 
         assert resp.status_code == 200

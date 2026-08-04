@@ -117,9 +117,7 @@ class TestDeliveryReport:
             patch("ad_seller.config.get_settings", return_value=_gam_settings()),
             patch("ad_seller.clients.gam_soap_client.GAMSoapClient", return_value=client),
         ):
-            result = await gam_reporting_service.get_gam_delivery_report(
-                " 111, 222 ", days=7
-            )
+            result = await gam_reporting_service.get_gam_delivery_report(" 111, 222 ", days=7)
 
         assert result == report
         client.get_delivery_report.assert_called_once_with(["111", "222"], days=7)

@@ -282,9 +282,7 @@ class TestCreateQuote:
         assert final != 500_000
         assert final > 0
 
-    async def test_self_asserted_buyer_identity_cannot_raise_tier(
-        self, client, mock_storage
-    ):
+    async def test_self_asserted_buyer_identity_cannot_raise_tier(self, client, mock_storage):
         """EP-5.2: body-asserted identity alone is UNVERIFIED — it floors.
 
         Pre-EP-5.2 this exact request was quoted at the ADVERTISER tier

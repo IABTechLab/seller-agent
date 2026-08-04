@@ -220,9 +220,7 @@ def api_client(storage):
     # whitelist validation, not auth, so bypass the operator dependency.
     app.dependency_overrides[api_deps._require_operator_api_key_record] = lambda: None
     with patch("ad_seller.storage.factory.get_storage", AsyncMock(return_value=storage)):
-        with patch(
-            "ad_seller.events.helpers.emit_event", new_callable=AsyncMock
-        ) as mock_emit:
+        with patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock) as mock_emit:
             transport = ASGITransport(app=app)
             client = httpx.AsyncClient(transport=transport, base_url="http://test")
             client._mock_emit = mock_emit  # expose for assertions
@@ -234,9 +232,7 @@ class TestPutPackagesEndpoint:
     @pytest.mark.asyncio
     async def test_put_rejects_package_id_overwrite_with_422(self, api_client, seeded):
         async with api_client:
-            resp = await api_client.put(
-                "/packages/pkg-wl-001", json={"package_id": "pkg-hijacked"}
-            )
+            resp = await api_client.put("/packages/pkg-wl-001", json={"package_id": "pkg-hijacked"})
             assert resp.status_code == 422
             assert "package_id" in str(resp.json())
             # No PACKAGE_UPDATED event for a rejected update

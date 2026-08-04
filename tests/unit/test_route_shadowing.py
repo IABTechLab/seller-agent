@@ -117,7 +117,11 @@ class TestDealsExportNotShadowed:
             "quote_id": "qt-real",
             "product": {"product_id": "ctv-premium", "name": "CTV", "inventory_type": "ctv"},
             "pricing": {"base_cpm": 30.0, "final_cpm": 30.0, "currency": "USD"},
-            "terms": {"impressions": 1000000, "flight_start": "2026-04-01", "flight_end": "2026-04-30"},
+            "terms": {
+                "impressions": 1000000,
+                "flight_start": "2026-04-01",
+                "flight_end": "2026-04-30",
+            },
         }
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.get("/api/v1/deals/DEMO-REALDEAL123")
