@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from .. import deps
 from ..schemas import (
     CreateApiKeyRequest,
+    CreateOperatorApiKeyRequest,
     RateCardEntry,
     RateCardResponse,
     SupplyChainNodeModel,
@@ -48,6 +49,7 @@ async def list_events(
     event_type: Optional[str] = None,
     session_id: Optional[str] = None,
     limit: int = 50,
+    _operator=Depends(deps._require_operator_api_key_record),
 ):
     """List events, optionally filtered by flow_id, event_type, or session_id."""
     from ....events.bus import get_event_bus
@@ -60,7 +62,10 @@ async def list_events(
 
 
 @router.get("/events/{event_id}", tags=["Events"])
-async def get_event(event_id: str):
+async def get_event(
+    event_id: str,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Get a specific event by ID."""
     from ....events.bus import get_event_bus
 
@@ -77,8 +82,14 @@ async def get_event(event_id: str):
 
 
 @router.post("/auth/api-keys", tags=["Authentication"])
-async def create_api_key(request: CreateApiKeyRequest):
-    """Create a new API key for a buyer.
+async def create_api_key(
+    request: CreateApiKeyRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
+    """Create a new BUYER-role API key for a buyer identity.
+
+    Requires an operator credential. Operator keys are created via
+    ``POST /auth/api-keys/operator``.
 
     The response contains the full API key which is shown ONLY ONCE.
     Store it securely — it cannot be retrieved again.
@@ -107,8 +118,40 @@ async def create_api_key(request: CreateApiKeyRequest):
     return response.model_dump(mode="json")
 
 
+@router.post("/auth/api-keys/operator", tags=["Authentication"])
+async def create_operator_api_key(
+    request: CreateOperatorApiKeyRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
+    """Create a new OPERATOR-role API key (no buyer identity).
+
+    Requires an existing operator credential. Bootstrap the FIRST
+    operator key with ``ad-seller create-operator-key`` (writes directly
+    to storage, no network surface).
+
+    The response contains the full API key which is shown ONLY ONCE.
+    Store it securely — it cannot be retrieved again.
+    """
+    from ....auth.api_key_service import ApiKeyService
+    from ....models.api_key import OperatorApiKeyCreateRequest
+    from ....storage.factory import get_storage
+
+    storage = await get_storage()
+    service = ApiKeyService(storage)
+
+    response = await service.create_operator_key(
+        OperatorApiKeyCreateRequest(
+            label=request.label,
+            expires_in_days=request.expires_in_days,
+        )
+    )
+    return response.model_dump(mode="json")
+
+
 @router.get("/auth/api-keys", tags=["Authentication"])
-async def list_api_keys():
+async def list_api_keys(
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """List all API keys (metadata only, no secrets)."""
     from ....auth.api_key_service import ApiKeyService
     from ....storage.factory import get_storage
@@ -123,7 +166,10 @@ async def list_api_keys():
 
 
 @router.get("/auth/api-keys/{key_id}", tags=["Authentication"])
-async def get_api_key_details(key_id: str):
+async def get_api_key_details(
+    key_id: str,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Get details for a specific API key."""
     from ....auth.api_key_service import ApiKeyService
     from ....storage.factory import get_storage
@@ -137,7 +183,10 @@ async def get_api_key_details(key_id: str):
 
 
 @router.delete("/auth/api-keys/{key_id}", tags=["Authentication"])
-async def revoke_api_key(key_id: str):
+async def revoke_api_key(
+    key_id: str,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Revoke an API key. Revoked keys return 401 on use."""
     from ....auth.api_key_service import ApiKeyService
     from ....storage.factory import get_storage
@@ -271,7 +320,10 @@ async def get_rate_card():
 
 
 @router.put("/api/v1/rate-card", tags=["Pricing"])
-async def update_rate_card(entries: list[RateCardEntry]):
+async def update_rate_card(
+    entries: list[RateCardEntry],
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Update the rate card with current base CPMs from ad server.
 
     Publishers should update this when their ad server rate cards change.
@@ -308,6 +360,7 @@ async def get_inventory_sync_status():
 @router.post("/api/v1/inventory-sync/trigger", tags=["Core"])
 async def trigger_inventory_sync(
     incremental: bool = False,
+    _operator=Depends(deps._require_operator_api_key_record),
 ):
     """Manually trigger an inventory sync.
 
@@ -370,7 +423,7 @@ async def get_sync_watermark():
 async def gam_list_orders(
     limit: int = 50,
     agent_created_only: bool = False,
-    _auth=Depends(deps._get_optional_api_key_record),
+    _operator=Depends(deps._require_operator_api_key_record),
 ) -> dict:
     """List recent GAM orders directly from the ad server.
 
@@ -392,7 +445,7 @@ async def gam_list_orders(
 async def gam_delivery_report(
     order_ids: str,
     days: int = 30,
-    _auth=Depends(deps._get_optional_api_key_record),
+    _operator=Depends(deps._require_operator_api_key_record),
 ) -> dict:
     """Pull a delivery report from GAM by order ID(s).
 

@@ -121,20 +121,20 @@ A buyer agent discovers a seller through the following steps:
 
 1. **Fetch the agent card** --- `GET https://seller.example.com/.well-known/agent.json`
 2. **Inspect capabilities** --- Check supported protocols, skills, inventory types, and deal types
-3. **Obtain an API key** --- `POST /auth/api-keys` with buyer identity
+3. **Obtain a buyer API key** --- Ask the seller operator to mint one via `POST /auth/api-keys` (operator-gated; see [Authentication](authentication.md))
 4. **Choose a protocol** --- Use [MCP](mcp.md) for structured operations ([A2A](a2a.md) is designed but not yet served)
 5. **Start transacting** --- Browse products, request pricing, submit proposals, book deals
 
 ### Registry Endpoints (Operator-Facing)
 
-Seller operators manage the agent registry through these endpoints:
+Seller operators manage the agent registry through these endpoints. Mutations require an operator API key.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/registry/agents` | GET | List registered agents (filterable by type and trust status) |
 | `/registry/agents/{agent_id}` | GET | Get details for a specific agent |
-| `/registry/agents/{agent_id}/trust` | PUT | Update an agent's trust status |
-| `/registry/agents/discover` | POST | Discover an agent by URL (fetches their agent card) |
+| `/registry/agents/{agent_id}/trust` | PUT | Update an agent's trust status (operator auth required) |
+| `/registry/agents/discover` | POST | Discover an agent by URL (operator auth required) |
 
 ## See Also
 

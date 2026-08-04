@@ -25,10 +25,11 @@ The buyer agent uses this to determine if the seller matches its campaign needs.
 
 ### Option A: Get an API Key
 
-The seller operator creates an API key for the buyer:
+The seller operator creates a **buyer** API key (requires an operator credential):
 
 ```bash
 curl -X POST https://seller.example.com/auth/api-keys \
+  -H "Authorization: Bearer <operator_api_key>" \
   -H "Content-Type: application/json" \
   -d '{
     "seat_id": "seat-buyer-001",
@@ -43,6 +44,8 @@ The buyer stores the returned key and uses it in all subsequent requests:
 ```
 Authorization: Bearer <api_key>
 ```
+
+Operators bootstrap their own first credential with `ad-seller create-operator-key` — see [Authentication](../api/authentication.md).
 
 ### Option B: Agent URL Discovery
 

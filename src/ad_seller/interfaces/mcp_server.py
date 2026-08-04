@@ -25,7 +25,7 @@ Usage:
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -133,6 +133,65 @@ async def _api_key_service():
 
     storage = await _get_storage()
     return ApiKeyService(storage)
+
+
+async def _deny_unless_operator() -> Optional[str]:
+    """Enforce operator-key auth on admin MCP tools over HTTP transports.
+
+    Returns None when the call is authorized, otherwise an error JSON
+    string the tool should return as-is.
+
+    - HTTP transports (Streamable HTTP at /mcp, legacy SSE): the client
+      must send an OPERATOR-role API key via ``Authorization: Bearer``
+      or ``X-Api-Key`` (mcp-remote: ``--header "Authorization: Bearer …"``).
+    - stdio transport (``python -m ad_seller.interfaces.mcp_server`` from
+      a local shell): no HTTP request exists; local process access is
+      trusted, same model as the CLI.
+    """
+    try:
+        request = mcp.get_context().request_context.request
+    except Exception:
+        request = None
+    if request is None or not hasattr(request, "headers"):
+        return None  # stdio / in-process — local operator access
+
+    headers = request.headers
+    raw_key = headers.get("x-api-key")
+    if not raw_key:
+        authorization = headers.get("authorization", "")
+        parts = authorization.split(" ", 1)
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            raw_key = parts[1]
+
+    if not raw_key:
+        return _dumps(
+            {
+                "error": "authentication_required",
+                "detail": "This tool requires an operator API key. Send it as "
+                "'Authorization: Bearer <key>' or 'X-Api-Key: <key>'. Bootstrap "
+                "the first key with: ad-seller create-operator-key",
+            }
+        )
+
+    from ..models.api_key import ApiKeyRole
+
+    service = await _api_key_service()
+    try:
+        record = await service.validate_key(raw_key)
+    except ValueError as exc:  # revoked or expired
+        return _dumps({"error": "invalid_credential", "detail": str(exc)})
+
+    if record is None:
+        return _dumps({"error": "invalid_credential", "detail": "Invalid API key"})
+    if record.role != ApiKeyRole.OPERATOR:
+        return _dumps(
+            {
+                "error": "operator_required",
+                "detail": "This tool requires an operator-role API key; the "
+                "provided key is a buyer credential.",
+            }
+        )
+    return None
 
 
 # =============================================================================
@@ -282,6 +341,10 @@ async def get_config() -> str:
 async def set_publisher_identity(name: str, domain: str = "", org_id: str = "") -> str:
     """Set the publisher's identity (name, domain, organization ID).
     This is shown in the agent card and supply chain info."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     # Write to .env file
     _update_env("SELLER_ORGANIZATION_NAME", name)
     if domain:
@@ -336,6 +399,10 @@ async def list_products(limit: int | None = 50) -> str:
 async def sync_inventory(incremental: bool = False) -> str:
     """Trigger inventory sync from the ad server (GAM or FreeWheel).
     Use incremental=true to only sync changes since last sync."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..services.inventory_sync_scheduler import _run_sync
 
     result = await _run_sync()
@@ -408,6 +475,10 @@ async def create_package(
     is_featured: bool = False,
 ) -> str:
     """Create a new curated package in the media kit."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     import uuid
 
     from ..models.media_kit import Package, PackageLayer
@@ -464,6 +535,10 @@ async def get_rate_card() -> str:
 async def update_rate_card(entries: str) -> str:
     """Update the rate card. Pass entries as JSON array:
     [{"inventory_type": "ctv", "base_cpm": 40.0}, ...]"""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     storage = await _get_storage()
     parsed = json.loads(entries)
     now = datetime.now(timezone.utc).isoformat()
@@ -612,6 +687,10 @@ async def list_gam_orders(limit: int = 50, agent_created_only: bool = False) -> 
     Returns order id, name, status, and whether the order was agent-created.
     Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
     """
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..services import gam_reporting_service
 
     return await _service_json(
@@ -632,6 +711,10 @@ async def get_gam_delivery_report(order_ids: str, days: int = 30) -> str:
     Returns order metadata, line items, and delivery data (impressions, clicks, revenue).
     Requires GAM_ENABLED=true, GAM_NETWORK_CODE, GAM_JSON_KEY_PATH in .env.
     """
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..services import gam_reporting_service
 
     return await _service_json(
@@ -643,6 +726,10 @@ async def get_gam_delivery_report(order_ids: str, days: int = 30) -> str:
 async def push_deal_to_buyers(deal_id: str, buyer_urls: str) -> str:
     """Push a deal to buyer endpoints via IAB Deals API v1.0.
     Pass buyer_urls as comma-separated list."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from types import SimpleNamespace
 
     from ..services import deal_service
@@ -673,6 +760,10 @@ async def distribute_deal_via_ssp(
 ) -> str:
     """Distribute a deal through configured SSP(s).
     Routes based on ssp_name or inventory_type routing rules."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from types import SimpleNamespace
 
     from ..services import deal_service
@@ -803,6 +894,10 @@ async def list_orders(limit: int | None = 50) -> str:
 @mcp.tool()
 async def transition_order(order_id: str, new_status: str, reason: str = "") -> str:
     """Transition an order to a new state (e.g., draft→approved→delivering)."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..services import order_service
 
     return await _service_json(
@@ -830,6 +925,10 @@ async def list_pending_approvals() -> str:
 @mcp.tool()
 async def approve_or_reject(approval_id: str, decision: str, reason: str = "") -> str:
     """Submit an approval decision. decision: 'approve', 'reject', or 'counter'."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..services import approval_service
 
     return await _service_json(
@@ -847,6 +946,10 @@ async def set_approval_gates(
 ) -> str:
     """Configure approval gates. required_flows is comma-separated:
     'proposal_decision,deal_registration'"""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     _update_env("APPROVAL_GATE_ENABLED", str(enabled).lower())
     if required_flows:
         _update_env("APPROVAL_REQUIRED_FLOWS", required_flows)
@@ -1002,6 +1105,10 @@ async def list_buyer_agents() -> str:
 async def register_buyer_agent(agent_url: str) -> str:
     """Discover and register a buyer agent by URL.
     Fetches their agent card and adds them to the registry."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     service = await _registry_service()
     agent, tier = await service.resolve_agent_access(agent_url)
 
@@ -1021,6 +1128,10 @@ async def register_buyer_agent(agent_url: str) -> str:
 async def set_agent_trust(agent_id: str, trust_level: str) -> str:
     """Set trust level for a buyer agent.
     Levels: unknown, registered, approved, preferred, blocked."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..models.agent_registry import TRUST_TO_TIER_MAP, TrustStatus
 
     try:
@@ -1056,7 +1167,11 @@ async def set_agent_trust(agent_id: str, trust_level: str) -> str:
 
 @mcp.tool()
 async def create_api_key(name: str = "buyer", seat_id: str = "", agency_id: str = "") -> str:
-    """Create an API key for a buyer or agent."""
+    """Create a buyer API key (operator auth required over HTTP)."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..models.api_key import ApiKeyCreateRequest
 
     # The historic ``name`` argument was never a field on the REST create
@@ -1074,6 +1189,10 @@ async def create_api_key(name: str = "buyer", seat_id: str = "", agency_id: str 
 @mcp.tool()
 async def list_api_keys() -> str:
     """List active API keys."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     service = await _api_key_service()
     keys = await service.list_keys()
     return _dumps(
@@ -1087,6 +1206,10 @@ async def list_api_keys() -> str:
 @mcp.tool()
 async def revoke_api_key(key_id: str) -> str:
     """Revoke an API key."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     service = await _api_key_service()
     revoked = await service.revoke_key(key_id)
     if not revoked:
@@ -1102,6 +1225,10 @@ async def revoke_api_key(key_id: str) -> str:
 @mcp.tool()
 async def list_sessions() -> str:
     """List active buyer conversation sessions."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..services import session_service
 
     return await _service_json(session_service.list_sessions())
@@ -1336,6 +1463,10 @@ from ..events.bus import get_event_bus  # noqa: E402
 async def get_inbound_queue(limit: int | None = 50) -> str:
     """Get everything waiting for publisher action: pending approvals, unresolved
     proposals. Returns a unified list sorted by urgency (most urgent first)."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     limit = limit or 50
     from datetime import timedelta
 
@@ -1416,6 +1547,10 @@ async def get_inbound_queue(limit: int | None = 50) -> str:
 async def get_buyer_activity(days: int | None = 7, limit: int | None = 50) -> str:
     """Show buyer agent engagement: who accessed inventory, initiated deals,
     or negotiated recently. Grouped by buyer identity."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     days = days or 7
     limit = limit or 50
     from datetime import timedelta

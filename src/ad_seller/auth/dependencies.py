@@ -117,6 +117,33 @@ async def require_api_key_record(
     return record
 
 
+async def require_operator_key(
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None, alias="X-Api-Key"),
+) -> ApiKeyRecord:
+    """Validate API key and require an OPERATOR-role credential.
+
+    Builds on :func:`require_api_key_record` (anonymous → 401, invalid/
+    revoked/expired → 401) and additionally rejects buyer-role keys with
+    403. Use this on every operator/admin endpoint: API key lifecycle,
+    event log, rate card writes, registry mutations, package mutations,
+    inventory sync trigger, and deal push/distribute.
+
+    Bootstrap: the first operator key is minted out-of-band with
+    ``ad-seller create-operator-key`` (writes directly to storage — no
+    network surface).
+    """
+    from ..models.api_key import ApiKeyRole
+
+    record = await require_api_key_record(authorization, x_api_key)
+    if record.role != ApiKeyRole.OPERATOR:
+        raise HTTPException(
+            status_code=403,
+            detail="Operator credential required",
+        )
+    return record
+
+
 def principal_from_api_key(record: ApiKeyRecord) -> str:
     """Derive a stable, verified principal identifier from an API key record.
 

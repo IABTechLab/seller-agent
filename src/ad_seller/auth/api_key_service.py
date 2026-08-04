@@ -24,6 +24,8 @@ from ..models.api_key import (
     ApiKeyCreateResponse,
     ApiKeyInfo,
     ApiKeyRecord,
+    ApiKeyRole,
+    OperatorApiKeyCreateRequest,
     generate_api_key,
     hash_api_key,
 )
@@ -40,15 +42,11 @@ class ApiKeyService:
         self._storage = storage
 
     async def create_key(self, request: ApiKeyCreateRequest) -> ApiKeyCreateResponse:
-        """Issue a new API key for a buyer identity.
+        """Issue a new BUYER-role API key for a buyer identity.
 
         Returns the full key exactly once. The key is hashed
         before storage and can never be retrieved again.
         """
-        full_key = generate_api_key()
-        key_hash = hash_api_key(full_key)
-        key_id = f"key-{uuid.uuid4().hex[:8]}"
-
         identity = BuyerIdentity(
             seat_id=request.seat_id,
             seat_name=request.seat_name,
@@ -59,17 +57,52 @@ class ApiKeyService:
             advertiser_id=request.advertiser_id,
             advertiser_name=request.advertiser_name,
         )
+        return await self._mint(
+            identity=identity,
+            role=ApiKeyRole.BUYER,
+            label=request.label,
+            expires_in_days=request.expires_in_days,
+        )
+
+    async def create_operator_key(
+        self, request: OperatorApiKeyCreateRequest
+    ) -> ApiKeyCreateResponse:
+        """Issue a new OPERATOR-role API key (no buyer identity).
+
+        Returns the full key exactly once. The key is hashed
+        before storage and can never be retrieved again.
+        """
+        return await self._mint(
+            identity=BuyerIdentity(),
+            role=ApiKeyRole.OPERATOR,
+            label=request.label,
+            expires_in_days=request.expires_in_days,
+        )
+
+    async def _mint(
+        self,
+        *,
+        identity: BuyerIdentity,
+        role: ApiKeyRole,
+        label: str,
+        expires_in_days: Optional[int],
+    ) -> ApiKeyCreateResponse:
+        """Generate, store, and return a new key (shared by both roles)."""
+        full_key = generate_api_key()
+        key_hash = hash_api_key(full_key)
+        key_id = f"key-{uuid.uuid4().hex[:8]}"
 
         expires_at = None
-        if request.expires_in_days is not None:
-            expires_at = datetime.utcnow() + timedelta(days=request.expires_in_days)
+        if expires_in_days is not None:
+            expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
 
         record = ApiKeyRecord(
             key_id=key_id,
             key_hash=key_hash,
             key_prefix_hint=full_key[:12] + "...",
             identity=identity,
-            label=request.label,
+            role=role,
+            label=label,
             expires_at=expires_at,
         )
 
@@ -91,17 +124,19 @@ class ApiKeyService:
         await self._storage.set("api_key_list", all_keys)
 
         logger.info(
-            "API key %s created for %s (label: %s)",
+            "API key %s created for %s (role: %s, label: %s)",
             key_id,
             identity.identity_level.value,
-            request.label,
+            role.value,
+            label,
         )
 
         return ApiKeyCreateResponse(
             key_id=key_id,
             api_key=full_key,
             identity=identity,
-            label=request.label,
+            role=role,
+            label=label,
             expires_at=expires_at,
         )
 
@@ -153,6 +188,7 @@ class ApiKeyService:
             key_id=record.key_id,
             key_prefix_hint=record.key_prefix_hint,
             identity=record.identity,
+            role=record.role,
             label=record.label,
             created_at=record.created_at,
             expires_at=record.expires_at,

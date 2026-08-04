@@ -288,7 +288,10 @@ async def bulk_deal_operations(
 
 
 @router.post("/api/v1/deals/push", tags=["Deal Booking"])
-async def push_deal_to_buyers(request: DealPushRequest):
+async def push_deal_to_buyers(
+    request: DealPushRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Push a deal to one or more buyer endpoints via IAB Deals API v1.0.
 
     The seller sends deal terms to buyer DSPs. Each buyer receives an
@@ -311,7 +314,10 @@ async def get_deal_buyer_status(deal_id: str, buyer_url: str):
 
 
 @router.post("/api/v1/deals/distribute", tags=["Deal Booking"])
-async def distribute_deal_via_ssp(request: SSPDealDistributeRequest):
+async def distribute_deal_via_ssp(
+    request: SSPDealDistributeRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Distribute a deal through configured SSP(s).
 
     Routes the deal to the appropriate SSP based on routing rules
@@ -350,7 +356,10 @@ async def get_curator(curator_id: str):
 
 
 @router.post("/api/v1/curators", tags=["Curators"], status_code=201)
-async def register_curator(request: CuratorRegistrationRequest):
+async def register_curator(
+    request: CuratorRegistrationRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Register a new curator.
 
     Curators can then create deals against this publisher's inventory

@@ -203,7 +203,9 @@ def _serialize_product(product: Any) -> dict[str, Any]:
 # Router mounting
 # =============================================================================
 
-from fastapi.routing import APIRoute  # noqa: E402
+# FastAPI's request_response (not starlette's) — it also wires the
+# dependency AsyncExitStacks into the request scope.
+from fastapi.routing import APIRoute, request_response  # noqa: E402
 
 from .routers import ALL_ROUTERS  # noqa: E402
 
@@ -220,6 +222,10 @@ for _router in ALL_ROUTERS:
             # Wire dependency overrides to the app so
             # `app.dependency_overrides[...]` test hooks keep working.
             _route.dependency_overrides_provider = app
+            # APIRoute.__init__ already compiled the route's ASGI handler,
+            # capturing the provider while it was still None — rebuild the
+            # handler so the override wiring above actually takes effect.
+            _route.app = request_response(_route.get_route_handler())
         app.router.routes.append(_route)
 
 if hasattr(app.router, "_mark_routes_changed"):

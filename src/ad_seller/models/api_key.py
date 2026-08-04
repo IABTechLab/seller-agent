@@ -15,6 +15,7 @@ Storage: api_key:{sha256_hex} → ApiKeyRecord JSON
 import hashlib
 import secrets
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -24,6 +25,20 @@ from .buyer_identity import BuyerIdentity
 API_KEY_PREFIX = "ask_live_"
 API_KEY_STORAGE_PREFIX = "api_key:"
 API_KEY_INDEX_PREFIX = "api_key_index:"
+
+
+class ApiKeyRole(str, Enum):
+    """Role attached to an API key.
+
+    - BUYER: buyer-agent credential; grants tiered data access
+      (seat/agency/advertiser pricing) but no control-plane rights.
+    - OPERATOR: publisher operator credential; required for admin
+      endpoints (key management, rate card, registry trust, packages,
+      inventory sync, deal push/distribute).
+    """
+
+    BUYER = "buyer"
+    OPERATOR = "operator"
 
 
 def generate_api_key() -> str:
@@ -55,6 +70,10 @@ class ApiKeyRecord(BaseModel):
     # The identity this key authenticates
     identity: BuyerIdentity
 
+    # Role: pre-existing records deserialize as "buyer" (safe default —
+    # never silently promotes an old key to operator).
+    role: ApiKeyRole = ApiKeyRole.BUYER
+
     # Metadata
     label: str = ""  # Human-readable label, e.g. "Acme Agency production key"
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -80,7 +99,11 @@ class ApiKeyRecord(BaseModel):
 
 
 class ApiKeyCreateRequest(BaseModel):
-    """Request to create a new API key (operator-facing)."""
+    """Request to create a new BUYER-role API key.
+
+    Operator keys are created via :class:`OperatorApiKeyCreateRequest`
+    (they carry no buyer identity), so this request has no role field.
+    """
 
     # Identity fields for the buyer this key authenticates
     seat_id: Optional[str] = None
@@ -97,6 +120,17 @@ class ApiKeyCreateRequest(BaseModel):
     expires_in_days: Optional[int] = None  # None = never expires
 
 
+class OperatorApiKeyCreateRequest(BaseModel):
+    """Request to create an OPERATOR-role API key.
+
+    Operator keys authenticate the publisher's own control plane — they
+    have no buyer identity (no seat/agency/advertiser fields).
+    """
+
+    label: str = ""
+    expires_in_days: Optional[int] = None  # None = never expires
+
+
 class ApiKeyCreateResponse(BaseModel):
     """Response after creating an API key.
 
@@ -107,6 +141,7 @@ class ApiKeyCreateResponse(BaseModel):
     key_id: str
     api_key: str  # Full key, shown once
     identity: BuyerIdentity
+    role: ApiKeyRole = ApiKeyRole.BUYER
     label: str
     expires_at: Optional[datetime] = None
     warning: str = "Store this key securely. It will not be shown again."
@@ -118,6 +153,7 @@ class ApiKeyInfo(BaseModel):
     key_id: str
     key_prefix_hint: str
     identity: BuyerIdentity
+    role: ApiKeyRole = ApiKeyRole.BUYER
     label: str
     created_at: datetime
     expires_at: Optional[datetime] = None

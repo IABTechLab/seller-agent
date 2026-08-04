@@ -109,6 +109,17 @@ def default_mode(monkeypatch):
     _reset_caches()
 
 
+@pytest.fixture(autouse=True)
+def _bypass_operator_gate():
+    """POST /packages now requires an operator key; these tests exercise
+    catalog coherence, not auth, so bypass the operator dependency."""
+    from ad_seller.interfaces.api import deps as api_deps
+
+    app.dependency_overrides[api_deps._require_operator_api_key_record] = lambda: None
+    yield
+    app.dependency_overrides.pop(api_deps._require_operator_api_key_record, None)
+
+
 # =============================================================================
 # In-memory storage (no SQLite file) — same shape as test_issue34
 # =============================================================================

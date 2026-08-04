@@ -50,9 +50,13 @@ async def get_change_request(
 async def review_change_request(
     cr_id: str,
     request: ReviewChangeRequestModel,
-    _auth: None = Depends(deps._get_optional_api_key_record),
+    _operator=Depends(deps._require_operator_api_key_record),
 ):
-    """Approve or reject a pending change request."""
+    """Approve or reject a pending change request.
+
+    Requires an operator credential — the decision is the seller's, not
+    the requesting buyer's.
+    """
     return await order_service.review_change_request(
         cr_id=cr_id,
         decision=request.decision,
@@ -64,10 +68,11 @@ async def review_change_request(
 @router.post("/api/v1/change-requests/{cr_id}/apply", tags=["Change Requests"])
 async def apply_change_request(
     cr_id: str,
-    _auth: None = Depends(deps._get_optional_api_key_record),
+    _operator=Depends(deps._require_operator_api_key_record),
 ):
     """Apply an approved change request to the order.
 
     Updates the order with the proposed values from the change request.
+    Requires an operator credential (order mutation).
     """
     return await order_service.apply_change_request(cr_id)

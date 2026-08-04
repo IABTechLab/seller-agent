@@ -238,12 +238,13 @@ async def discovery_query(
 async def override_inventory_type(
     product_id: str,
     request: InventoryTypeOverride,
-    api_key_record=Depends(deps._get_optional_api_key_record),
+    _operator=Depends(deps._require_operator_api_key_record),
 ):
     """Override the auto-detected inventory type for a product.
 
     Publishers can correct misclassified inventory types from ad server sync
     or apply custom categorization. The override persists across future syncs.
+    Requires an operator credential (catalog mutation).
     """
     result = await catalog_service.override_inventory_type(
         product_id=product_id,
@@ -277,8 +278,14 @@ async def get_inventory_type_override(product_id: str):
 
 
 @router.delete("/api/v1/products/{product_id}/inventory-type", tags=["Products"])
-async def delete_inventory_type_override(product_id: str):
-    """Remove an inventory type override, reverting to auto-detected type."""
+async def delete_inventory_type_override(
+    product_id: str,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
+    """Remove an inventory type override, reverting to auto-detected type.
+
+    Requires an operator credential (catalog mutation).
+    """
     removed = await catalog_service.delete_inventory_type_override(product_id)
 
     if not removed:

@@ -96,14 +96,14 @@ Verify: `curl http://localhost:8000/health`
 
 ## Step 6: Generate Operator Credentials
 
+The admin REST/MCP surface requires an **operator** API key. Mint the first one with the CLI (writes directly to storage — no HTTP auth needed):
+
 ```bash
-# Create an operator API key
-curl -X POST http://localhost:8000/auth/api-keys \
-  -H "Content-Type: application/json" \
-  -d '{"name": "operator", "seat_id": "operator"}'
+# Same .env / storage config as the running server
+ad-seller create-operator-key --label "Primary operator"
 ```
 
-Save the returned API key.
+Save the printed API key — it is shown only once. Subsequent operator keys can be minted via `POST /auth/api-keys/operator` using this credential. Buyer keys for agents go through `POST /auth/api-keys`. See [Authentication](../api/authentication.md).
 
 ## Step 7: Generate Claude Desktop Config
 
@@ -154,7 +154,8 @@ See [Claude Desktop Setup Guide](claude-desktop-setup.md) for their instructions
 ## Trigger Initial Inventory Sync
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/inventory-sync/trigger
+curl -X POST http://localhost:8000/api/v1/inventory-sync/trigger \
+  -H "Authorization: Bearer <operator-api-key-from-step-6>"
 ```
 
 This pulls inventory from your ad server so the business team has packages to work with in the wizard.

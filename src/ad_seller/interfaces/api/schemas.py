@@ -270,7 +270,11 @@ class ApprovalDecisionRequest(BaseModel):
 
 
 class CreateApiKeyRequest(BaseModel):
-    """Request to create a new API key for a buyer."""
+    """Request to create a new BUYER-role API key.
+
+    Operator keys are created via POST /auth/api-keys/operator
+    (CreateOperatorApiKeyRequest) — they carry no buyer identity.
+    """
 
     seat_id: Optional[str] = None
     seat_name: Optional[str] = None
@@ -280,6 +284,13 @@ class CreateApiKeyRequest(BaseModel):
     agency_holding_company: Optional[str] = None
     advertiser_id: Optional[str] = None
     advertiser_name: Optional[str] = None
+    label: str = ""
+    expires_in_days: Optional[int] = None
+
+
+class CreateOperatorApiKeyRequest(BaseModel):
+    """Request to create a new OPERATOR-role API key (no buyer identity)."""
+
     label: str = ""
     expires_in_days: Optional[int] = None
 

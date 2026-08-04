@@ -213,8 +213,12 @@ def api_client(storage):
     import httpx
     from httpx import ASGITransport
 
+    from ad_seller.interfaces.api import deps as api_deps
     from ad_seller.interfaces.api.main import app
 
+    # PUT /packages/{id} now requires an operator key; these tests exercise
+    # whitelist validation, not auth, so bypass the operator dependency.
+    app.dependency_overrides[api_deps._require_operator_api_key_record] = lambda: None
     with patch("ad_seller.storage.factory.get_storage", AsyncMock(return_value=storage)):
         with patch(
             "ad_seller.events.helpers.emit_event", new_callable=AsyncMock
@@ -223,6 +227,7 @@ def api_client(storage):
             client = httpx.AsyncClient(transport=transport, base_url="http://test")
             client._mock_emit = mock_emit  # expose for assertions
             yield client
+    app.dependency_overrides.pop(api_deps._require_operator_api_key_record, None)
 
 
 class TestPutPackagesEndpoint:

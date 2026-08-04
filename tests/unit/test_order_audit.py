@@ -24,6 +24,7 @@ for _mod_name in _broken_flows:
 import httpx  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
 
+from ad_seller.interfaces.api import deps as api_deps  # noqa: E402
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # noqa: E402
 
 # =============================================================================
@@ -79,6 +80,9 @@ def mock_storage():
 @pytest.fixture
 def client(mock_storage):
     app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    # Order transitions are operator-gated; these tests exercise audit
+    # trails, not auth (covered in test_operator_auth.py).
+    app.dependency_overrides[api_deps._require_operator_api_key_record] = lambda: None
     transport = ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://test")
     yield c

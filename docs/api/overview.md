@@ -90,35 +90,42 @@ The Ad Seller System API exposes **87 endpoints** across **25 tags**. All endpoi
 
 ## Packages
 
+Package reads are public / tier-gated; mutations require an operator credential.
+
 | Method | Path | Summary |
 |--------|------|---------|
 | GET | `/packages` | List packages with tier-gated view |
 | GET | `/packages/{package_id}` | Get a single package with tier-gated view |
-| POST | `/packages` | Create a curated package (Layer 2) |
-| PUT | `/packages/{package_id}` | Update an existing package |
-| DELETE | `/packages/{package_id}` | Archive a package (soft delete) |
-| POST | `/packages/assemble` | Assemble a dynamic package (Layer 3) from product IDs |
-| POST | `/packages/sync` | Trigger ad server inventory sync (Layer 1) |
+| POST | `/packages` | Create a curated package (Layer 2; operator auth required) |
+| PUT | `/packages/{package_id}` | Update an existing package (operator auth required) |
+| DELETE | `/packages/{package_id}` | Archive a package (soft delete; operator auth required) |
+| POST | `/packages/assemble` | Assemble a dynamic package (Layer 3; operator auth required) |
+| POST | `/packages/sync` | Trigger ad server inventory sync (Layer 1; operator auth required) |
 
 ## Authentication
 
+All `/auth/api-keys*` routes require an **operator** credential. Bootstrap the first operator key with `ad-seller create-operator-key` (see [Authentication](authentication.md)).
+
 | Method | Path | Summary |
 |--------|------|---------|
-| POST | `/auth/api-keys` | Create a new API key for a buyer |
+| POST | `/auth/api-keys` | Create a new **buyer** API key (operator auth required) |
+| POST | `/auth/api-keys/operator` | Create a new **operator** API key (operator auth required) |
 | GET | `/auth/api-keys` | List all API keys (metadata only, no secrets) |
 | GET | `/auth/api-keys/{key_id}` | Get details for a specific API key |
 | DELETE | `/auth/api-keys/{key_id}` | Revoke an API key |
 
 ## Agent Registry
 
+Registry reads are public; mutations require an operator credential.
+
 | Method | Path | Summary |
 |--------|------|---------|
 | GET | `/.well-known/agent.json` | Serve this seller agent's card for A2A discovery |
 | GET | `/registry/agents` | List agents in the local registry |
 | GET | `/registry/agents/{agent_id}` | Get details for a specific registered agent |
-| POST | `/registry/agents/discover` | Discover an agent by URL |
-| PUT | `/registry/agents/{agent_id}/trust` | Update an agent's trust status |
-| DELETE | `/registry/agents/{agent_id}` | Remove an agent from the local registry |
+| POST | `/registry/agents/discover` | Discover an agent by URL (operator auth required) |
+| PUT | `/registry/agents/{agent_id}/trust` | Update an agent's trust status (operator auth required) |
+| DELETE | `/registry/agents/{agent_id}` | Remove an agent from the local registry (operator auth required) |
 
 ## Quotes
 
