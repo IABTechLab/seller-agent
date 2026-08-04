@@ -65,6 +65,13 @@ class ProposalState(SellerFlowState):
     # Upsell opportunities
     upsell_suggestions: list[dict[str, Any]] = []
 
+    # Causeful machine-readable error taxonomy (seller issue #34): every
+    # stage that fails the proposal records a structured
+    # ``{"stage": ..., "code": ..., "detail": ...}`` entry here (FD-6
+    # structured-error house style; snake_case codes). ``errors`` (inherited)
+    # keeps the human-readable strings for internal consumers.
+    error_details: list[dict[str, Any]] = []
+
 
 class ProposalHandlingFlow(Flow[ProposalState]):
     """Flow for handling incoming buyer proposals.
@@ -89,6 +96,24 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         # Tests / upstream code inject via attribute; default empty.
         self._packages_for_audience_validation: dict | list = {}
 
+    def _fail_stage(self, stage: str, code: str, detail: str) -> None:
+        """Fail the proposal with a causeful, machine-readable error.
+
+        Records BOTH shapes (seller issue #34): the human-readable string on
+        ``state.errors`` (internal seam, e2e helpers) and the structured
+        ``{"stage", "code", "detail"}`` entry on ``state.error_details``
+        (the wire ``errors[]``), then marks the flow FAILED. Stable codes:
+        ``missing_required_fields``, ``product_not_found``,
+        ``audience_validation``, ``pricing``, ``availability``,
+        ``crew_evaluation_error`` (plus ``internal`` for unattributed
+        failures, added by :meth:`_build_result`).
+        """
+        self.state.errors.append(detail)
+        self.state.error_details.append(
+            {"stage": stage, "code": code, "detail": detail}
+        )
+        self.state.status = ExecutionStatus.FAILED
+
     @start()
     async def receive_proposal(self) -> None:
         """Receive and validate the incoming proposal."""
@@ -102,8 +127,11 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         missing = [f for f in required_fields if f not in self.state.proposal_data]
 
         if missing:
-            self.state.errors.append(f"Missing required fields: {missing}")
-            self.state.status = ExecutionStatus.FAILED
+            self._fail_stage(
+                "receive_proposal",
+                "missing_required_fields",
+                f"Missing required fields: {missing}",
+            )
 
     @listen(receive_proposal)
     async def validate_product(self) -> None:
@@ -117,8 +145,11 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         product = self.state.products.get(product_id)
 
         if not product:
-            self.state.errors.append(f"Product not found: {product_id}")
-            self.state.status = ExecutionStatus.FAILED
+            self._fail_stage(
+                "validate_product",
+                "product_not_found",
+                f"Product not found: {product_id}",
+            )
             return
 
         # Check deal type compatibility
@@ -153,8 +184,9 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         if audience_plan:
             hard_reject_reason = self._check_audience_plan_hard_rejects(audience_plan)
             if hard_reject_reason:
-                self.state.errors.append(hard_reject_reason)
-                self.state.status = ExecutionStatus.FAILED
+                self._fail_stage(
+                    "validate_audience", "audience_validation", hard_reject_reason
+                )
                 self._audience_validation = {
                     "validated": False,
                     "coverage": 0.0,
@@ -373,57 +405,62 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         if self.state.status == ExecutionStatus.FAILED:
             return
 
-        product_id = self.state.proposal_data.get("product_id")
-        product = self.state.products.get(product_id)
-        requested_price = self.state.proposal_data.get("price", 0)
+        try:
+            product_id = self.state.proposal_data.get("product_id")
+            product = self.state.products.get(product_id)
+            requested_price = self.state.proposal_data.get("price", 0)
 
-        if not product:
-            return
+            if not product:
+                return
 
-        # Check against floor
-        price_acceptable = requested_price >= product.floor_cpm
+            # Check against floor
+            price_acceptable = requested_price >= product.floor_cpm
 
-        # Get audience validation results (from validate_audience step)
-        audience_validation = getattr(self, "_audience_validation", {})
+            # Get audience validation results (from validate_audience step)
+            audience_validation = getattr(self, "_audience_validation", {})
 
-        # Ground availability in declared catalog capacity — the SAME
-        # calculation as the quote path / POST /products/avails
-        # (catalog_service.check_avails, honest-availability policy:
-        # uncapped products report requested-as-available, capped products
-        # cap at maximum_impressions). Replaces the former hardcoded
-        # 1,000,000 placeholder that terminal-rejected any larger volume.
-        from ..services import catalog_service
+            # Ground availability in declared catalog capacity — the SAME
+            # calculation as the quote path / POST /products/avails
+            # (catalog_service.check_avails, honest-availability policy:
+            # uncapped products report requested-as-available, capped products
+            # cap at maximum_impressions). Replaces the former hardcoded
+            # 1,000,000 placeholder that terminal-rejected any larger volume.
+            from ..services import catalog_service
 
-        requested_impressions = self.state.proposal_data.get("impressions", 0)
-        avails = catalog_service.check_avails(
-            product, requested_impressions=requested_impressions
-        )
-        available_impressions = avails["available_impressions"]
+            requested_impressions = self.state.proposal_data.get("impressions", 0)
+            avails = catalog_service.check_avails(
+                product, requested_impressions=requested_impressions
+            )
+            available_impressions = avails["available_impressions"]
 
-        # Initialize evaluation with audience fields
-        self.state.evaluation = ProposalEvaluation(
-            proposal_id=self.state.proposal_id,
-            proposal_line_id=self.state.proposal_data.get("line_id", ""),
-            product_id=product_id,
-            requested_price=requested_price,
-            minimum_acceptable_price=product.floor_cpm,
-            recommended_price=product.base_cpm,
-            price_acceptable=price_acceptable,
-            requested_impressions=requested_impressions,
-            available_impressions=available_impressions,
-            impressions_available=requested_impressions <= available_impressions,
-            # Audience validation fields
-            audience_validated=audience_validation.get("validated", False),
-            audience_coverage=audience_validation.get("coverage", 0.0),
-            audience_gaps=audience_validation.get("gaps", []),
-            ucp_similarity_score=audience_validation.get("similarity_score"),
-            targeting_compatible=audience_validation.get("targeting_compatible", True),
-            # Decision not made yet — synced when the crew/fallback decides.
-            # (recommendation is REQUIRED on the model; omitting it made this
-            # constructor raise and killed the whole evaluation chain cold —
-            #.)
-            recommendation="",
-        )
+            # Initialize evaluation with audience fields
+            self.state.evaluation = ProposalEvaluation(
+                proposal_id=self.state.proposal_id,
+                proposal_line_id=self.state.proposal_data.get("line_id", ""),
+                product_id=product_id,
+                requested_price=requested_price,
+                minimum_acceptable_price=product.floor_cpm,
+                recommended_price=product.base_cpm,
+                price_acceptable=price_acceptable,
+                requested_impressions=requested_impressions,
+                available_impressions=available_impressions,
+                impressions_available=requested_impressions <= available_impressions,
+                # Audience validation fields
+                audience_validated=audience_validation.get("validated", False),
+                audience_coverage=audience_validation.get("coverage", 0.0),
+                audience_gaps=audience_validation.get("gaps", []),
+                ucp_similarity_score=audience_validation.get("similarity_score"),
+                targeting_compatible=audience_validation.get("targeting_compatible", True),
+                # Decision not made yet — synced when the crew/fallback decides.
+                # (recommendation is REQUIRED on the model; omitting it made this
+                # constructor raise and killed the whole evaluation chain cold —
+                #.)
+                recommendation="",
+            )
+        except Exception as e:  # noqa: BLE001 — fail causefully, never silently
+            self._fail_stage(
+                "evaluate_pricing", "pricing", f"Pricing evaluation error: {e}"
+            )
 
     @listen(evaluate_pricing)
     async def check_availability(self) -> None:
@@ -431,17 +468,22 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         if self.state.status == ExecutionStatus.FAILED or not self.state.evaluation:
             return
 
-        # Availability is grounded in evaluate_pricing via
-        # catalog_service.check_avails (declared catalog capacity — no
-        # second availability opinion here).
-        requested = self.state.evaluation.requested_impressions
-        available = self.state.evaluation.available_impressions
+        try:
+            # Availability is grounded in evaluate_pricing via
+            # catalog_service.check_avails (declared catalog capacity — no
+            # second availability opinion here).
+            requested = self.state.evaluation.requested_impressions
+            available = self.state.evaluation.available_impressions
 
-        self.state.evaluation.impressions_available = requested <= available
+            self.state.evaluation.impressions_available = requested <= available
 
-        if not self.state.evaluation.impressions_available:
-            self.state.evaluation.validation_errors.append(
-                f"Requested {requested:,} impressions but only {available:,} available"
+            if not self.state.evaluation.impressions_available:
+                self.state.evaluation.validation_errors.append(
+                    f"Requested {requested:,} impressions but only {available:,} available"
+                )
+        except Exception as e:  # noqa: BLE001 — fail causefully, never silently
+            self._fail_stage(
+                "check_availability", "availability", f"Availability check error: {e}"
             )
 
     def _crew_time_budget(self) -> float:
@@ -543,8 +585,18 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         if self.state.status == ExecutionStatus.FAILED:
             return
 
-        # Create and run the proposal review crew
-        crew = create_proposal_review_crew(self.state.proposal_data)
+        # Create the proposal review crew. A crew that cannot even be
+        # constructed fails the proposal with a causeful error (issue #34)
+        # instead of raising out of the flow as a detail-less failure.
+        try:
+            crew = create_proposal_review_crew(self.state.proposal_data)
+        except Exception as e:  # noqa: BLE001 — fail causefully, never silently
+            self._fail_stage(
+                "run_crew_evaluation",
+                "crew_evaluation_error",
+                f"Failed to create proposal review crew: {e}",
+            )
+            return
 
         try:
             result = await self._run_crew_within_budget(crew)
@@ -555,7 +607,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                 if self.state.evaluation:
                     self.state.evaluation.recommendation = self.state.recommendation
             else:
-                self._fallback_evaluation()
+                self._fallback_evaluation_or_fail("crew returned no structured review")
 
             # Emit proposal.evaluated event
             await emit_event(
@@ -575,12 +627,30 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             # Budget exceeded: deterministic fallback answers the
             # request within wire timeouts; the abandoned crew is logged.
             self.state.warnings.append(f"Crew evaluation exceeded time budget: {e}")
-            self._fallback_evaluation()
+            self._fallback_evaluation_or_fail(str(e))
 
         except Exception as e:
             self.state.warnings.append(f"Crew evaluation failed: {e}")
             # Fall back to rule-based evaluation
+            self._fallback_evaluation_or_fail(str(e))
+
+    def _fallback_evaluation_or_fail(self, cause: str) -> None:
+        """Run the deterministic fallback; if IT also errors, fail causefully.
+
+        The fallback is the last evaluator standing — when it raises, the
+        proposal genuinely cannot be evaluated, so the flow records a
+        ``crew_evaluation_error`` (issue #34) instead of resolving failed
+        with no detail (or raising a detail-less 500 out of the flow).
+        """
+        try:
             self._fallback_evaluation()
+        except Exception as fallback_exc:  # noqa: BLE001
+            self._fail_stage(
+                "run_crew_evaluation",
+                "crew_evaluation_error",
+                f"Crew evaluation failed ({cause}) and the deterministic "
+                f"fallback evaluation also errored: {fallback_exc}",
+            )
 
     def _fallback_evaluation(self) -> None:
         """Fallback rule-based evaluation if crew fails."""
@@ -846,6 +916,61 @@ class ProposalHandlingFlow(Flow[ProposalState]):
 
         self.state.completed_at = datetime.utcnow()
 
+    def _build_result(self) -> dict[str, Any]:
+        """Build the handling-result dict shared by both kickoff surfaces.
+
+        ``errors`` carries the structured causeful entries (issue #34).
+        Invariants enforced here:
+
+        - any human-readable string on ``state.errors`` without a structured
+          twin is wrapped as an ``internal`` entry (nothing is dropped);
+        - ``status == failed`` with an empty ``errors[]`` is impossible — an
+          unattributed failure is backfilled with a structured ``internal``
+          entry rather than answered detail-lessly.
+        """
+        errors: list[dict[str, Any]] = list(self.state.error_details)
+        structured_details = {e.get("detail") for e in errors}
+        for msg in self.state.errors:
+            if msg not in structured_details:
+                errors.append({"stage": "flow", "code": "internal", "detail": msg})
+
+        if self.state.status == ExecutionStatus.FAILED and not errors:
+            errors.append(
+                {
+                    "stage": "flow",
+                    "code": "internal",
+                    "detail": (
+                        "Proposal handling failed without a recorded cause "
+                        "(unattributed flow failure)."
+                    ),
+                }
+            )
+
+        result = {
+            "proposal_id": self.state.proposal_id,
+            "recommendation": self.state.recommendation,
+            "status": self.state.status.value,
+            "evaluation": self.state.evaluation.model_dump()
+            if self.state.evaluation
+            else None,
+            "counter_terms": self.state.counter_terms,
+            "upsell_suggestions": self.state.upsell_suggestions,
+            "errors": errors,
+            "warnings": self.state.warnings,
+        }
+
+        if self.state.negotiation_history:
+            result["_negotiation_history"] = self.state.negotiation_history
+
+        # If pending approval, include state snapshot for the API to create
+        # an ApprovalRequest with (handle_proposal is sync, storage is async)
+        if self.state.status == ExecutionStatus.PENDING_APPROVAL:
+            result["pending_approval"] = True
+            result["flow_id"] = self.state.flow_id
+            result["_flow_state_snapshot"] = self.state.model_dump(mode="json")
+
+        return result
+
     def handle_proposal(
         self,
         proposal_id: str,
@@ -873,28 +998,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         # Run the flow
         self.kickoff()
 
-        result = {
-            "proposal_id": proposal_id,
-            "recommendation": self.state.recommendation,
-            "status": self.state.status.value,
-            "evaluation": self.state.evaluation.model_dump() if self.state.evaluation else None,
-            "counter_terms": self.state.counter_terms,
-            "upsell_suggestions": self.state.upsell_suggestions,
-            "errors": self.state.errors,
-            "warnings": self.state.warnings,
-        }
-
-        if self.state.negotiation_history:
-            result["_negotiation_history"] = self.state.negotiation_history
-
-        # If pending approval, include state snapshot for the API to create
-        # an ApprovalRequest with (handle_proposal is sync, storage is async)
-        if self.state.status == ExecutionStatus.PENDING_APPROVAL:
-            result["pending_approval"] = True
-            result["flow_id"] = self.state.flow_id
-            result["_flow_state_snapshot"] = self.state.model_dump(mode="json")
-
-        return result
+        return self._build_result()
 
     async def handle_proposal_async(
         self,
@@ -916,23 +1020,4 @@ class ProposalHandlingFlow(Flow[ProposalState]):
 
         await self.kickoff_async()
 
-        result = {
-            "proposal_id": proposal_id,
-            "recommendation": self.state.recommendation,
-            "status": self.state.status.value,
-            "evaluation": self.state.evaluation.model_dump() if self.state.evaluation else None,
-            "counter_terms": self.state.counter_terms,
-            "upsell_suggestions": self.state.upsell_suggestions,
-            "errors": self.state.errors,
-            "warnings": self.state.warnings,
-        }
-
-        if self.state.negotiation_history:
-            result["_negotiation_history"] = self.state.negotiation_history
-
-        if self.state.status == ExecutionStatus.PENDING_APPROVAL:
-            result["pending_approval"] = True
-            result["flow_id"] = self.state.flow_id
-            result["_flow_state_snapshot"] = self.state.model_dump(mode="json")
-
-        return result
+        return self._build_result()

@@ -78,7 +78,13 @@ async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, A
             "proposal_id": proposal_id,
             "recommendation": "reject",
             "status": "failed",
-            "errors": [f"Proposal evaluation error: {exc}"],
+            "errors": [
+                {
+                    "stage": "flow",
+                    "code": "internal",
+                    "detail": f"Proposal evaluation error: {exc}",
+                }
+            ],
         }
 
     # Verify pricing against quote history (Layer 4 — CPM hallucination defense)
@@ -152,15 +158,29 @@ async def submit_proposal(request: Any, buyer_context: Any, catalog: dict[str, A
             "errors": result.get("errors", []),
         }
 
+    # Wire commitment (issue #34): status=failed must never ship an empty
+    # errors[] — an unattributed failure is backfilled with a structured
+    # internal cause rather than answered detail-lessly.
+    status = result.get("status", "failed")
+    errors = result.get("errors") or []
+    if status == "failed" and not errors:
+        errors = [
+            {
+                "stage": "flow",
+                "code": "internal",
+                "detail": "Proposal failed without a recorded cause.",
+            }
+        ]
+
     return {
         "proposal_id": proposal_id,
         "recommendation": result.get("recommendation") or "reject",
-        "status": result.get("status", "failed"),
+        "status": status,
         "counter_terms": result.get("counter_terms"),
         "approval_id": None,
         "pricing_verified": pricing_verified,
         "pricing_verification_reason": pricing_verification_reason,
-        "errors": result.get("errors", []),
+        "errors": errors,
     }
 
 

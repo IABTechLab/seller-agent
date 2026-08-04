@@ -79,8 +79,29 @@ class ProposalRequest(BaseModel):
     agent_url: Optional[str] = None
 
 
+class ProposalErrorDetail(BaseModel):
+    """Causeful machine-readable proposal error (seller issue #34).
+
+    FD-6 structured-error house style: a stable snake_case ``code`` names
+    the cause (``missing_required_fields``, ``product_not_found``,
+    ``audience_validation``, ``pricing``, ``availability``,
+    ``crew_evaluation_error``, ``internal``), ``stage`` names the
+    ProposalHandlingFlow stage that failed the proposal, and ``detail``
+    carries the human-readable explanation.
+    """
+
+    stage: str
+    code: str
+    detail: str = ""
+
+
 class ProposalResponse(BaseModel):
-    """Proposal submission response."""
+    """Proposal submission response.
+
+    Wire-compat note: a failed evaluation still answers HTTP 200 with
+    ``status="failed"`` — but ``errors[]`` is now guaranteed non-empty and
+    causeful whenever the status is ``failed`` (seller issue #34).
+    """
 
     proposal_id: str
     recommendation: str
@@ -89,7 +110,7 @@ class ProposalResponse(BaseModel):
     approval_id: Optional[str] = None
     pricing_verified: bool = False
     pricing_verification_reason: str = ""
-    errors: list[str] = []
+    errors: list[ProposalErrorDetail] = []
 
 
 class DealRequest(BaseModel):
