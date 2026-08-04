@@ -26,6 +26,7 @@ from ..config import get_settings
 from ..crews import create_proposal_review_crew
 from ..events.helpers import emit_event
 from ..events.models import EventType
+from ..llm import MissingApiKeyError
 from ..models.buyer_identity import BuyerContext
 from ..models.flow_state import (
     ExecutionStatus,
@@ -585,11 +586,19 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         if self.state.status == ExecutionStatus.FAILED:
             return
 
-        # Create the proposal review crew. A crew that cannot even be
-        # constructed fails the proposal with a causeful error (issue #34)
-        # instead of raising out of the flow as a detail-less failure.
+        # Create the proposal review crew in its own try so the two failure
+        # modes stay distinguishable: on a keyless deployment build_llm raises
+        # MissingApiKeyError at construction time, which must degrade to the
+        # SAME deterministic fallback as any other crew failure (the request
+        # still answers); any other construction error fails the proposal with
+        # a causeful error (issue #34) instead of raising out of the flow as a
+        # detail-less failure.
         try:
             crew = create_proposal_review_crew(self.state.proposal_data)
+        except MissingApiKeyError as e:
+            self.state.warnings.append(f"Crew evaluation failed: {e}")
+            self._fallback_evaluation_or_fail(str(e))
+            return
         except Exception as e:  # noqa: BLE001 — fail causefully, never silently
             self._fail_stage(
                 "run_crew_evaluation",

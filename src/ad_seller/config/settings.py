@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     )
 
     # API Keys
-    anthropic_api_key: str
+    # Optional at STARTUP: the server boots and every deterministic
+    # (non-LLM) surface works without any key. LLM-backed flows check for
+    # the key at use time (see ad_seller.llm.build_llm) and raise a clear,
+    # actionable error if the configured provider's key is missing.
+    anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     google_api_key: Optional[str] = None
 

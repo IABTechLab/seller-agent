@@ -11,7 +11,7 @@ with case-insensitive variable names.
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `ANTHROPIC_API_KEY` | `str` | **required*** | API key for your LLM provider (see [Supported Providers](#supported-providers)) |
+| `ANTHROPIC_API_KEY` | `str` | `None` | API key for the default LLM provider (see [Supported Providers](#supported-providers)). Optional to start the server; required at use time for LLM-backed flows, which raise a clear error if it is missing |
 | `SELLER_ORGANIZATION_ID` | `str` | auto-generated | Your organization ID |
 | `SELLER_ORGANIZATION_NAME` | `str` | `"Default Publisher"` | Organization display name |
 | `SELLER_AGENT_NAME` | `str` | `"Ad Seller Agent"` | Agent name shown in discovery |
