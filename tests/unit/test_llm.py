@@ -4,7 +4,7 @@
 """Unit tests for the custom OpenAI-compatible endpoint alternative (build_llm)."""
 
 from ad_seller.config.settings import Settings
-from ad_seller.llm import build_llm
+from ad_seller.llm import _model_accepts_temperature, build_llm
 
 
 def _settings(**overrides) -> Settings:
@@ -65,9 +65,7 @@ class TestCustomOpenAICompatibleEndpoint:
                 openai_compatible_llm_api_base_url="https://integrate.api.nvidia.com/v1",
             ),
         )
-        llm = build_llm(
-            model="meta/llama-3.1-70b-instruct", temperature=0.3, max_tokens=4096
-        )
+        llm = build_llm(model="meta/llama-3.1-70b-instruct", temperature=0.3, max_tokens=4096)
         assert llm.provider == "openai"
         assert llm.model == "meta/llama-3.1-70b-instruct"
         assert llm.base_url == "https://integrate.api.nvidia.com/v1"
@@ -76,11 +74,78 @@ class TestCustomOpenAICompatibleEndpoint:
     def test_local_ollama_needs_no_key(self, monkeypatch):
         monkeypatch.setattr(
             "ad_seller.llm.get_settings",
-            lambda: _settings(
-                openai_compatible_llm_api_base_url="http://localhost:11434/v1"
-            ),
+            lambda: _settings(openai_compatible_llm_api_base_url="http://localhost:11434/v1"),
         )
         llm = build_llm(model="llama3", temperature=0.3, max_tokens=4096)
         assert llm.provider == "openai"
         assert llm.model == "llama3"
         assert llm.base_url == "http://localhost:11434/v1"
+
+
+class TestModelAcceptsTemperature:
+    """Anthropic rejects ``temperature`` on Opus 4.7+, Sonnet 5+, and
+    Fable/Mythos (400 invalid_request_error), regardless of provider prefix."""
+
+    def test_opus_4_8_rejects(self):
+        assert not _model_accepts_temperature("anthropic/claude-opus-4-8")
+
+    def test_opus_4_7_rejects(self):
+        assert not _model_accepts_temperature("anthropic/claude-opus-4-7")
+
+    def test_bedrock_prefixed_opus_rejects(self):
+        assert not _model_accepts_temperature("bedrock/us.anthropic.claude-opus-4-8-v1:0")
+
+    def test_sonnet_5_rejects(self):
+        assert not _model_accepts_temperature("anthropic/claude-sonnet-5")
+
+    def test_fable_rejects(self):
+        assert not _model_accepts_temperature("anthropic/claude-fable-5")
+
+    def test_case_insensitive(self):
+        assert not _model_accepts_temperature("anthropic/Claude-Opus-4-8")
+
+    def test_sonnet_4_5_accepts(self):
+        assert _model_accepts_temperature("anthropic/claude-sonnet-4-5-20250929")
+
+    def test_haiku_accepts(self):
+        assert _model_accepts_temperature("anthropic/claude-haiku-4-5")
+
+    def test_non_claude_model_accepts(self):
+        assert _model_accepts_temperature("openai/gpt-4o")
+
+
+class TestTemperatureOmittedWhenUnsupported:
+    """build_llm leaves ``temperature`` unset for models whose API rejects it;
+    CrewAI only forwards the parameter when it is not None, so nothing reaches
+    the API request."""
+
+    def test_manager_default_model_omits_temperature(self, monkeypatch):
+        monkeypatch.setattr("ad_seller.llm.get_settings", lambda: _settings())
+        llm = build_llm(model="anthropic/claude-opus-4-8", temperature=0.3, max_tokens=4096)
+        assert llm.temperature is None
+
+    def test_omitted_temperature_stays_out_of_request_params(self, monkeypatch):
+        monkeypatch.setattr("ad_seller.llm.get_settings", lambda: _settings())
+        llm = build_llm(model="anthropic/claude-opus-4-8", temperature=0.3, max_tokens=4096)
+        params = llm._prepare_completion_params(messages=[{"role": "user", "content": "hi"}])
+        assert "temperature" not in params
+
+    def test_supported_model_keeps_temperature(self, monkeypatch):
+        monkeypatch.setattr("ad_seller.llm.get_settings", lambda: _settings())
+        llm = build_llm(
+            model="anthropic/claude-sonnet-4-5-20250929",
+            temperature=0.3,
+            max_tokens=4096,
+        )
+        assert llm.temperature == 0.3
+        params = llm._prepare_completion_params(messages=[{"role": "user", "content": "hi"}])
+        assert params["temperature"] == 0.3
+
+    def test_openai_compatible_endpoint_also_omits(self, monkeypatch):
+        monkeypatch.setattr(
+            "ad_seller.llm.get_settings",
+            lambda: _settings(openai_compatible_llm_api_base_url="http://localhost:11434/v1"),
+        )
+        llm = build_llm(model="claude-opus-4-8", temperature=0.3, max_tokens=4096)
+        assert llm.provider == "openai"
+        assert llm.temperature is None
