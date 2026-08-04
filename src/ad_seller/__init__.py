@@ -5,4 +5,4 @@
 
 from ad_seller import _telemetry_shim  # noqa: F401  # MUST be first import
 
-__version__ = "0.1.0"
+__version__ = "2.4.0"

@@ -4,7 +4,9 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
-### BREAKING — 2.4.0: admin surface now requires operator credentials
+## [2.4.0] — 2026-08-04
+
+### BREAKING: admin surface now requires operator credentials
 
 API keys now carry a role (`buyer` or `operator`), and every
 seller-side admin/mutation surface requires an operator-role key.
@@ -59,6 +61,35 @@ Migration:
 3. Existing (legacy) API keys deserialize with the default `buyer`
    role — they keep working on buyer-facing paths but are never
    silently promoted to operator.
+
+### BREAKING: failed proposals report structured errors[]
+
+Failed proposals now report a structured `errors[]` array of
+`{stage, code, detail}` entries with stable snake_case `code` values
+(`missing_required_fields`, `product_not_found`, `audience_validation`,
+`pricing`, `availability`, `crew_evaluation_error`, `internal`).
+Branch on `code`, not `detail` — the detail text is free-form and may
+change. See the stage/code table in `docs/guides/troubleshooting.md`.
+
+### Fixed
+
+- `temperature` is omitted from LLM requests for models whose API
+  rejects the parameter (Opus 4.7+, Sonnet 5+, Fable, Mythos), instead
+  of failing with a 400 `invalid_request_error`.
+- `ANTHROPIC_API_KEY` is now optional at startup: the server boots and
+  all deterministic (non-LLM) surfaces work without it. LLM-backed
+  flows check the key lazily at LLM construction time and fail with a
+  clear, actionable `MissingApiKeyError` instead of a cryptic provider
+  error mid-request.
+- CI installs are locked (`uv sync --locked` / `uv run --locked`), so
+  builds are reproducible against the committed `uv.lock`.
+
+### Known issues
+
+- Releases <= 2.3.3 shipped a stale `uv.lock` (locked
+  `iab-agentic-primitives` v0.3.0 against a required v0.5.0), so locked
+  installs on those tags fail. Use v2.4.0, or install via pip on the
+  older tags.
 
 ## [2.3.3] — 2026-07-29
 

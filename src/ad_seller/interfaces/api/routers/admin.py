@@ -27,7 +27,7 @@ async def root():
     """API root."""
     return {
         "name": "Ad Seller System API",
-        "version": "0.1.0",
+        "version": "2.4.0",
         "docs": "/docs",
     }
 
