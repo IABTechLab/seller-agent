@@ -3,12 +3,16 @@
 
 """Configuration settings for the Ad Seller System."""
 
+import logging
+import os
 from functools import lru_cache
 from typing import Optional
 
 from dotenv import find_dotenv
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 # Find .env file by searching up from current working directory
 _ENV_FILE = find_dotenv(usecwd=True)
@@ -70,7 +74,20 @@ class Settings(BaseSettings):
     postgres_pool_max: int = 10
 
     # CrewAI Configuration
-    crew_memory_enabled: bool = True
+    # crew_memory_enabled is off by default: CrewAI's built-in memory needs an
+    # embedding provider, and with the shipped defaults (Anthropic-only key)
+    # none is configured — every search_memory call then fails with
+    # "The CHROMA_OPENAI_API_KEY environment variable is not set".
+    # Enabling it requires one of:
+    #   - OPENAI_API_KEY (CrewAI's default OpenAI embedder), or
+    #   - CHROMA_OPENAI_API_KEY (passed straight to Chroma's embedder), or
+    #   - BEDROCK_AGENTCORE_MEMORY_ID (AgentCore deployments — the patch in
+    #     patches/crewai_agentcore_memory.py replaces the storage backend, so
+    #     no OpenAI embedder is involved on that path).
+    # If enabled without any of these, _validate_crew_memory_config() logs one
+    # startup warning and disables memory for the process instead of letting
+    # every memory call fail at runtime.
+    crew_memory_enabled: bool = False
     crew_verbose: bool = True
     crew_max_iterations: int = 15
 
@@ -226,6 +243,50 @@ class Settings(BaseSettings):
     # API Key Authentication
     api_key_auth_enabled: bool = True
     api_key_default_expiry_days: Optional[int] = None  # None = never expires
+
+    def _memory_embedder_configured(self) -> bool:
+        """Whether any embedder configuration usable by CrewAI memory exists.
+
+        CrewAI's built-in memory (Chroma-backed) defaults to an OpenAI
+        embedder, satisfied by OPENAI_API_KEY or CHROMA_OPENAI_API_KEY.
+        AgentCore deployments instead set BEDROCK_AGENTCORE_MEMORY_ID and
+        rely on patches/crewai_agentcore_memory.py, which swaps the storage
+        backend entirely (no OpenAI embedder involved) — that path must not
+        be disabled here.
+        """
+        return bool(
+            self.openai_api_key
+            or os.environ.get("CHROMA_OPENAI_API_KEY")
+            or os.environ.get("BEDROCK_AGENTCORE_MEMORY_ID")
+        )
+
+    @model_validator(mode="after")
+    def _validate_crew_memory_config(self) -> "Settings":
+        """Validate memory config once at construction (startup).
+
+        If CREW_MEMORY_ENABLED=true but no usable embedder configuration is
+        present, memory would not actually work — every search_memory call
+        fails with "The CHROMA_OPENAI_API_KEY environment variable is not
+        set" (dozens of times per proposal session). Instead, log ONE clear
+        warning here and disable memory for the process. Settings is a
+        process-wide lru_cache singleton (see get_settings), so this runs
+        once at startup and every crew construction sees the resolved value.
+        """
+        if self.crew_memory_enabled and not self._memory_embedder_configured():
+            logger.warning(
+                "CREW_MEMORY_ENABLED=true but no embedder is configured — "
+                "disabling CrewAI memory for this process. CrewAI memory "
+                "needs an embedding provider; without one every "
+                "search_memory call fails with 'The CHROMA_OPENAI_API_KEY "
+                "environment variable is not set'. To enable memory, set "
+                "OPENAI_API_KEY (CrewAI's default OpenAI embedder) or "
+                "CHROMA_OPENAI_API_KEY, or on AgentCore set "
+                "BEDROCK_AGENTCORE_MEMORY_ID (backed by "
+                "patches/crewai_agentcore_memory.py). See .env.example "
+                "(CREW_MEMORY_ENABLED) and docs/guides/configuration.md."
+            )
+            self.crew_memory_enabled = False
+        return self
 
 
 @lru_cache

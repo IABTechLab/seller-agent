@@ -185,7 +185,7 @@ MANAGER_LLM_MODEL=llama3
 | `APPROVAL_GATE_ENABLED` | `bool` | `false` | Enable human-in-the-loop approval gates |
 | `AGENT_REGISTRY_ENABLED` | `bool` | `true` | Enable agent registry for A2A trust management |
 | `API_KEY_AUTH_ENABLED` | `bool` | `true` | Enable API key authentication for buyers |
-| `CREW_MEMORY_ENABLED` | `bool` | `true` | Enable CrewAI agent memory (conversation recall) |
+| `CREW_MEMORY_ENABLED` | `bool` | `false` | Enable CrewAI agent memory (conversation recall) — requires an embedder, see [CrewAI Configuration](#crewai-configuration) |
 | `YIELD_OPTIMIZATION_ENABLED` | `bool` | `true` | Enable yield optimization engine |
 
 ## Agent Registry
@@ -217,9 +217,27 @@ MANAGER_LLM_MODEL=llama3
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `CREW_MEMORY_ENABLED` | `bool` | `true` | Enable agent memory |
+| `CREW_MEMORY_ENABLED` | `bool` | `false` | Enable agent memory (requires an embedder — see below) |
 | `CREW_VERBOSE` | `bool` | `true` | Enable verbose CrewAI logging |
 | `CREW_MAX_ITERATIONS` | `int` | `15` | Maximum iterations per crew run |
+
+### Memory requires an embedder
+
+`CREW_MEMORY_ENABLED` defaults to `false` because CrewAI's built-in memory
+needs an embedding provider, and the shipped defaults (Anthropic-only API key)
+don't configure one. Enabling memory without an embedder makes every
+`search_memory` call fail with `The CHROMA_OPENAI_API_KEY environment variable
+is not set`. Before setting `CREW_MEMORY_ENABLED=true`, configure ONE of:
+
+- `OPENAI_API_KEY` — CrewAI's default OpenAI embedder
+- `CHROMA_OPENAI_API_KEY` — passed directly to Chroma's OpenAI embedder
+- `BEDROCK_AGENTCORE_MEMORY_ID` — AgentCore deployments only; memory is backed
+  by `patches/crewai_agentcore_memory.py` (AgentCore Memory), so no OpenAI
+  embedder is needed on that path
+
+If `CREW_MEMORY_ENABLED=true` but none of these is present, the app logs one
+clear warning at startup and runs with memory disabled for the process,
+instead of failing on every memory call.
 
 ## API Key Authentication
 
@@ -298,7 +316,7 @@ EVENT_BUS_ENABLED=true
 APPROVAL_GATE_ENABLED=false
 AGENT_REGISTRY_ENABLED=true
 API_KEY_AUTH_ENABLED=true
-CREW_MEMORY_ENABLED=true
+CREW_MEMORY_ENABLED=false
 
 # =============================================================================
 # Agent Registry
