@@ -4,6 +4,20 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+## [2.4.1] — 2026-08-05
+
+### Changed
+
+- `CREW_MEMORY_ENABLED` now defaults to `false`; when enabled without a
+  configured embedder, memory is disabled with a single startup warning
+  instead of failing on every call (issue #42).
+- Embedder options documented in `.env.example` and the configuration
+  guide.
+
+### Docs
+
+- README documents the locked uv workflow.
+
 ## [2.4.0] — 2026-08-04
 
 ### BREAKING: admin surface now requires operator credentials
