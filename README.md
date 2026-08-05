@@ -95,14 +95,18 @@ Deploy the server, connect ad servers and SSPs, generate operator credentials:
 ```bash
 git clone https://github.com/IABTechLab/seller-agent.git
 cd seller-agent
-pip install -e .
+uv sync --locked        # installs into .venv from uv.lock (same install CI uses)
 
 # Configure .env (ad server, SSPs, API key)
 cp .env.example .env
 
 # Start
-uvicorn ad_seller.interfaces.api.main:app --port 8000
+uv run uvicorn ad_seller.interfaces.api.main:app --port 8000
 ```
+
+No [uv](https://docs.astral.sh/uv/)? `pip install -e .` in a virtualenv of your
+choice still works (then run `uvicorn` without the `uv run` prefix) — but
+`uv sync --locked` is what CI runs, so it is the reproducible path.
 
 > [Developer Setup Guide](https://iabtechlab.github.io/seller-agent/guides/developer-setup/)
 
@@ -247,20 +251,35 @@ Full inventory: [REST Endpoints reference](https://iabtechlab.github.io/seller-a
 
 ## Development
 
+CI installs straight from `uv.lock` (`uv sync --locked`) and never re-resolves,
+so use the same locked commands locally:
+
 ```bash
-# Install dev dependencies
-pip install -e ".[dev]"
+# Install dev dependencies (the exact install CI uses)
+uv sync --locked --extra dev
 
 # Run tests
-ANTHROPIC_API_KEY=test pytest tests/ -v
+ANTHROPIC_API_KEY=test uv run --locked pytest tests/ -v
 
-# Lint
-ruff check src/
+# Lint + format (CI enforces both)
+uv run --locked ruff check src/
+uv run --locked ruff format --check src/ tests/
 
 # Build docs locally
-pip install -e ".[docs]"
-mkdocs serve
+uv sync --locked --extra docs
+uv run --locked mkdocs serve
 ```
+
+Changing dependencies in `pyproject.toml`? Re-resolve the lockfile and commit it
+alongside your change — otherwise CI fails with a stale-lockfile error:
+
+```bash
+uv lock
+```
+
+> **Note:** tags `v2.3.3` and earlier ship a `uv.lock` that is stale relative to
+> `pyproject.toml`, so `uv sync --locked` fails on those checkouts. Fixed as of
+> `v2.4.0` — use `uv sync` (unlocked) if you need to build an older tag.
 
 ## Related
 
