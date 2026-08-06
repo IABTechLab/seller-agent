@@ -227,7 +227,7 @@ INDEX_EXCHANGE_API_URL=https://api.indexexchange.com
 | Deals | 1 | Deal creation from accepted proposals |
 | Deal Performance | 1 | Delivery metrics |
 | Bulk Operations | 1 | Batch deal create/update/cancel |
-| Proposals | 1 | Proposal submission |
+| Proposals | 1 | Proposal submission (quote-anchored price verification) |
 | Negotiation | 3 | Counter-offers + negotiation state and messages |
 | Discovery | 1 | Natural-language inventory discovery |
 | Audience | 1 | Agentic audience matching |
