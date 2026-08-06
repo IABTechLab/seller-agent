@@ -186,6 +186,47 @@ Each tier maps to a negotiation strategy with specific concession limits:
 
 ---
 
+## Price Verification (Quote-Anchored)
+
+Proposal responses carry a `pricing_verified` boolean and a
+`pricing_verification_reason` string. Verification is **quote-anchored**: the
+proposed CPM is compared against the active quotes this seller has issued for
+the same buyer identity and product, and must fall within tolerance of one of
+them. There is deliberately no rate-card or floor fallback -- an unanchored
+"verified" would defeat the purpose of the field.
+
+The field is a trust guard against price hallucination. An agent can claim any
+price in a proposal; `pricing_verified` answers a narrower and more useful
+question -- does this price match something the seller actually offered?
+
+### Sequence matters
+
+```
+1. POST /api/v1/quotes    -> quote_id, quoted CPM
+2. POST /proposals        -> propose the same product at the quoted price
+                             pricing_verified: true
+```
+
+Proposing first is the intuitive order but cannot verify:
+
+```
+POST /proposals (no prior quote)
+  pricing_verified: false
+  pricing_verification_reason: "No matching quote found for this buyer and product."
+```
+
+That response is correct behavior, not a fault. If you see `false` on every
+proposal, check whether a quote was issued for that buyer and product first.
+
+### What each outcome means
+
+| `pricing_verified` | Meaning |
+|---|---|
+| `true` | Proposed CPM falls within tolerance of a quote this seller issued. The reason names the quote ID and the difference, e.g. `Proposed CPM $15.00 matches quote qt-367309d94d20 ($15.00, 0.0% difference).` |
+| `false` | Either no quote exists for this buyer and product, or the proposed CPM is outside tolerance of every active quote. `pricing_verification_reason` distinguishes them: `No matching quote found for this buyer and product.` versus `Proposed CPM $18.00 is outside tolerance of all active quotes for this buyer and product.` |
+
+---
+
 ## Cross-Advertiser Pricing Consistency
 
 The seller agent enforces consistent pricing for the same advertiser regardless
