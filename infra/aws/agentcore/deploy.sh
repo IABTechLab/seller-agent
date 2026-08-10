@@ -480,7 +480,6 @@ deploy_mcp_runtime() {
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
     --env "CREW_MEMORY_ENABLED=true"
-    --env "MEMORY_LLM_MODEL=bedrock/us.amazon.nova-lite-v1:0"
   )
 
   if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
@@ -564,7 +563,6 @@ deploy_http_runtime() {
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
     --env "CREW_MEMORY_ENABLED=true"
-    --env "MEMORY_LLM_MODEL=bedrock/us.amazon.nova-lite-v1:0"
   )
 
   if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
