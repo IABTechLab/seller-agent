@@ -34,6 +34,11 @@ The Ad Seller System API exposes **87 endpoints** across **25 tags**. All endpoi
 |--------|------|---------|
 | POST | `/proposals` | Submit a proposal for review |
 
+`pricing_verified` on the response is quote-anchored: it requires a quote
+previously issued for the same buyer and product. Proposing without a prior
+quote returns `pricing_verified: false` by design. See
+[Price Verification](../guides/pricing-rules.md#price-verification-quote-anchored).
+
 ## Deals
 
 | Method | Path | Summary |
