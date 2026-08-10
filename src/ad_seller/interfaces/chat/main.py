@@ -356,7 +356,14 @@ class ChatInterface:
 
     def _is_deal_request(self, message: str) -> bool:
         """Check if message is a deal creation request."""
-        deal_keywords = ["create deal", "book", "buy inventory", "want to buy", "make a deal"]
+        deal_keywords = [
+            "create a deal",
+            "create deal",
+            "book",
+            "buy inventory",
+            "want to buy",
+            "make a deal",
+        ]
         return any(keyword in message for keyword in deal_keywords)
 
     def _is_pricing_inquiry(self, message: str) -> bool:
@@ -382,7 +389,7 @@ class ChatInterface:
 
     def _is_availability_inquiry(self, message: str) -> bool:
         """Check if message is an availability inquiry."""
-        avail_keywords = ["available", "inventory", "impressions", "capacity"]
+        avail_keywords = ["available", "inventory", "impressions", "capacity", "product", "catalog"]
         return any(keyword in message for keyword in avail_keywords)
 
     def _handle_deal_request(
