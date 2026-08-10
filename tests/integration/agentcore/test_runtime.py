@@ -183,10 +183,13 @@ class TestChatMode:
     """Tests for the chat routing mode (keyword-based ChatInterface)."""
 
     def test_list_products(self, runtime_config):
-        """Chat mode responds to 'list products' with inventory data."""
+        """Chat mode routes 'list products' to availability, not the general fallback."""
         result = invoke_runtime(runtime_config, {"prompt": "list products"})
         assert result["success"], f"Invoke failed: {result['error']}"
-        # Should mention products or inventory
+        raw = result["raw"].lower()
+        assert '"type": "general"' not in raw, (
+            f"'list products' fell through to general handler: {result['response'][:200]}"
+        )
         response = result["response"].lower()
         assert any(kw in response for kw in ["product", "inventory", "ctv", "video", "display"]), (
             f"Response doesn't mention products: {result['response'][:200]}"
