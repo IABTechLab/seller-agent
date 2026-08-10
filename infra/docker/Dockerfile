@@ -12,26 +12,22 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-# Install build tools needed for some Python packages
+# Install build tools needed for some Python packages.
+# git is required: pyproject declares a git dependency (iab-agentic-primitives)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev \
+    gcc libpq-dev git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only dependency metadata first (cache-friendly)
-COPY pyproject.toml ./
-
-# Install dependencies into a virtual env so we can copy it cleanly
+# Install everything into a virtual env so we can copy it cleanly.
+# No separate dependency layer: an editable hatchling build needs the
+# source tree present, so a pyproject-only install cannot succeed and
+# would only mask failures.
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install production deps + postgres + redis extras
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir ".[redis]" \
-    || pip install --no-cache-dir -e ".[redis]" 2>/dev/null; true
-
-# Now copy source and install the package itself
 COPY . .
-RUN pip install --no-cache-dir -e ".[redis]"
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -e ".[redis]"
 
 # ---------------------------------------------------------------------------
 # Stage 2 — Runtime
@@ -47,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd --gid 1000 seller && \
     useradd --uid 1000 --gid seller --create-home seller
 
-# Copy virtual env from builder
+# Copy virtual env from builder (all deps already resolved, no re-clone needed)
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -57,8 +53,9 @@ COPY --from=builder /build/src ./src
 COPY --from=builder /build/pyproject.toml ./
 COPY --from=builder /build/README.md ./
 
-# Install the package in the runtime venv (editable so src/ is on path)
-RUN pip install --no-cache-dir -e ".[redis]"
+# Re-point the editable install at /app; dependencies already live in the
+# copied venv, so skip resolution (which would also need git at runtime)
+RUN pip install --no-cache-dir --no-deps -e .
 
 # Switch to non-root user
 USER seller
