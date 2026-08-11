@@ -92,34 +92,76 @@ async def book_deal(
     resolution.
 
     **Idempotency (FD-12):** the request carries a required
-    ``idempotency_key``. A replay with a key already booked returns the
-    same Deal without minting a second one (no duplicate side effect).
+    ``idempotency_key``. A replay with a key already used for an identical
+    body returns the same Deal without minting a second one (no duplicate
+    side effect); the same key reused with a different body is an
+    ``idempotency_conflict`` (HTTP 409). The key is scoped per buyer
+    (FD-12) — API key identity takes priority over the self-asserted
+    ``buyer_identity`` body field, matching the priority order used to
+    resolve buyer identity elsewhere.
     """
     from ....storage.factory import get_storage
 
     internal_request = cm.deal_booking_request_to_internal(request)
 
-    # Honor the shared idempotency key: same key -> same response, no
-    # duplicate booking (FD-12). Kept at the wire edge so deal_service
-    # stays untouched. Defensive against storage backends/mocks that do
-    # not implement the generic get/set KV methods.
-    idem_storage_key = f"idempotency:deal:{request.idempotency_key}"
+    # Honor the shared idempotency key: same key + same body -> same
+    # response, no duplicate booking (FD-12). Kept at the wire edge so
+    # deal_service stays untouched. Defensive against storage backends/
+    # mocks that do not implement the generic get/set KV methods.
+    buyer_identity = (
+        api_key_record.identity if api_key_record is not None else request.buyer_identity
+    )
+    buyer_scope = cm.idempotency_buyer_scope(buyer_identity)
+    idem_storage_key = f"idempotency:deal:{buyer_scope}:{request.idempotency_key}"
+    payload_hash = cm.request_payload_hash(
+        request.model_dump(mode="json", exclude={"idempotency_key"})
+    )
     storage = await get_storage()
     try:
-        prior_deal_id = await storage.get(idem_storage_key)
+        prior = await storage.get(idem_storage_key)
     except Exception:
-        prior_deal_id = None
-    # Only a real, previously-persisted string id counts as a prior booking;
+        prior = None
+    if prior is None:
+        # Fallback for records written before buyer-scoping landed: those
+        # were stored bare at idempotency:deal:{key}, with no scope segment,
+        # so a scoped-key miss doesn't mean "no prior booking" by itself.
+        # Removable one TTL window (24h) after this deploys.
+        legacy_storage_key = f"idempotency:deal:{request.idempotency_key}"
+        try:
+            prior = await storage.get(legacy_storage_key)
+        except Exception:
+            prior = None
+    # Only a real, previously-persisted record counts as a prior booking;
     # this also guards against AsyncMock storages that auto-return truthy
     # sentinels for undefined KV methods.
-    if isinstance(prior_deal_id, str) and prior_deal_id:
-        existing = await deal_service.get_deal(prior_deal_id)
+    if isinstance(prior, dict) and prior.get("deal_id"):
+        if prior.get("payload_hash") != payload_hash:
+            raise HTTPException(
+                status_code=409,
+                detail=cm.idempotency_conflict_detail(
+                    f"idempotency_key '{request.idempotency_key}' was already used "
+                    "for a different deal booking request."
+                ),
+            )
+        existing = await deal_service.get_deal(prior["deal_id"])
+        return cm.internal_deal_to_response(existing)
+    elif isinstance(prior, str) and prior:
+        # Legacy pre-migration record: plain string deal_id with no stored
+        # hash (the shape this endpoint wrote before payload-hash conflict
+        # detection and buyer-scoping existed). No hash to compare against,
+        # so replay it as the original booking rather than risk a duplicate
+        # deal for a key created before this deploy.
+        existing = await deal_service.get_deal(prior)
         return cm.internal_deal_to_response(existing)
 
     result = await deal_service.book_deal(internal_request)
 
     try:
-        await storage.set(idem_storage_key, result["deal_id"], ttl=86400)
+        await storage.set(
+            idem_storage_key,
+            {"deal_id": result["deal_id"], "payload_hash": payload_hash},
+            ttl=86400,
+        )
     except Exception:
         pass
 

@@ -415,6 +415,135 @@ class TestCreateQuote:
 
 
 # =============================================================================
+# POST /api/v1/quotes — idempotency (FD-12, issue #44)
+# =============================================================================
+
+
+class TestQuoteIdempotency:
+    async def test_replay_same_key_same_body_returns_same_quote(self, client, mock_storage):
+        """Replaying an identical request with the same key mints no second quote."""
+        with (
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            body = _body(
+                idempotency_key="idem-replay-1",
+                product_id="ctv-premium-sports",
+                deal_type="PD",
+                impressions=5000000,
+            )
+            first = await client.post("/api/v1/quotes", json=body)
+            second = await client.post("/api/v1/quotes", json=body)
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["quote"]["quote_id"] == second.json()["quote"]["quote_id"]
+        # Only one quote record was ever persisted.
+        quote_keys = [k for k in mock_storage._store if k.startswith("quote:")]
+        assert len(quote_keys) == 1
+
+    async def test_reused_key_different_body_returns_409(self, client, mock_storage):
+        """Same idempotency_key with a different payload is a conflict, not a new quote."""
+        with (
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            first = await client.post(
+                "/api/v1/quotes",
+                json=_body(
+                    idempotency_key="idem-conflict-1",
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=1000000,
+                ),
+            )
+            second = await client.post(
+                "/api/v1/quotes",
+                json=_body(
+                    idempotency_key="idem-conflict-1",
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=9999999,
+                ),
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 409
+        assert second.json()["detail"]["error"] == "idempotency_conflict"
+
+    async def test_different_keys_mint_separate_quotes(self, client, mock_storage):
+        with (
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            first = await client.post(
+                "/api/v1/quotes",
+                json=_body(
+                    idempotency_key="idem-a",
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=1000000,
+                ),
+            )
+            second = await client.post(
+                "/api/v1/quotes",
+                json=_body(
+                    idempotency_key="idem-b",
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=1000000,
+                ),
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["quote"]["quote_id"] != second.json()["quote"]["quote_id"]
+
+    async def test_idempotency_key_scoped_per_buyer(self, client, mock_storage):
+        """FD-12 scopes the idempotency namespace per buyer — a record stored
+        under one buyer's identity must not be visible to a different buyer
+        who reuses the same client-chosen key (review follow-up on #50).
+        Buyer verification must also run before the replay lookup, so a
+        different buyer's request is never short-circuited past its own
+        pricing-tier check."""
+        # As if buyer A already used this key for a different quote.
+        mock_storage._store["idempotency:quote:advertiser:adv-buyer-a:idem-shared"] = {
+            "quote_id": "qt-otherbuyer1",
+            "payload_hash": "not-the-real-hash",
+        }
+
+        with (
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await client.post(
+                "/api/v1/quotes",
+                json=_body(
+                    idempotency_key="idem-shared",
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=1000000,
+                    buyer_identity={"advertiser_id": "adv-buyer-b"},
+                ),
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["quote"]["quote_id"] != "qt-otherbuyer1"
+
+
+# =============================================================================
 # GET /api/v1/quotes/{quote_id}
 # =============================================================================
 

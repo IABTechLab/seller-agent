@@ -229,6 +229,95 @@ class TestBookDeal:
         assert second.status_code == 200
         assert first.json()["deal"]["deal_id"] == second.json()["deal"]["deal_id"]
 
+    async def test_reused_key_different_body_returns_409(self, client, mock_storage):
+        """Same idempotency_key against a different quote_id is a conflict (FD-12, issue #44)."""
+        quote_a = _make_available_quote(quote_id="qt-first111111")
+        quote_b = _make_available_quote(quote_id="qt-second222222")
+        mock_storage._store[f"quote:{quote_a['quote_id']}"] = quote_a
+        mock_storage._store[f"quote:{quote_b['quote_id']}"] = quote_b
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            first = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-conflict", "quote_id": quote_a["quote_id"]},
+            )
+            second = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-conflict", "quote_id": quote_b["quote_id"]},
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 409
+        assert second.json()["detail"]["error"] == "idempotency_conflict"
+
+    async def test_idempotency_key_scoped_per_buyer(self, client, mock_storage):
+        """FD-12 scopes the idempotency namespace per buyer — a record stored
+        under one buyer's identity must not be visible to a different buyer
+        who reuses the same client-chosen key (review follow-up on #50)."""
+        from ad_seller.models.buyer_identity import BuyerIdentity
+
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        # As if buyer A already booked a (different) deal under this key.
+        mock_storage._store["idempotency:deal:advertiser:adv-buyer-a:idem-shared"] = {
+            "deal_id": "DEMO-OTHERBUYER",
+            "payload_hash": "not-the-real-hash",
+        }
+
+        buyer_b = MagicMock(identity=BuyerIdentity(advertiser_id="adv-buyer-b"))
+        app.dependency_overrides[_get_optional_api_key_record] = lambda: buyer_b
+        try:
+            with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+                resp = await client.post(
+                    "/api/v1/deals",
+                    json={"idempotency_key": "idem-shared", "quote_id": quote["quote_id"]},
+                )
+        finally:
+            app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+
+        assert resp.status_code == 200
+        assert resp.json()["deal"]["deal_id"] != "DEMO-OTHERBUYER"
+
+    async def test_legacy_string_record_replays_without_conflict(self, client, mock_storage):
+        """Pre-migration idempotency records — bare string deal_id, unscoped
+        key, no stored hash, exactly as main writes them today — must still
+        replay cleanly via the legacy-key fallback rather than book a
+        duplicate deal (review follow-up on #50: a retry straddling the
+        deploy that added payload-hash conflict detection AND buyer
+        scoping)."""
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        mock_storage._store["deal:DEMO-LEGACY0001"] = {
+            "deal_id": "DEMO-LEGACY0001",
+            "deal_type": "PD",
+            "status": "proposed",
+            "quote_id": quote["quote_id"],
+            "product": {
+                "product_id": "ctv-premium-sports",
+                "name": "CTV",
+                "inventory_type": "ctv",
+            },
+            "pricing": {"base_cpm": 35.0, "final_cpm": 28.26, "currency": "USD"},
+            "terms": {"impressions": 5000000},
+            "expires_at": (datetime.utcnow() + timedelta(days=29)).isoformat() + "Z",
+            "created_at": datetime.utcnow().isoformat() + "Z",
+        }
+        # True pre-PR50 shape as main actually writes it: bare, unscoped
+        # key with no scope segment (buyer-scoping didn't exist yet either).
+        mock_storage._store["idempotency:deal:idem-legacy"] = "DEMO-LEGACY0001"
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-legacy", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["deal"]["deal_id"] == "DEMO-LEGACY0001"
+        # No duplicate deal was minted.
+        deal_keys = [k for k in mock_storage._store if k.startswith("deal:")]
+        assert deal_keys == ["deal:DEMO-LEGACY0001"]
+
 
 # =============================================================================
 # GET /api/v1/deals/{deal_id}
