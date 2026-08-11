@@ -738,6 +738,7 @@ if [[ "${DO_TEST}" == "true" ]]; then
     local agent_name="$1"
     local test_prompt="$2"
     local label="$3"
+    local reject_type="${4:-}"  # optional: fail if response contains this "type" value
     local max_retries=3
     local retry_wait=30
 
@@ -796,6 +797,12 @@ print(bc.get('agent_arn', ''))
         break  # Real error, don't retry
       fi
 
+      # Check for routing fallthrough when a reject_type is specified
+      if [[ -n "${reject_type}" ]] && echo "${invoke_output}" | grep -qi "\"type\": \"${reject_type}\""; then
+        echo "  ⚠️  Response routed to '${reject_type}' (unexpected)"
+        break
+      fi
+
       # Success
       passed=true
       break
@@ -835,8 +842,8 @@ print(bc.get('agent_arn', ''))
 
   case "${DEPLOY_MODE}" in
     all)
-      # Test HTTP runtime — chat mode
-      _test_runtime "${HTTP_AGENT_NAME}" '{"prompt": "list products"}' "Chat mode" || ((TEST_FAILURES++))
+      # Test HTTP runtime — chat mode (reject general fallthrough)
+      _test_runtime "${HTTP_AGENT_NAME}" '{"prompt": "list products"}' "Chat mode" "general" || ((TEST_FAILURES++))
       # Test HTTP runtime — crew mode
       _test_runtime "${HTTP_AGENT_NAME}" '{"prompt": "list products", "routing_mode": "crew"}' "Crew mode" || ((TEST_FAILURES++))
       # Note: MCP runtime can't be tested with agentcore invoke (different protocol)
@@ -848,7 +855,7 @@ print(bc.get('agent_arn', ''))
       ;;
     http)
       # HTTP runtime supports both routing modes — test all tool paths
-      _test_runtime "${HTTP_AGENT_NAME}" '{"prompt": "list products"}' "Chat mode (list)" || ((TEST_FAILURES++))
+      _test_runtime "${HTTP_AGENT_NAME}" '{"prompt": "list products"}' "Chat mode (list)" "general" || ((TEST_FAILURES++))
       _test_runtime "${HTTP_AGENT_NAME}" '{"prompt": "show me all available inventory across CTV, linear, and digital channels with product details and pricing", "routing_mode": "crew"}' "Crew: list_products" || ((TEST_FAILURES++))
       _test_runtime "${HTTP_AGENT_NAME}" '{"prompt": "get pricing for inv-ctv-apex-sports-nba for preferred agency tier with 5M impressions", "routing_mode": "crew"}' "Crew: get_pricing" || ((TEST_FAILURES++))
       _test_runtime "${HTTP_AGENT_NAME}" '{"prompt": "negotiate a deal for inv-ctv-apex-sports-nba at $40 CPM for 3M impressions as a Preferred Deal", "routing_mode": "crew"}' "Crew: create_deal" || ((TEST_FAILURES++))
