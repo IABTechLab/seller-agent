@@ -137,6 +137,30 @@ def request_payload_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def idempotency_buyer_scope(identity: Any) -> str:
+    """Stable per-buyer scope string for idempotency-key namespacing (FD-12).
+
+    FD-12 scopes an ``idempotency_key`` to a buyer/seller pair — a global
+    key namespace lets two different buyers collide on the same
+    client-chosen key. Mirrors the specificity order of
+    :meth:`BuyerContext.get_pricing_key` so a request-body identity
+    (``buyer_identity`` / an API key's ``.identity``) resolves to the same
+    scope wherever it is used.
+
+    ``identity`` is any object exposing optional ``advertiser_id`` /
+    ``agency_id`` / ``seat_id`` attributes (or ``None``).
+    """
+    if identity is None:
+        return "public"
+    if getattr(identity, "advertiser_id", None):
+        return f"advertiser:{identity.advertiser_id}"
+    if getattr(identity, "agency_id", None):
+        return f"agency:{identity.agency_id}"
+    if getattr(identity, "seat_id", None):
+        return f"seat:{identity.seat_id}"
+    return "public"
+
+
 # ---------------------------------------------------------------------------
 # Quote surface
 # ---------------------------------------------------------------------------

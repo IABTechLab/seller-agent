@@ -95,7 +95,10 @@ async def book_deal(
     ``idempotency_key``. A replay with a key already used for an identical
     body returns the same Deal without minting a second one (no duplicate
     side effect); the same key reused with a different body is an
-    ``idempotency_conflict`` (HTTP 409).
+    ``idempotency_conflict`` (HTTP 409). The key is scoped per buyer
+    (FD-12) — API key identity takes priority over the self-asserted
+    ``buyer_identity`` body field, matching the priority order used to
+    resolve buyer identity elsewhere.
     """
     from ....storage.factory import get_storage
 
@@ -105,7 +108,11 @@ async def book_deal(
     # response, no duplicate booking (FD-12). Kept at the wire edge so
     # deal_service stays untouched. Defensive against storage backends/
     # mocks that do not implement the generic get/set KV methods.
-    idem_storage_key = f"idempotency:deal:{request.idempotency_key}"
+    buyer_identity = (
+        api_key_record.identity if api_key_record is not None else request.buyer_identity
+    )
+    buyer_scope = cm.idempotency_buyer_scope(buyer_identity)
+    idem_storage_key = f"idempotency:deal:{buyer_scope}:{request.idempotency_key}"
     payload_hash = cm.request_payload_hash(
         request.model_dump(mode="json", exclude={"idempotency_key"})
     )
@@ -127,6 +134,14 @@ async def book_deal(
                 ),
             )
         existing = await deal_service.get_deal(prior["deal_id"])
+        return cm.internal_deal_to_response(existing)
+    elif isinstance(prior, str) and prior:
+        # Legacy pre-migration record: plain string deal_id with no stored
+        # hash (the shape this endpoint wrote before payload-hash conflict
+        # detection existed). No hash to compare against, so replay it as
+        # the original booking rather than risk a duplicate deal for a key
+        # created before this deploy.
+        existing = await deal_service.get_deal(prior)
         return cm.internal_deal_to_response(existing)
 
     result = await deal_service.book_deal(internal_request)
