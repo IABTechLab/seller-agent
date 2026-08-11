@@ -103,6 +103,13 @@ async def post_negotiation_message(
     bug). Priced actions (counter/final_offer) run the seller's untouched
     negotiation engine; accept/reject are recorded as terminal rounds off
     the existing history.
+
+    **Idempotency (FD-12):** the request carries a required
+    ``idempotency_key``. A replay with a key already used for an identical
+    body returns the same round without consuming another one from the
+    negotiation's ``max_rounds`` budget; the same key reused with a
+    different body is an ``idempotency_conflict`` (HTTP 409). The key is
+    scoped per buyer, same as ``/api/v1/quotes`` and ``/api/v1/deals``.
     """
     # EP-5.2: cap the claimed tier at a verified ceiling. The shared
     # NegotiationMessage carries no agent_url (lib gap — QuoteRequest has
@@ -141,18 +148,62 @@ async def post_negotiation_message(
 
     buyer_price = cm.money_to_float(message.buyer_price)
 
+    # Idempotency (FD-12): every negotiation message — priced or terminal —
+    # requires idempotency_key on the wire. Scoped per buyer (mirrors
+    # /api/v1/quotes and /api/v1/deals): a global namespace would let two
+    # buyers collide on the same client-chosen key. Checked before either
+    # branch below runs, since a replayed "counter" must return the
+    # original round rather than append a second one to a budget-limited
+    # negotiation (max_rounds), and a replayed "accept"/"reject" must not
+    # re-apply a terminal move.
+    from ....storage.factory import get_storage
+
+    idem_storage_key = (
+        f"idempotency:negotiation:{buyer_context.get_pricing_key()}:{message.idempotency_key}"
+    )
+    payload_hash = cm.request_payload_hash(
+        message.model_dump(mode="json", exclude={"idempotency_key"})
+    )
+    storage = await get_storage()
+    try:
+        prior = await storage.get(idem_storage_key)
+    except Exception:
+        prior = None
+    if isinstance(prior, dict) and prior.get("response"):
+        if prior.get("payload_hash") != payload_hash:
+            raise HTTPException(
+                status_code=409,
+                detail=cm.idempotency_conflict_detail(
+                    f"idempotency_key '{message.idempotency_key}' was already used "
+                    "for a different negotiation message."
+                ),
+            )
+        return NegotiationRoundResponse(**prior["response"])
+
     if message.action in PRICED_ACTIONS:
         result = await negotiation_service.counter_proposal(
             proposal_id=proposal_id,
             buyer_price=buyer_price,
             buyer_context=buyer_context,
         )
-        return cm.negotiation_round_to_response(result)
+        response = cm.negotiation_round_to_response(result)
+    else:
+        # accept / reject — terminal moves off the recorded history; the
+        # price engine is not run (it stays untouched). The move is
+        # PERSISTED onto the stored negotiation so downstream booking sees
+        # the agreed state.
+        status_data = await negotiation_service.apply_terminal_action(
+            proposal_id, message.action.value, buyer_price
+        )
+        response = cm.terminal_round_response(status_data, message.action, buyer_price)
 
-    # accept / reject — terminal moves off the recorded history; the price
-    # engine is not run (it stays untouched). The move is PERSISTED onto the
-    # stored negotiation so downstream booking sees the agreed state.
-    status_data = await negotiation_service.apply_terminal_action(
-        proposal_id, message.action.value, buyer_price
-    )
-    return cm.terminal_round_response(status_data, message.action, buyer_price)
+    try:
+        await storage.set(
+            idem_storage_key,
+            {"response": response.model_dump(mode="json"), "payload_hash": payload_hash},
+            ttl=86400,
+        )
+    except Exception:
+        pass
+
+    return response

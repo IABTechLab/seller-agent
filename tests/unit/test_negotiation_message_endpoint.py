@@ -56,11 +56,35 @@ def client():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def mock_storage():
+    """In-memory dict-backed mock storage.
+
+    Stubs both the generic KV path (idempotency) and get_negotiation, since
+    apply_terminal_action reads the latter directly — an un-stubbed
+    AsyncMock attribute returns a truthy Mock, not None, which breaks its
+    "no stored negotiation" no-op path.
+    """
+    store = {}
+    storage = AsyncMock()
+    storage.get = AsyncMock(side_effect=lambda k: store.get(k))
+    storage.set = AsyncMock(side_effect=lambda k, v, ttl=None: store.__setitem__(k, v))
+    storage.get_negotiation = AsyncMock(side_effect=lambda pid: store.get(f"negotiation:{pid}"))
+    storage.set_negotiation = AsyncMock(
+        side_effect=lambda pid, data: store.__setitem__(f"negotiation:{pid}", data)
+    )
+    storage._store = store
+    return storage
+
+
 class TestSharedNegotiationMessage:
-    async def test_counter_with_money_and_action_is_accepted(self, client):
+    async def test_counter_with_money_and_action_is_accepted(self, client, mock_storage):
         """A well-formed shared counter validates and returns the shared round."""
         counter = AsyncMock(return_value=_COUNTER_RESULT)
-        with patch("ad_seller.services.negotiation_service.counter_proposal", new=counter):
+        with (
+            patch("ad_seller.services.negotiation_service.counter_proposal", new=counter),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
             async with client as c:
                 resp = await c.post(
                     "/api/v1/negotiations/messages",
@@ -120,7 +144,7 @@ class TestSharedNegotiationMessage:
             )
         assert resp.status_code == 422
 
-    async def test_reject_records_terminal_round(self, client):
+    async def test_reject_records_terminal_round(self, client, mock_storage):
         """A walk-away is recorded as a terminal round, not silently dropped."""
         status_data = {
             "negotiation_id": "neg-9",
@@ -134,9 +158,12 @@ class TestSharedNegotiationMessage:
                 }
             ],
         }
-        with patch(
-            "ad_seller.services.negotiation_service.get_negotiation_status",
-            new=AsyncMock(return_value=status_data),
+        with (
+            patch(
+                "ad_seller.services.negotiation_service.get_negotiation_status",
+                new=AsyncMock(return_value=status_data),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
         ):
             async with client as c:
                 resp = await c.post(
@@ -153,3 +180,100 @@ class TestSharedNegotiationMessage:
         assert body["status"] == "rejected"
         assert body["round"]["action"] == "reject"
         assert body["round"]["buyer_price"]["amount_micros"] == 24_000_000
+
+
+# =============================================================================
+# POST /api/v1/negotiations/messages — idempotency (FD-12, issue #51)
+# =============================================================================
+
+
+class TestNegotiationMessageIdempotency:
+    async def test_replay_same_key_same_body_returns_same_round_no_second_call(
+        self, client, mock_storage
+    ):
+        """Replaying an identical counter must not consume a second round
+        from the negotiation's max_rounds budget."""
+        counter = AsyncMock(return_value=_COUNTER_RESULT)
+        body = {
+            "idempotency_key": "idem-replay-1",
+            "action": "counter",
+            "proposal_id": "prop-1",
+            "buyer_price": {"amount_micros": 25_000_000, "currency": "USD"},
+        }
+        with (
+            patch("ad_seller.services.negotiation_service.counter_proposal", new=counter),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            async with client as c:
+                first = await c.post("/api/v1/negotiations/messages", json=body)
+                second = await c.post("/api/v1/negotiations/messages", json=body)
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json() == second.json()
+        # The underlying negotiation engine ran exactly once.
+        assert counter.await_count == 1
+
+    async def test_reused_key_different_body_returns_409(self, client, mock_storage):
+        """Same idempotency_key with a different buyer_price is a conflict,
+        not a second round."""
+        counter = AsyncMock(return_value=_COUNTER_RESULT)
+        with (
+            patch("ad_seller.services.negotiation_service.counter_proposal", new=counter),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            async with client as c:
+                first = await c.post(
+                    "/api/v1/negotiations/messages",
+                    json={
+                        "idempotency_key": "idem-conflict-1",
+                        "action": "counter",
+                        "proposal_id": "prop-1",
+                        "buyer_price": {"amount_micros": 25_000_000, "currency": "USD"},
+                    },
+                )
+                second = await c.post(
+                    "/api/v1/negotiations/messages",
+                    json={
+                        "idempotency_key": "idem-conflict-1",
+                        "action": "counter",
+                        "proposal_id": "prop-1",
+                        "buyer_price": {"amount_micros": 27_000_000, "currency": "USD"},
+                    },
+                )
+
+        assert first.status_code == 200
+        assert second.status_code == 409
+        assert second.json()["detail"]["error"] == "idempotency_conflict"
+        assert counter.await_count == 1
+
+    async def test_idempotency_key_scoped_per_buyer(self, client, mock_storage):
+        """A record stored under one buyer's scope must not short-circuit a
+        different buyer reusing the same client-chosen key."""
+        counter = AsyncMock(return_value=_COUNTER_RESULT)
+        # As if a different buyer already used this exact key.
+        mock_storage._store["idempotency:negotiation:public:idem-shared"] = {
+            "response": {**_COUNTER_RESULT, "negotiation_id": "neg-other-buyer"},
+            "payload_hash": "not-the-real-hash",
+        }
+        with (
+            patch("ad_seller.services.negotiation_service.counter_proposal", new=counter),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            async with client as c:
+                resp = await c.post(
+                    "/api/v1/negotiations/messages",
+                    json={
+                        "idempotency_key": "idem-shared",
+                        "action": "counter",
+                        "proposal_id": "prop-1",
+                        "buyer_price": {"amount_micros": 25_000_000, "currency": "USD"},
+                        "buyer_identity": {"advertiser_id": "adv-buyer-b"},
+                    },
+                )
+
+        assert resp.status_code == 200
+        # Reached the real engine — the other buyer's stored record was
+        # correctly scoped out of this buyer's lookup.
+        assert counter.await_count == 1
+        assert resp.json()["negotiation_id"] != "neg-other-buyer"
