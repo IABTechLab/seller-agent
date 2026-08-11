@@ -121,6 +121,16 @@ async def book_deal(
         prior = await storage.get(idem_storage_key)
     except Exception:
         prior = None
+    if prior is None:
+        # Fallback for records written before buyer-scoping landed: those
+        # were stored bare at idempotency:deal:{key}, with no scope segment,
+        # so a scoped-key miss doesn't mean "no prior booking" by itself.
+        # Removable one TTL window (24h) after this deploys.
+        legacy_storage_key = f"idempotency:deal:{request.idempotency_key}"
+        try:
+            prior = await storage.get(legacy_storage_key)
+        except Exception:
+            prior = None
     # Only a real, previously-persisted record counts as a prior booking;
     # this also guards against AsyncMock storages that auto-return truthy
     # sentinels for undefined KV methods.
@@ -138,9 +148,9 @@ async def book_deal(
     elif isinstance(prior, str) and prior:
         # Legacy pre-migration record: plain string deal_id with no stored
         # hash (the shape this endpoint wrote before payload-hash conflict
-        # detection existed). No hash to compare against, so replay it as
-        # the original booking rather than risk a duplicate deal for a key
-        # created before this deploy.
+        # detection and buyer-scoping existed). No hash to compare against,
+        # so replay it as the original booking rather than risk a duplicate
+        # deal for a key created before this deploy.
         existing = await deal_service.get_deal(prior)
         return cm.internal_deal_to_response(existing)
 

@@ -279,10 +279,12 @@ class TestBookDeal:
         assert resp.json()["deal"]["deal_id"] != "DEMO-OTHERBUYER"
 
     async def test_legacy_string_record_replays_without_conflict(self, client, mock_storage):
-        """Pre-migration idempotency records (plain string deal_id, no hash)
-        must still replay cleanly rather than book a duplicate deal or false-
-        conflict (review follow-up on #50: a retry straddling the deploy that
-        added payload-hash conflict detection)."""
+        """Pre-migration idempotency records — bare string deal_id, unscoped
+        key, no stored hash, exactly as main writes them today — must still
+        replay cleanly via the legacy-key fallback rather than book a
+        duplicate deal (review follow-up on #50: a retry straddling the
+        deploy that added payload-hash conflict detection AND buyer
+        scoping)."""
         quote = _make_available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
         mock_storage._store["deal:DEMO-LEGACY0001"] = {
@@ -300,8 +302,9 @@ class TestBookDeal:
             "expires_at": (datetime.utcnow() + timedelta(days=29)).isoformat() + "Z",
             "created_at": datetime.utcnow().isoformat() + "Z",
         }
-        # Pre-PR50 shape: bare string, written before conflict detection existed.
-        mock_storage._store["idempotency:deal:public:idem-legacy"] = "DEMO-LEGACY0001"
+        # True pre-PR50 shape as main actually writes it: bare, unscoped
+        # key with no scope segment (buyer-scoping didn't exist yet either).
+        mock_storage._store["idempotency:deal:idem-legacy"] = "DEMO-LEGACY0001"
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
