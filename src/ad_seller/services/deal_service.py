@@ -1233,14 +1233,25 @@ async def create_curated_deal(request: Any, catalog: dict[str, Any]) -> dict[str
         )
 
     # Get base price from product catalog. A known-but-unpriced product
-    # (no base/floor CPM) is a 422 — never a fabricated price.
-    base_cpm = 12.0  # Default
+    # (no base/floor CPM) is a 422 — never a fabricated price. A product_id
+    # that doesn't exist in the catalog at all is a 404, for the same
+    # reason — falling through to the no-product default here would price
+    # a typo'd/stale product_id at the generic $12 CPM instead of erroring.
+    base_cpm = 12.0  # Default when no product_id is supplied at all
     if request.product_id:
         product = catalog["products"].get(request.product_id)
-        if product:
-            from . import catalog_service
+        if not product:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "product_not_found",
+                    "message": f"Product '{request.product_id}' not found in catalog.",
+                },
+            )
 
-            base_cpm = catalog_service.priceable_cpm(product)
+        from . import catalog_service
+
+        base_cpm = catalog_service.priceable_cpm(product)
 
     # Calculate curated pricing
     curated_deal = registry.create_curated_deal(
