@@ -13,9 +13,9 @@ Focuses on:
 import pytest
 
 from ad_seller.engines.pricing_rules_engine import PricingRulesEngine
-from ad_seller.models.buyer_identity import BuyerContext, BuyerIdentity
+from ad_seller.models.buyer_identity import AccessTier, BuyerContext, BuyerIdentity
 from ad_seller.models.core import PricingModel
-from ad_seller.models.pricing_tiers import TieredPricingConfig
+from ad_seller.models.pricing_tiers import PricingRule, TieredPricingConfig
 
 
 @pytest.fixture
@@ -190,3 +190,108 @@ class TestRateCardAndPriceDisplay:
         )
         assert result.pricing_model == PricingModel.CPM
         assert result.currency == "USD"
+
+
+class TestPriceOverrideRules:
+    """A rule's base_price_override is supposed to be the final word (per
+    docs/guides/pricing-rules.md: "takes precedence and stops further rule
+    evaluation"), not a starting point another rule's discount can still
+    chip away at.
+
+    Regression coverage for issue #53: a higher-priority discount-only
+    rule was leaving its discount in a shared accumulator that got applied
+    to the override price after the loop had already moved past it.
+    """
+
+    def test_override_alone_replaces_base_price(self, engine, agency_buyer_context):
+        engine.config.rules = [
+            PricingRule(
+                rule_id="r-override",
+                rule_name="Negotiated flat rate",
+                access_tier=AccessTier.AGENCY,
+                base_price_override=50.0,
+            ),
+        ]
+        result = engine.calculate_price(
+            product_id="p1", base_price=100.0, buyer_context=agency_buyer_context
+        )
+        assert result.final_price == 50.0
+
+    def test_override_wins_even_when_outranked_by_a_discount_rule(
+        self, engine, agency_buyer_context
+    ):
+        """The bug: a higher-priority discount-only rule gets evaluated
+        first (rules are sorted by priority), leaving its discount in the
+        loop's shared accumulator. Once the lower-priority override rule
+        is reached and the loop breaks, that stale discount must not be
+        applied on top of it."""
+        engine.config.rules = [
+            PricingRule(
+                rule_id="r-discount",
+                rule_name="Agency-wide discount",
+                priority=100,
+                access_tier=AccessTier.AGENCY,
+                discount_percentage=0.20,
+            ),
+            PricingRule(
+                rule_id="r-override",
+                rule_name="Negotiated flat rate",
+                priority=50,
+                access_tier=AccessTier.AGENCY,
+                base_price_override=50.0,
+            ),
+        ]
+        result = engine.calculate_price(
+            product_id="p1", base_price=100.0, buyer_context=agency_buyer_context
+        )
+        assert result.final_price == 50.0
+        assert not any("Rule discount" in r for r in result.applied_rules)
+
+    def test_override_wins_when_it_outranks_the_discount_rule(self, engine, agency_buyer_context):
+        """Same two rules, priority order flipped — the override was
+        already reached (and the loop broken) before the discount rule
+        would ever be visited, so this direction always worked."""
+        engine.config.rules = [
+            PricingRule(
+                rule_id="r-override",
+                rule_name="Negotiated flat rate",
+                priority=100,
+                access_tier=AccessTier.AGENCY,
+                base_price_override=50.0,
+            ),
+            PricingRule(
+                rule_id="r-discount",
+                rule_name="Agency-wide discount",
+                priority=50,
+                access_tier=AccessTier.AGENCY,
+                discount_percentage=0.20,
+            ),
+        ]
+        result = engine.calculate_price(
+            product_id="p1", base_price=100.0, buyer_context=agency_buyer_context
+        )
+        assert result.final_price == 50.0
+
+    def test_discount_only_rules_still_apply_the_highest_one(self, engine, agency_buyer_context):
+        """No override in play: this path is untouched by the fix."""
+        engine.config.rules = [
+            PricingRule(
+                rule_id="r-small",
+                rule_name="Small discount",
+                priority=100,
+                access_tier=AccessTier.AGENCY,
+                discount_percentage=0.05,
+            ),
+            PricingRule(
+                rule_id="r-big",
+                rule_name="Bigger discount",
+                priority=50,
+                access_tier=AccessTier.AGENCY,
+                discount_percentage=0.20,
+            ),
+        ]
+        result = engine.calculate_price(
+            product_id="p1", base_price=100.0, buyer_context=agency_buyer_context
+        )
+        # Tier discount (10%) then the higher of the two rule discounts (20%).
+        assert result.final_price == pytest.approx(100.0 * 0.9 * 0.8)

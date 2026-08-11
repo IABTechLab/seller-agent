@@ -107,18 +107,24 @@ class PricingRulesEngine:
         )
 
         rule_discount = 0.0
+        override_applied = False
         for rule in matching_rules:
             if rule.base_price_override is not None:
                 price = rule.base_price_override
                 applied_rules.append(
                     f"Rule '{rule.rule_name}': Price override ${rule.base_price_override}"
                 )
-                break  # Price override takes precedence
+                override_applied = True
+                break  # Price override takes precedence, stop evaluating rules
 
             if rule.discount_percentage > 0:
                 rule_discount = max(rule_discount, rule.discount_percentage)
 
-        if rule_discount > 0:
+        # A higher-priority rule's discount can already be sitting in
+        # rule_discount by the time we hit the override below it in the
+        # list — don't let it sneak back in and knock more off an override
+        # price that's supposed to be the final word.
+        if rule_discount > 0 and not override_applied:
             price = price * (1 - rule_discount)
             applied_rules.append(f"Rule discount: -{rule_discount * 100:.0f}%")
 
