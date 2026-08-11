@@ -229,6 +229,27 @@ class TestBookDeal:
         assert second.status_code == 200
         assert first.json()["deal"]["deal_id"] == second.json()["deal"]["deal_id"]
 
+    async def test_reused_key_different_body_returns_409(self, client, mock_storage):
+        """Same idempotency_key against a different quote_id is a conflict (FD-12, issue #44)."""
+        quote_a = _make_available_quote(quote_id="qt-first111111")
+        quote_b = _make_available_quote(quote_id="qt-second222222")
+        mock_storage._store[f"quote:{quote_a['quote_id']}"] = quote_a
+        mock_storage._store[f"quote:{quote_b['quote_id']}"] = quote_b
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            first = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-conflict", "quote_id": quote_a["quote_id"]},
+            )
+            second = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-conflict", "quote_id": quote_b["quote_id"]},
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 409
+        assert second.json()["detail"]["error"] == "idempotency_conflict"
+
 
 # =============================================================================
 # GET /api/v1/deals/{deal_id}

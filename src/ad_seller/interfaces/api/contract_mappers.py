@@ -16,6 +16,8 @@ dollars; the shared contract prices in :class:`Money` (integer micros).
 Conversion happens here and nowhere else.
 """
 
+import hashlib
+import json
 from datetime import date, datetime
 from typing import Any, Optional
 
@@ -109,6 +111,30 @@ def unsupported_capability_detail(
         unsupported=capabilities,
     )
     return detail.model_dump(mode="json")
+
+
+def idempotency_conflict_detail(message: str = "") -> dict[str, Any]:
+    """Build the ``{"error": "idempotency_conflict", ...}`` inner detail (FD-12).
+
+    Returned as the ``detail`` of a FastAPI ``HTTPException(status_code=409)``
+    when an ``idempotency_key`` is reused with a different request body.
+    """
+    detail = ErrorDetail(
+        error=ErrorCode.IDEMPOTENCY_CONFLICT,
+        message=message or "idempotency_key was reused with a different request body.",
+    )
+    return detail.model_dump(mode="json")
+
+
+def request_payload_hash(payload: dict[str, Any]) -> str:
+    """Stable hash of a request payload, for idempotency-key conflict detection.
+
+    Callers pass ``request.model_dump(mode="json", exclude={"idempotency_key"})``
+    so the key itself never affects its own conflict check. ``sort_keys``
+    makes the hash independent of dict/field ordering.
+    """
+    encoded = json.dumps(payload, sort_keys=True, default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 # ---------------------------------------------------------------------------

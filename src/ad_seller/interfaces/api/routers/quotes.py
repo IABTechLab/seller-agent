@@ -34,7 +34,35 @@ async def create_quote(
     The seller evaluates the request against existing pricing rules and
     returns a quote with pricing, terms, and availability. Quotes are
     ephemeral with a 24-hour TTL — no Deal ID is created.
+
+    **Idempotency (FD-12):** the request carries a required
+    ``idempotency_key``. A replay with a key already used for an identical
+    body returns the same Quote without minting a second one; the same key
+    reused with a different body is an ``idempotency_conflict`` (HTTP 409).
     """
+    from ....storage.factory import get_storage
+
+    idem_storage_key = f"idempotency:quote:{request.idempotency_key}"
+    payload_hash = cm.request_payload_hash(
+        request.model_dump(mode="json", exclude={"idempotency_key"})
+    )
+    storage = await get_storage()
+    try:
+        prior = await storage.get(idem_storage_key)
+    except Exception:
+        prior = None
+    if isinstance(prior, dict) and prior.get("quote_id"):
+        if prior.get("payload_hash") != payload_hash:
+            raise HTTPException(
+                status_code=409,
+                detail=cm.idempotency_conflict_detail(
+                    f"idempotency_key '{request.idempotency_key}' was already used "
+                    "for a different quote request."
+                ),
+            )
+        existing = await quote_service.get_quote(prior["quote_id"])
+        return cm.internal_quote_to_response(existing, media_type=request.media_type)
+
     # FD-6: reject unsupported media structurally instead of silently
     # dropping/mispricing (the old inline model dropped media_type entirely).
     if request.media_type not in cm.SUPPORTED_MEDIA_TYPES:
@@ -75,6 +103,16 @@ async def create_quote(
 
     internal_request = cm.quote_request_to_internal(request)
     result = await quote_service.create_quote(internal_request, context, catalog)
+
+    try:
+        await storage.set(
+            idem_storage_key,
+            {"quote_id": result["quote_id"], "payload_hash": payload_hash},
+            ttl=86400,
+        )
+    except Exception:
+        pass
+
     return cm.internal_quote_to_response(result, media_type=request.media_type)
 
 
