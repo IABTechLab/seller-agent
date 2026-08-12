@@ -357,9 +357,7 @@ class TestCliBootstrap:
 
         with (
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
-            patch(
-                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
-            ) as close_mock,
+            patch("ad_seller.storage.factory.close_storage", new_callable=AsyncMock) as close_mock,
         ):
             create_operator_key(label="bootstrap test", expires_in_days=None)
 
@@ -387,9 +385,7 @@ class TestCliBootstrap:
         )
         with (
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
-            patch(
-                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
-            ) as close_mock,
+            patch("ad_seller.storage.factory.close_storage", new_callable=AsyncMock) as close_mock,
             pytest.raises(typer.Exit) as exc_info,
         ):
             create_operator_key(label="bootstrap test", expires_in_days=None)
@@ -430,16 +426,12 @@ class TestCliBootstrap:
         )
         with (
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
-            patch(
-                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
-            ) as close_mock,
+            patch("ad_seller.storage.factory.close_storage", new_callable=AsyncMock) as close_mock,
         ):
             delete_operator_key(label="Primary operator", key_id=None)
 
         record = next(
-            v
-            for k, v in mock_storage._store.items()
-            if k.startswith(API_KEY_STORAGE_PREFIX)
+            v for k, v in mock_storage._store.items() if k.startswith(API_KEY_STORAGE_PREFIX)
         )
         assert record["revoked"] is True
         close_mock.assert_awaited_once()
@@ -569,9 +561,7 @@ class TestListOperatorKeys:
         )
         with (
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
-            patch(
-                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
-            ) as close_mock,
+            patch("ad_seller.storage.factory.close_storage", new_callable=AsyncMock) as close_mock,
         ):
             list_operator_keys(include_inactive=False)
         close_mock.assert_awaited_once()
@@ -581,9 +571,7 @@ class TestListOperatorKeys:
 
         with (
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
-            patch(
-                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
-            ) as close_mock,
+            patch("ad_seller.storage.factory.close_storage", new_callable=AsyncMock) as close_mock,
         ):
             list_operator_keys(include_inactive=False)
         close_mock.assert_awaited_once()

@@ -225,17 +225,13 @@ class ApiKeyService:
                 results.append(info)
         return results
 
-    async def list_operator_keys(
-        self, *, include_inactive: bool = False
-    ) -> list[ApiKeyInfo]:
+    async def list_operator_keys(self, *, include_inactive: bool = False) -> list[ApiKeyInfo]:
         """List OPERATOR-role API keys (metadata only, no secrets).
 
         By default returns only active keys. Pass ``include_inactive=True``
         to also include revoked/expired operator keys.
         """
-        keys = [
-            info for info in await self.list_keys() if info.role == ApiKeyRole.OPERATOR
-        ]
+        keys = [info for info in await self.list_keys() if info.role == ApiKeyRole.OPERATOR]
         if not include_inactive:
             keys = [info for info in keys if info.is_active]
         return keys
@@ -304,16 +300,10 @@ class ApiKeyService:
             matches = [
                 info
                 for info in await self.list_keys()
-                if (
-                    info.role == ApiKeyRole.OPERATOR
-                    and info.is_active
-                    and info.label == label
-                )
+                if (info.role == ApiKeyRole.OPERATOR and info.is_active and info.label == label)
             ]
             if not matches:
-                raise ValueError(
-                    f"No active operator key with label {label!r} found"
-                )
+                raise ValueError(f"No active operator key with label {label!r} found")
             if len(matches) > 1:
                 ids = ", ".join(m.key_id for m in matches)
                 raise ValueError(
@@ -324,8 +314,7 @@ class ApiKeyService:
 
         if not target.is_active:
             raise ValueError(
-                f"Operator key {target.key_id!r} is already inactive "
-                f"(revoked or expired)"
+                f"Operator key {target.key_id!r} is already inactive (revoked or expired)"
             )
 
         revoked = await self.revoke_key(target.key_id)
