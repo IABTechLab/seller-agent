@@ -69,9 +69,26 @@ class ApiKeyService:
     ) -> ApiKeyCreateResponse:
         """Issue a new OPERATOR-role API key (no buyer identity).
 
+        Rejects if an active (non-revoked, non-expired) operator key
+        already uses the same label. Revoked/expired labels may be reused.
+
         Returns the full key exactly once. The key is hashed
         before storage and can never be retrieved again.
+
+        Raises:
+            ValueError: If an active operator key already has this label.
         """
+        for existing in await self.list_keys():
+            if (
+                existing.role == ApiKeyRole.OPERATOR
+                and existing.is_active
+                and existing.label == request.label
+            ):
+                raise ValueError(
+                    f"An active operator key with label {request.label!r} "
+                    f"already exists ({existing.key_id})"
+                )
+
         return await self._mint(
             identity=BuyerIdentity(),
             role=ApiKeyRole.OPERATOR,
@@ -208,6 +225,21 @@ class ApiKeyService:
                 results.append(info)
         return results
 
+    async def list_operator_keys(
+        self, *, include_inactive: bool = False
+    ) -> list[ApiKeyInfo]:
+        """List OPERATOR-role API keys (metadata only, no secrets).
+
+        By default returns only active keys. Pass ``include_inactive=True``
+        to also include revoked/expired operator keys.
+        """
+        keys = [
+            info for info in await self.list_keys() if info.role == ApiKeyRole.OPERATOR
+        ]
+        if not include_inactive:
+            keys = [info for info in keys if info.is_active]
+        return keys
+
     async def revoke_key(self, key_id: str) -> bool:
         """Revoke an API key. Returns True if found and revoked."""
         key_hash = await self._storage.get(f"{API_KEY_INDEX_PREFIX}{key_id}")
@@ -229,3 +261,77 @@ class ApiKeyService:
 
         logger.info("API key %s revoked", key_id)
         return True
+
+    async def delete_operator_key(
+        self,
+        *,
+        key_id: Optional[str] = None,
+        label: Optional[str] = None,
+    ) -> ApiKeyInfo:
+        """Revoke an OPERATOR-role API key by key_id or label (bootstrap).
+
+        Soft-revokes so the label can be reused by a subsequent
+        ``create_operator_key``. Refuses buyer keys — use
+        ``revoke_key`` / ``DELETE /auth/api-keys/{key_id}`` for those.
+
+        Args:
+            key_id: Exact key id (e.g. ``key-a1b2c3d4``). Takes precedence
+                over ``label`` when both are provided.
+            label: Label of an active operator key to revoke.
+
+        Returns:
+            ``ApiKeyInfo`` for the revoked key.
+
+        Raises:
+            ValueError: If neither identifier is given, the key is missing,
+                is not an operator key, or is already inactive.
+        """
+        if not key_id and not label:
+            raise ValueError("Provide key_id or label to delete an operator key")
+
+        target: Optional[ApiKeyInfo] = None
+        if key_id:
+            target = await self.get_key_info(key_id)
+            if target is None:
+                raise ValueError(f"API key {key_id!r} not found")
+            if target.role != ApiKeyRole.OPERATOR:
+                raise ValueError(
+                    f"API key {key_id!r} is a {target.role.value} key, not an "
+                    "operator key. Use DELETE /auth/api-keys/{key_id} to revoke "
+                    "buyer keys."
+                )
+        else:
+            matches = [
+                info
+                for info in await self.list_keys()
+                if (
+                    info.role == ApiKeyRole.OPERATOR
+                    and info.is_active
+                    and info.label == label
+                )
+            ]
+            if not matches:
+                raise ValueError(
+                    f"No active operator key with label {label!r} found"
+                )
+            if len(matches) > 1:
+                ids = ", ".join(m.key_id for m in matches)
+                raise ValueError(
+                    f"Multiple active operator keys share label {label!r} "
+                    f"({ids}); pass --key-id to disambiguate"
+                )
+            target = matches[0]
+
+        if not target.is_active:
+            raise ValueError(
+                f"Operator key {target.key_id!r} is already inactive "
+                f"(revoked or expired)"
+            )
+
+        revoked = await self.revoke_key(target.key_id)
+        if not revoked:
+            raise ValueError(f"Failed to revoke operator key {target.key_id!r}")
+
+        info = await self.get_key_info(target.key_id)
+        assert info is not None  # just revoked in place
+        return info

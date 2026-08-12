@@ -41,6 +41,21 @@ ad-seller create-operator-key --label "Primary operator"
 
 Run this with the same storage config (`.env`) as the server so the key lands in the backend the server reads. The full key is printed **once** — store it securely.
 
+List operator keys (metadata only — secrets are never re-shown):
+
+```bash
+ad-seller list-operator-keys
+ad-seller list-operator-keys --include-inactive   # include revoked/expired
+```
+
+To revoke an operator key out-of-band (frees the label for reuse):
+
+```bash
+ad-seller delete-operator-key --label "Primary operator"
+# or
+ad-seller delete-operator-key --key-id key-a1b2c3d4
+```
+
 Subsequent operator keys can be minted over HTTP with an existing operator credential (see below).
 
 ## Operator Surface

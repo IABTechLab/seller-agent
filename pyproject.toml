@@ -70,7 +70,7 @@ all = [
 ]
 
 [project.scripts]
-ad-seller = "ad_seller.interfaces.cli.main:app"
+ad-seller = "ad_seller.interfaces.cli.main:main"
 
 [build-system]
 requires = ["hatchling"]

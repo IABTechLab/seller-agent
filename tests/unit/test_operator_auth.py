@@ -48,6 +48,7 @@ from httpx import ASGITransport  # noqa: E402
 
 from ad_seller.interfaces.api.main import app  # noqa: E402
 from ad_seller.models.api_key import (  # noqa: E402
+    API_KEY_INDEX_PREFIX,
     API_KEY_STORAGE_PREFIX,
     ApiKeyRecord,
     ApiKeyRole,
@@ -77,8 +78,19 @@ def client():
     return httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
-def _seed_key(store, *, role=ApiKeyRole.BUYER, key_id="key-test"):
-    """Seed a valid API key record with the given role; return the raw key."""
+def _seed_key(
+    store,
+    *,
+    role=ApiKeyRole.BUYER,
+    key_id="key-test",
+    label: str | None = None,
+    revoked: bool = False,
+):
+    """Seed a valid API key record with the given role; return the raw key.
+
+    Also maintains ``api_key_list`` / index so ``list_keys()`` sees the seed
+    (needed for operator-label uniqueness checks).
+    """
     raw_key = generate_api_key()
     key_hash = hash_api_key(raw_key)
     record = ApiKeyRecord(
@@ -87,9 +99,14 @@ def _seed_key(store, *, role=ApiKeyRole.BUYER, key_id="key-test"):
         key_prefix_hint=raw_key[:12] + "...",
         identity=BuyerIdentity(agency_id="agy-1", agency_name="Acme"),
         role=role,
-        label=f"{role.value} test key",
+        label=label if label is not None else f"{role.value} test key",
+        revoked=revoked,
     )
     store[f"{API_KEY_STORAGE_PREFIX}{key_hash}"] = record.model_dump(mode="json")
+    store[f"{API_KEY_INDEX_PREFIX}{key_id}"] = key_hash
+    all_keys = store.get("api_key_list") or []
+    all_keys.append(key_id)
+    store["api_key_list"] = all_keys
     return raw_key
 
 
@@ -176,6 +193,49 @@ class TestApiKeyEndpointsRequireOperator:
         # Empty BuyerIdentity — operator keys carry no seat/agency/advertiser.
         assert body["identity"].get("agency_id") in (None, "")
         assert body["identity"].get("seat_id") in (None, "")
+
+    async def test_duplicate_operator_label_is_409(self, client, mock_storage):
+        """Active operator keys may not share a label."""
+        raw_key = _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-1",
+            label="Primary operator",
+        )
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/auth/api-keys/operator",
+                json={"label": "Primary operator"},
+                headers=_auth(raw_key),
+            )
+        assert resp.status_code == 409
+        assert "Primary operator" in resp.text
+        assert "key-op-1" in resp.text
+
+    async def test_revoked_operator_label_may_be_reused(self, client, mock_storage):
+        """Revoked operator keys do not block reusing their label."""
+        raw_key = _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-auth",
+            label="auth-only",
+        )
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-revoked",
+            label="Reusable label",
+            revoked=True,
+        )
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/auth/api-keys/operator",
+                json={"label": "Reusable label"},
+                headers=_auth(raw_key),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["label"] == "Reusable label"
+        assert resp.json()["role"] == "operator"
 
     async def test_buyer_create_endpoint_ignores_role_field(self, client, mock_storage):
         """role is not on CreateApiKeyRequest — extra fields are ignored; always buyer."""
@@ -295,7 +355,12 @@ class TestCliBootstrap:
     def test_create_operator_key_mints_operator_role(self, mock_storage):
         from ad_seller.interfaces.cli.main import create_operator_key
 
-        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
+            ) as close_mock,
+        ):
             create_operator_key(label="bootstrap test", expires_in_days=None)
 
         records = [
@@ -307,6 +372,283 @@ class TestCliBootstrap:
         # Operator keys carry an empty BuyerIdentity (no seat/agency).
         assert not records[0]["identity"].get("agency_id")
         assert not records[0]["identity"].get("seat_id")
+        close_mock.assert_awaited_once()
+
+    def test_duplicate_label_exits_nonzero_and_closes_storage(self, mock_storage):
+        import typer
+
+        from ad_seller.interfaces.cli.main import create_operator_key
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-existing",
+            label="bootstrap test",
+        )
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
+            ) as close_mock,
+            pytest.raises(typer.Exit) as exc_info,
+        ):
+            create_operator_key(label="bootstrap test", expires_in_days=None)
+
+        assert exc_info.value.exit_code == 1
+        close_mock.assert_awaited_once()
+
+    def test_different_label_succeeds_after_existing_operator(self, mock_storage):
+        from ad_seller.interfaces.cli.main import create_operator_key
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-existing",
+            label="Primary operator",
+        )
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.storage.factory.close_storage", new_callable=AsyncMock),
+        ):
+            create_operator_key(label="Secondary operator", expires_in_days=None)
+
+        labels = {
+            v["label"]
+            for k, v in mock_storage._store.items()
+            if k.startswith(API_KEY_STORAGE_PREFIX)
+        }
+        assert labels == {"Primary operator", "Secondary operator"}
+
+    def test_delete_operator_key_by_label_closes_storage(self, mock_storage):
+        from ad_seller.interfaces.cli.main import delete_operator_key
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-1",
+            label="Primary operator",
+        )
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
+            ) as close_mock,
+        ):
+            delete_operator_key(label="Primary operator", key_id=None)
+
+        record = next(
+            v
+            for k, v in mock_storage._store.items()
+            if k.startswith(API_KEY_STORAGE_PREFIX)
+        )
+        assert record["revoked"] is True
+        close_mock.assert_awaited_once()
+
+    def test_delete_operator_key_missing_args_exits(self, mock_storage):
+        import typer
+
+        from ad_seller.interfaces.cli.main import delete_operator_key
+
+        with pytest.raises(typer.Exit) as exc_info:
+            delete_operator_key(label=None, key_id=None)
+        assert exc_info.value.exit_code == 1
+
+    def test_delete_then_recreate_same_label(self, mock_storage):
+        from ad_seller.interfaces.cli.main import create_operator_key, delete_operator_key
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-old",
+            label="Primary operator",
+        )
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.storage.factory.close_storage", new_callable=AsyncMock),
+        ):
+            delete_operator_key(label="Primary operator", key_id=None)
+            create_operator_key(label="Primary operator", expires_in_days=None)
+
+        active = [
+            v
+            for k, v in mock_storage._store.items()
+            if k.startswith(API_KEY_STORAGE_PREFIX) and not v.get("revoked")
+        ]
+        assert len(active) == 1
+        assert active[0]["label"] == "Primary operator"
+        assert active[0]["key_id"] != "key-old"
+
+
+class TestCreateOperatorKeyService:
+    async def test_duplicate_active_label_raises(self, mock_storage):
+        from ad_seller.auth.api_key_service import ApiKeyService
+        from ad_seller.models.api_key import OperatorApiKeyCreateRequest
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-1",
+            label="Ops",
+        )
+        service = ApiKeyService(mock_storage)
+        with pytest.raises(ValueError, match="key-op-1"):
+            await service.create_operator_key(OperatorApiKeyCreateRequest(label="Ops"))
+
+    async def test_revoked_label_may_be_reused(self, mock_storage):
+        from ad_seller.auth.api_key_service import ApiKeyService
+        from ad_seller.models.api_key import OperatorApiKeyCreateRequest
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-revoked",
+            label="Ops",
+            revoked=True,
+        )
+        service = ApiKeyService(mock_storage)
+        resp = await service.create_operator_key(OperatorApiKeyCreateRequest(label="Ops"))
+        assert resp.role == ApiKeyRole.OPERATOR
+        assert resp.label == "Ops"
+
+
+class TestListOperatorKeys:
+    async def test_lists_only_active_operator_keys_by_default(self, mock_storage):
+        from ad_seller.auth.api_key_service import ApiKeyService
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-active",
+            label="Active",
+        )
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-revoked",
+            label="Revoked",
+            revoked=True,
+        )
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.BUYER,
+            key_id="key-buyer",
+            label="Buyer",
+        )
+        service = ApiKeyService(mock_storage)
+        keys = await service.list_operator_keys()
+        assert [k.key_id for k in keys] == ["key-op-active"]
+
+    async def test_include_inactive_returns_revoked(self, mock_storage):
+        from ad_seller.auth.api_key_service import ApiKeyService
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-active",
+            label="Active",
+        )
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-revoked",
+            label="Revoked",
+            revoked=True,
+        )
+        service = ApiKeyService(mock_storage)
+        keys = await service.list_operator_keys(include_inactive=True)
+        assert {k.key_id for k in keys} == {"key-op-active", "key-op-revoked"}
+
+    def test_cli_lists_and_closes_storage(self, mock_storage):
+        from ad_seller.interfaces.cli.main import list_operator_keys
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-1",
+            label="Primary operator",
+        )
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
+            ) as close_mock,
+        ):
+            list_operator_keys(include_inactive=False)
+        close_mock.assert_awaited_once()
+
+    def test_cli_empty_list_closes_storage(self, mock_storage):
+        from ad_seller.interfaces.cli.main import list_operator_keys
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.storage.factory.close_storage", new_callable=AsyncMock
+            ) as close_mock,
+        ):
+            list_operator_keys(include_inactive=False)
+        close_mock.assert_awaited_once()
+
+
+class TestDeleteOperatorKeyService:
+    async def test_delete_by_label_revokes_and_frees_label(self, mock_storage):
+        from ad_seller.auth.api_key_service import ApiKeyService
+        from ad_seller.models.api_key import OperatorApiKeyCreateRequest
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-1",
+            label="Ops",
+        )
+        service = ApiKeyService(mock_storage)
+        info = await service.delete_operator_key(label="Ops")
+        assert info.key_id == "key-op-1"
+        assert info.revoked is True
+        assert info.is_active is False
+
+        # Label can be reused after revoke.
+        resp = await service.create_operator_key(OperatorApiKeyCreateRequest(label="Ops"))
+        assert resp.key_id != "key-op-1"
+
+    async def test_delete_by_key_id(self, mock_storage):
+        from ad_seller.auth.api_key_service import ApiKeyService
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.OPERATOR,
+            key_id="key-op-1",
+            label="Ops",
+        )
+        service = ApiKeyService(mock_storage)
+        info = await service.delete_operator_key(key_id="key-op-1")
+        assert info.revoked is True
+
+    async def test_delete_refuses_buyer_key(self, mock_storage):
+        from ad_seller.auth.api_key_service import ApiKeyService
+
+        _seed_key(
+            mock_storage._store,
+            role=ApiKeyRole.BUYER,
+            key_id="key-buyer",
+            label="buyer",
+        )
+        service = ApiKeyService(mock_storage)
+        with pytest.raises(ValueError, match="not an operator key"):
+            await service.delete_operator_key(key_id="key-buyer")
+
+    async def test_delete_missing_label_raises(self, mock_storage):
+        from ad_seller.auth.api_key_service import ApiKeyService
+
+        service = ApiKeyService(mock_storage)
+        with pytest.raises(ValueError, match="No active operator key"):
+            await service.delete_operator_key(label="missing")
+
+    async def test_delete_requires_identifier(self, mock_storage):
+        from ad_seller.auth.api_key_service import ApiKeyService
+
+        service = ApiKeyService(mock_storage)
+        with pytest.raises(ValueError, match="key_id or label"):
+            await service.delete_operator_key()
 
 
 class TestOperatorApiKeyCreateRequest:

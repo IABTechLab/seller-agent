@@ -139,12 +139,15 @@ async def create_operator_api_key(
     storage = await get_storage()
     service = ApiKeyService(storage)
 
-    response = await service.create_operator_key(
-        OperatorApiKeyCreateRequest(
-            label=request.label,
-            expires_in_days=request.expires_in_days,
+    try:
+        response = await service.create_operator_key(
+            OperatorApiKeyCreateRequest(
+                label=request.label,
+                expires_in_days=request.expires_in_days,
+            )
         )
-    )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return response.model_dump(mode="json")
 
 

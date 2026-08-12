@@ -314,17 +314,20 @@ def create_operator_key(
     """
     from ...auth.api_key_service import ApiKeyService
     from ...models.api_key import OperatorApiKeyCreateRequest
-    from ...storage.factory import get_storage
+    from ...storage.factory import close_storage, get_storage
 
     async def _mint():
-        storage = await get_storage()
-        service = ApiKeyService(storage)
-        return await service.create_operator_key(
-            OperatorApiKeyCreateRequest(
-                label=label,
-                expires_in_days=expires_in_days,
+        try:
+            storage = await get_storage()
+            service = ApiKeyService(storage)
+            return await service.create_operator_key(
+                OperatorApiKeyCreateRequest(
+                    label=label,
+                    expires_in_days=expires_in_days,
+                )
             )
-        )
+        finally:
+            await close_storage()
 
     try:
         response = asyncio.run(_mint())
@@ -343,6 +346,119 @@ def create_operator_key(
         "  Authorization: Bearer <key>   or   X-Api-Key: <key>\n"
         "Run this with the same storage config (.env) as the server so the\n"
         "key lands in the storage backend the server reads."
+    )
+
+
+@app.command("list-operator-keys")
+def list_operator_keys(
+    include_inactive: bool = typer.Option(
+        False,
+        "--include-inactive",
+        "-a",
+        help="Include revoked/expired operator keys",
+    ),
+):
+    """List OPERATOR-role API keys (metadata only, no secrets).
+
+    Reads directly from storage — same bootstrap surface as
+    ``create-operator-key`` / ``delete-operator-key``. Secrets are never
+    shown (they are only printed once at creation time).
+    """
+    from ...auth.api_key_service import ApiKeyService
+    from ...storage.factory import close_storage, get_storage
+
+    async def _list():
+        try:
+            storage = await get_storage()
+            service = ApiKeyService(storage)
+            return await service.list_operator_keys(include_inactive=include_inactive)
+        finally:
+            await close_storage()
+
+    try:
+        keys = asyncio.run(_list())
+    except Exception as exc:
+        console.print(f"[red]Failed to list operator keys: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    if not keys:
+        console.print("[yellow]No operator keys found.[/yellow]")
+        if not include_inactive:
+            console.print("Tip: pass --include-inactive to show revoked/expired keys.")
+        return
+
+    table = Table(title="Operator API Keys")
+    table.add_column("Key ID", style="cyan")
+    table.add_column("Label")
+    table.add_column("Active")
+    table.add_column("Created")
+    table.add_column("Expires")
+    table.add_column("Last used")
+    table.add_column("Uses", justify="right")
+
+    for info in keys:
+        table.add_row(
+            info.key_id,
+            info.label or "",
+            "[green]yes[/green]" if info.is_active else "[red]no[/red]",
+            info.created_at.isoformat() if info.created_at else "",
+            info.expires_at.isoformat() if info.expires_at else "never",
+            info.last_used_at.isoformat() if info.last_used_at else "never",
+            str(info.use_count),
+        )
+
+    console.print(table)
+
+
+@app.command("delete-operator-key")
+def delete_operator_key(
+    label: Optional[str] = typer.Option(
+        None,
+        "--label",
+        "-l",
+        help="Label of the active operator key to revoke",
+    ),
+    key_id: Optional[str] = typer.Option(
+        None,
+        "--key-id",
+        "-k",
+        help="Key id to revoke (e.g. key-a1b2c3d4); takes precedence over --label",
+    ),
+):
+    """Revoke an OPERATOR-role API key directly in storage (bootstrap).
+
+    Soft-revokes the key so it can no longer authenticate, and frees its
+    label for reuse by ``ad-seller create-operator-key``. Provide
+    ``--key-id`` or ``--label`` (key-id wins if both are set). Buyer keys
+    are refused — use ``DELETE /auth/api-keys/{key_id}`` for those.
+    """
+    from ...auth.api_key_service import ApiKeyService
+    from ...storage.factory import close_storage, get_storage
+
+    if not key_id and not label:
+        console.print("[red]Provide --key-id or --label[/red]")
+        raise typer.Exit(1)
+
+    async def _revoke():
+        try:
+            storage = await get_storage()
+            service = ApiKeyService(storage)
+            return await service.delete_operator_key(key_id=key_id, label=label)
+        finally:
+            await close_storage()
+
+    try:
+        info = asyncio.run(_revoke())
+    except Exception as exc:
+        console.print(f"[red]Failed to delete operator key: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    console.print(Panel("Operator API key revoked", title="Bootstrap"))
+    console.print(f"Key ID:  [cyan]{info.key_id}[/cyan]")
+    console.print(f"Label:   {info.label}")
+    console.print(
+        "\nThe key can no longer authenticate. Its label may be reused with\n"
+        "`ad-seller create-operator-key --label ...`."
     )
 
 
@@ -401,11 +517,16 @@ def chat():
             break
 
 
-if __name__ == "__main__":
-    import os
+def main():
+    """Console-script entrypoint: hard-exit after typer returns.
 
-    try:
-        app()
-    except SystemExit as e:
-        os._exit(e.code if isinstance(e.code, int) else 0)
-    os._exit(0)
+    Bypass telemetry/atexit hangs from transitive deps (crewai/chromadb/
+    posthog/opentelemetry). See ``ad_seller._telemetry_shim``.
+    """
+    from ..._telemetry_shim import force_exit_after
+
+    force_exit_after(app)()
+
+
+if __name__ == "__main__":
+    main()
