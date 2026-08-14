@@ -123,8 +123,14 @@ class PricingRulesEngine:
         # A higher-priority rule's discount can already be sitting in
         # rule_discount by the time we hit the override below it in the
         # list — don't let it sneak back in and knock more off an override
-        # price that's supposed to be the final word.
-        if rule_discount > 0 and not override_applied:
+        # price that's supposed to be the final word. Reset it outright
+        # rather than just skipping the price multiply: rule_discount also
+        # feeds the rationale string below, and a leftover value there
+        # would have the rationale claim a discount that was never
+        # actually applied to the override price.
+        if override_applied:
+            rule_discount = 0.0
+        elif rule_discount > 0:
             price = price * (1 - rule_discount)
             applied_rules.append(f"Rule discount: -{rule_discount * 100:.0f}%")
 

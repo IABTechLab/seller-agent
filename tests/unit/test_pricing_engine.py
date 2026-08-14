@@ -247,6 +247,35 @@ class TestPriceOverrideRules:
         assert result.final_price == 50.0
         assert not any("Rule discount" in r for r in result.applied_rules)
 
+    def test_rationale_does_not_claim_an_unapplied_discount(self, engine, agency_buyer_context):
+        """Review follow-up on #54: applied_rules correctly omitted the
+        stale discount, but rule_discount still fed the rationale string
+        unchanged, so the human-readable text claimed a 'Custom rule: -20%'
+        that was never actually taken off the override price. That string
+        reaches quotes, negotiated-deal text, and MCP/API responses, where
+        a counterparty could anchor on a discount that doesn't exist."""
+        engine.config.rules = [
+            PricingRule(
+                rule_id="r-discount",
+                rule_name="Agency-wide discount",
+                priority=100,
+                access_tier=AccessTier.AGENCY,
+                discount_percentage=0.20,
+            ),
+            PricingRule(
+                rule_id="r-override",
+                rule_name="Negotiated flat rate",
+                priority=50,
+                access_tier=AccessTier.AGENCY,
+                base_price_override=50.0,
+            ),
+        ]
+        result = engine.calculate_price(
+            product_id="p1", base_price=100.0, buyer_context=agency_buyer_context
+        )
+        assert "Custom rule" not in result.rationale
+        assert "Final price: $50.00" in result.rationale
+
     def test_override_wins_when_it_outranks_the_discount_rule(self, engine, agency_buyer_context):
         """Same two rules, priority order flipped — the override was
         already reached (and the loop broken) before the discount rule
