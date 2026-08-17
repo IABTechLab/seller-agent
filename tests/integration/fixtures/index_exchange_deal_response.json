@@ -1,15 +1,30 @@
 {
-  "deal_id": "IX-DEAL-20260326-001",
-  "ssp_name": "index_exchange",
-  "status": "active",
-  "deal_type": "PREFERRED",
+  "internalDealID": 987654,
+  "externalDealID": "IX-DEAL-20260326-001",
+  "classID": 1,
   "name": "Test Preferred Deal via Index Exchange",
-  "cpm": 22.50,
-  "currency": "USD",
-  "buyer_seats": ["seat-dv360-001"],
-  "start_date": "2026-03-26",
-  "end_date": "2026-05-26",
-  "created_at": "2026-03-26T10:00:00Z",
-  "publisher_id": "pub-12345",
-  "inventory_source": "video"
+  "account": { "accountID": 12345 },
+  "startDate": "2026-03-26",
+  "endDate": "2026-05-26",
+  "modifiedDate": "2026-03-26 10:00:00",
+  "auctionType": "fixed",
+  "floor": 22.50,
+  "status": "active",
+  "directConfigurations": {
+    "dspID": 5551,
+    "seatIDs": ["seat-dv360-001"],
+    "programmaticGuaranteed": false
+  },
+  "labels": {
+    "advertiser": "Acme Corp"
+  },
+  "targeting": [
+    {
+      "targetingType": "standard",
+      "keyName": "Country",
+      "sets": [
+        { "values": [{ "value": "US", "label": "United States" }], "operator": "ANY_OF" }
+      ]
+    }
+  ]
 }

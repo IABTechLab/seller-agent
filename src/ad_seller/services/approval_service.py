@@ -107,10 +107,66 @@ async def resume_flow(approval_id: str) -> dict[str, Any]:
     if request.flow_type == "proposal_handling" and request.gate_name == "proposal_decision":
         return await _resume_proposal_flow(request, response)
 
+    if request.flow_type == "ssp_distribution" and request.gate_name == "dsp_resolution":
+        return await _resume_ssp_distribution(request, response)
+
     raise HTTPException(
         status_code=400,
         detail=f"Unknown flow_type/gate_name: {request.flow_type}/{request.gate_name}",
     )
+
+
+async def _resume_ssp_distribution(request, response):
+    """Resume an SSP distribution after a dsp_resolution approval decision.
+
+    Unlike _resume_proposal_flow, there's no CrewAI flow/state machine to
+    re-hydrate here — distribute_deal_via_ssp is a plain service call, so the
+    snapshot is just the SSP name and the SSPDealCreateRequest that was
+    waiting on a dsp_id. On approval, the human's selected_dsp_id
+    (response.modifications) is applied and create_deal() finally runs.
+    """
+    from ..clients.ssp_base import SSPDealCreateRequest
+    from ..clients.ssp_factory import build_ssp_registry
+
+    if response.decision != "approve":
+        return {
+            "deal_id": request.deal_id,
+            "status": response.decision,
+            "resumed_from_approval": request.approval_id,
+        }
+
+    selected_dsp_id = response.modifications.get("selected_dsp_id")
+    if selected_dsp_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail='Approving a dsp_resolution gate requires modifications={"selected_dsp_id": <id>}',
+        )
+
+    snapshot = request.flow_state_snapshot
+    create_request = SSPDealCreateRequest(**snapshot["create_request"])
+    create_request.dsp_id = selected_dsp_id
+
+    # Any other create_request field the human supplies at decision time
+    # (e.g. account_id, name, targeting) — fields the SSP needs that
+    # distribute_deal_via_ssp never had a value for when the gate fired.
+    for field, value in response.modifications.items():
+        if field != "selected_dsp_id" and hasattr(create_request, field):
+            setattr(create_request, field, value)
+
+    registry = build_ssp_registry()
+    ssp = registry.get_client(snapshot["ssp_name"])
+
+    async with ssp:
+        result = await ssp.create_deal(create_request)
+
+    return {
+        "deal_id": result.deal_id,
+        "ssp": result.ssp_name,
+        "ssp_type": result.ssp_type.value,
+        "status": result.status.value,
+        "deal": result.model_dump(exclude={"raw"}),
+        "resumed_from_approval": request.approval_id,
+    }
 
 
 async def _resume_proposal_flow(request, response):

@@ -999,11 +999,83 @@ async def get_deal_buyer_status(deal_id: str, buyer_url: str) -> dict[str, Any]:
 # =============================================================================
 
 
+async def _resolve_dsp_id_or_pending_approval(
+    ssp: Any,
+    create_request: Any,
+    deal_id: str,
+) -> Optional[dict[str, Any]]:
+    """Resolve create_request.dsp_id from buyer_seat_ids if not already set.
+
+    Mutates create_request.dsp_id in place when resolution is unambiguous
+    (0 or 1 candidate). If the seat ID(s) collide across more than one DSP,
+    creates a pending ApprovalGate request instead of guessing which one is
+    correct, and returns the response dict the caller should return
+    immediately — the actual create_deal() call happens later, via the
+    ssp_distribution/dsp_resolution resume path, once a human picks one.
+
+    Returns None if no gating was needed: dsp_id was already set, no seat
+    IDs were given, the SSP doesn't support seat resolution at all, or
+    resolution found exactly one candidate.
+    """
+    if create_request.dsp_id is not None or not create_request.buyer_seat_ids:
+        return None
+
+    resolver = getattr(ssp, "resolve_dsp_ids_for_seat_ids", None)
+    if resolver is None:
+        return None
+
+    matches = await resolver(create_request.buyer_seat_ids)
+    if not matches:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "dsp_resolution_failed",
+                "message": f"No active DSP found for seat ID(s): {create_request.buyer_seat_ids}",
+            },
+        )
+
+    distinct_dsp_ids = sorted({m.dsp_id for m in matches})
+    if len(distinct_dsp_ids) == 1:
+        create_request.dsp_id = distinct_dsp_ids[0]
+        return None
+
+    from ..events.approval import ApprovalGate
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    gate = ApprovalGate(storage)
+    approval_req = await gate.request_approval(
+        flow_id=f"ssp-distribute-{deal_id}",
+        flow_type="ssp_distribution",
+        gate_name="dsp_resolution",
+        context={
+            "seat_ids": create_request.buyer_seat_ids,
+            "candidates": [m.model_dump() for m in matches],
+        },
+        flow_state_snapshot={
+            "ssp_name": ssp.ssp_type.value,
+            "create_request": create_request.model_dump(mode="json"),
+        },
+        deal_id=deal_id,
+    )
+    return {
+        "status": "pending_approval",
+        "approval_id": approval_req.approval_id,
+        "message": (
+            f"Seat ID(s) {create_request.buyer_seat_ids} matched multiple DSPs "
+            f"{distinct_dsp_ids}; a human must select the correct one via "
+            f"POST /approvals/{approval_req.approval_id}/decide "
+            '(modifications={"selected_dsp_id": <id>}) before this deal can be created.'
+        ),
+    }
+
+
 async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
     """Distribute a deal through configured SSP(s) or deal-sync providers."""
     from ..clients.deal_sync_factory import build_deal_sync_registry
     from ..clients.ssp_base import SSPDealCreateRequest, SSPDealType
     from ..clients.ssp_factory import build_ssp_registry
+    from ..storage.factory import get_storage
 
     ssp_registry = build_ssp_registry()
     sync_registry = build_deal_sync_registry()
@@ -1060,19 +1132,32 @@ async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
         "preferred": SSPDealType.PREFERRED,
     }
 
+    # Same fallback push_deal_to_buyers already uses: no MCP tool lets the
+    # LLM set buyer_seat_ids on this route, so without this a stored deal's
+    # seat IDs (set at creation time) would never reach DSP resolution.
+    storage = await get_storage()
+    stored_deal = await storage.get_deal(request.deal_id)
+
     create_request = SSPDealCreateRequest(
         deal_type=deal_type_map.get(request.deal_type or "PMP", SSPDealType.PMP),
         name=request.name,
         advertiser=request.advertiser,
         cpm=request.cpm,
-        buyer_seat_ids=request.buyer_seat_ids or [],
-        start_date=request.start_date,
-        end_date=request.end_date,
+        buyer_seat_ids=request.buyer_seat_ids or (stored_deal or {}).get("buyer_seat_ids", []),
+        account_id=getattr(request, "account_id", None) or (stored_deal or {}).get("account_id"),
+        start_date=request.start_date or (stored_deal or {}).get("flight_start"),
+        end_date=request.end_date or (stored_deal or {}).get("flight_end"),
         targeting=request.targeting,
+        external_deal_id=request.deal_id,
     )
 
     try:
         async with client:
+            if not is_deal_sync:
+                pending = await _resolve_dsp_id_or_pending_approval(client, create_request, request.deal_id)
+                if pending is not None:
+                    return pending
+
             result = await client.create_deal(create_request)
     except ValueError as e:
         raise HTTPException(status_code=400, detail={"error": "invalid_request", "message": str(e)})
