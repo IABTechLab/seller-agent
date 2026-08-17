@@ -1,6 +1,6 @@
 [project]
 name = "ad_seller_system"
-version = "2.4.1"
+version = "2.4.2"
 description = "IAB Tech Lab OpenDirect 2.1 compliant ad seller system using CrewAI"
 authors = [
     {name = "MobtownLabs", email = "hello@mobtownlabs.com"}

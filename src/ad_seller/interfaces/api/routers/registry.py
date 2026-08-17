@@ -48,7 +48,7 @@ async def agent_card():
             "proposal evaluation, multi-round negotiation, and deal execution."
         ),
         url=settings.seller_agent_url,
-        version="2.4.1",
+        version="2.4.2",
         provider=AgentProvider(
             name=settings.seller_organization_name,
             url=settings.seller_agent_url,

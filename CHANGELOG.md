@@ -4,6 +4,78 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+## [2.4.2] — 2026-08-17
+
+### Added
+
+- Operator key CLI management (#59): `ad-seller list-operator-keys` lists
+  operator keys (metadata only, secrets are never re-shown; pass
+  `--include-inactive` to include revoked/expired keys) and
+  `ad-seller delete-operator-key --label "..."` (or `--key-id ...`)
+  revokes an operator key out-of-band, freeing the label for reuse.
+  Creating an operator key now rejects a label already in use by an
+  active operator key. The `ad-seller` console script entry point moved
+  from `ad_seller.interfaces.cli.main:app` to `:main`; editable installs
+  must re-run `pip install -e .` to regenerate the script.
+- CI now builds the Docker image on every PR (new docker-build job,
+  mirroring buyer-agent), so Dockerfile breakage can no longer land
+  silently (issue #3).
+
+### Fixed
+
+- Pricing: a higher-priority discount-only rule no longer stacks its
+  discount onto a lower-priority rule's `base_price_override`, and the
+  stale discount no longer leaks into the pricing rationale text that
+  flows into quotes and negotiation responses (#54).
+- Curated deals: a supplied `product_id` that is not in the catalog now
+  returns 404 `product_not_found` instead of silently booking a
+  confirmed deal at the generic $12 CPM default; the default now applies
+  only when no `product_id` is given at all (#58).
+- Deal migration: migrating an already-migrated deal now returns 409
+  with the existing `replacement_deal_id` instead of silently creating a
+  second replacement and orphaning the first from the lineage chain
+  (#56).
+- FD-12 idempotency is now enforced on `POST /api/v1/quotes`: replaying
+  a request with the same `idempotency_key` and payload returns the
+  original quote, and reusing a key with a different payload returns 409
+  `idempotency_conflict` via a payload hash. `POST /api/v1/deals` gains
+  the same conflict detection and still replays legacy pre-hash records
+  (#50). Behavior note: idempotency keys are now scoped per buyer
+  (verified buyer context on quotes, resolved identity on deals), so two
+  buyers reusing the same client-chosen key no longer collide, and buyer
+  verification on quotes runs before the replay lookup.
+- Idempotency is now also enforced on
+  `POST /api/v1/negotiations/messages`: a retried message replays the
+  stored response instead of consuming an extra negotiation round, and a
+  reused key with a different payload returns 409 (#52). The same
+  per-buyer key scoping applies.
+- `deploy.sh` smoke check now detects chat routing fallthrough: the
+  hardcoded chat-mode invocations fail the check if the response type is
+  `general`, instead of passing on any error-free response (#49).
+- Chat-mode router: "list products" now reaches the availability handler
+  and "create a deal" reaches the deal handler instead of falling
+  through to the general fallback (#47).
+- `deploy.sh` no longer hardcodes the US-scoped
+  `bedrock/us.amazon.nova-lite-v1:0` as `MEMORY_LLM_MODEL`; memory now
+  inherits `DEFAULT_LLM_MODEL`, so non-US deployments get a region-valid
+  model (#48).
+- `infra/docker/Dockerfile` builds again: git is installed in the
+  builder stage, the silently-failing "cache-friendly" dependency layer
+  is removed, and the runtime stage re-points the editable install with
+  `--no-deps` instead of re-resolving all dependencies (issue #3).
+
+### Changed
+
+- `iab-agentic-primitives` pinned to v0.5.1, picking up the fix that
+  single-sources `__version__` from package metadata.
+
+### Docs
+
+- The pricing guide documents the quote-then-propose sequence required
+  for `pricing_verified` (there is deliberately no rate-card or floor
+  fallback), cross-referenced from the API overview and the README
+  endpoint table (#43).
+
 ## [2.4.1] — 2026-08-05
 
 ### Changed
