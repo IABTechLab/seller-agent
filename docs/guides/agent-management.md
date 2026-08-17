@@ -21,6 +21,14 @@ the first operator key with the CLI (no HTTP auth):
 ad-seller create-operator-key --label "Primary operator"
 ```
 
+List and revoke the same way:
+
+```bash
+ad-seller list-operator-keys
+ad-seller delete-operator-key --label "Primary operator"
+# or: ad-seller delete-operator-key --key-id key-a1b2c3d4
+```
+
 See [Authentication](../api/authentication.md) for the full operator surface.
 
 ### Create a Buyer API Key

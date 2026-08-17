@@ -103,7 +103,7 @@ The admin REST/MCP surface requires an **operator** API key. Mint the first one 
 ad-seller create-operator-key --label "Primary operator"
 ```
 
-Save the printed API key — it is shown only once. Subsequent operator keys can be minted via `POST /auth/api-keys/operator` using this credential. Buyer keys for agents go through `POST /auth/api-keys`. See [Authentication](../api/authentication.md).
+Save the printed API key — it is shown only once. Subsequent operator keys can be minted via `POST /auth/api-keys/operator` using this credential. List with `ad-seller list-operator-keys`; revoke out-of-band with `ad-seller delete-operator-key --label "Primary operator"` (or `--key-id ...`). Buyer keys for agents go through `POST /auth/api-keys`. See [Authentication](../api/authentication.md).
 
 ## Step 7: Generate Claude Desktop Config
 
