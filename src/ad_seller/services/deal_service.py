@@ -1372,6 +1372,23 @@ async def migrate_deal(deal_id: str, request: Any) -> dict[str, Any]:
             detail={"error": "deal_not_found", "message": f"Deal '{deal_id}' not found."},
         )
 
+    # A deal that's already been migrated (or deprecated some other way)
+    # can't be migrated again — the code below would happily overwrite
+    # replacement_deal_id with a brand new deal, and the deal it had
+    # previously pointed to would still be sitting there fully active but
+    # unreachable from lineage. Same guard deprecate_deal already has for
+    # the same reason, one function down.
+    if old_deal.get("status") == "deprecated":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "already_deprecated",
+                "message": f"Deal '{deal_id}' is already deprecated and cannot be migrated again.",
+                "deprecated_at": old_deal.get("deprecated_at"),
+                "replacement_deal_id": old_deal.get("replacement_deal_id"),
+            },
+        )
+
     # Build new deal from old deal + overrides
     now = datetime.utcnow()
     new_deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
