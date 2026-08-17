@@ -6,7 +6,7 @@
 Tools exposed by the seller MCP server (`ad_seller.interfaces.mcp_server`),
 enumerated from the live FastMCP registry.
 
-**Total: 47 tools**
+**Total: 48 tools**
 
 | Tool | Description |
 | --- | --- |
@@ -49,6 +49,7 @@ enumerated from the live FastMCP registry.
 | `push_deal_to_buyers` | Push a deal to buyer endpoints via IAB Deals API v1.0. |
 | `register_buyer_agent` | Discover and register a buyer agent by URL. |
 | `request_quote` | Request a non-binding price quote for a product. |
+| `resume_approval` | Resume a flow that was paused for approval, after a decision has been |
 | `revoke_api_key` | Revoke an API key. |
 | `set_agent_trust` | Set trust level for a buyer agent. |
 | `set_approval_gates` | Configure approval gates. required_flows is comma-separated: |
