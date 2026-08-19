@@ -112,6 +112,7 @@ class TestCreateOrder:
         stored = mock_storage._store[f"order:{order_id}"]
         assert stored["order_id"] == order_id
         assert stored["status"] == "draft"
+        assert stored["deal_id"] == ""
 
 
 # =============================================================================
