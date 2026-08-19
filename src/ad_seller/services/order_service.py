@@ -43,7 +43,7 @@ async def create_order(
     machine = OrderStateMachine(order_id=order_id)
 
     order_data = machine.to_dict()
-    order_data["deal_id"] = deal_id
+    order_data["deal_id"] = deal_id or ""
     order_data["quote_id"] = quote_id
     order_data["created_at"] = datetime.utcnow().isoformat() + "Z"
     order_data["metadata"] = metadata or {}
@@ -333,6 +333,16 @@ async def create_change_request(request: Any) -> dict[str, Any]:
             },
         )
 
+    deal_id = order.get("deal_id")
+    if not deal_id:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "deal_id_required",
+                "message": f"Order '{request.order_id}' has no deal_id and cannot be changed.",
+            },
+        )
+
     # Build diffs
     diffs = [
         FieldDiff(field=d.field, old_value=d.old_value, new_value=d.new_value)
@@ -345,7 +355,7 @@ async def create_change_request(request: Any) -> dict[str, Any]:
     # Create the change request
     cr = ChangeRequest(
         order_id=request.order_id,
-        deal_id=order.get("deal_id", ""),
+        deal_id=deal_id,
         change_type=change_type,
         severity=severity,
         requested_by=request.requested_by,

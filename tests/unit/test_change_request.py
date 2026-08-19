@@ -234,6 +234,29 @@ class TestCreateChangeRequest:
             )
         assert resp.status_code == 404
 
+    async def test_existing_order_with_null_deal_id_returns_structured_error(
+        self, client, mock_storage
+    ):
+        _seed_order(mock_storage)
+        mock_storage._store["order:ORD-TEST001"]["deal_id"] = None
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/change-requests",
+                json={
+                    "order_id": "ORD-TEST001",
+                    "change_type": "impressions",
+                    "reason": "Increase campaign reach",
+                },
+            )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == {
+            "error": "deal_id_required",
+            "message": "Order 'ORD-TEST001' has no deal_id and cannot be changed.",
+        }
+        assert not any(key.startswith("change_request:") for key in mock_storage._store)
+
     async def test_invalid_change_type(self, client, mock_storage):
         _seed_order(mock_storage)
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
