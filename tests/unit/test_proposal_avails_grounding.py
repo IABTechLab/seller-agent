@@ -38,10 +38,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # as test_negotiation_lowball_counter.py (no LLM call is ever made here).
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-for-unit-tests")
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch). Same pattern used in test_negotiation_lowball_counter.py.
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:

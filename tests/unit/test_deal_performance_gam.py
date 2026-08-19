@@ -301,13 +301,11 @@ class TestPerformanceEndpointEndToEnd:
         import sys
         from types import ModuleType
 
-        # Stub broken flow modules (pre-existing @listen() bugs with CrewAI
-        # version mismatch) before ad_seller.flows import — same pattern as
-        # test_avails_endpoint.py.
-        for _mod_name in (
-            "ad_seller.flows.discovery_inquiry_flow",
-            "ad_seller.flows.execution_activation_flow",
-        ):
+        # Stub execution_activation_flow (cancel-scope leak on ad-server
+        # connection failure — issue #60 part 2, unresolved) before
+        # ad_seller.flows import — same pattern as test_avails_endpoint.py.
+        # discovery_inquiry_flow no longer needs stubbing (issue #60 part 1).
+        for _mod_name in ("ad_seller.flows.execution_activation_flow",):
             if _mod_name not in sys.modules:
                 _stub = ModuleType(_mod_name)
                 _cls = _mod_name.rsplit(".", 1)[-1].replace("_", " ").title().replace(" ", "")
