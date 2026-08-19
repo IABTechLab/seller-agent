@@ -5,9 +5,10 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from ....services import order_service
+from .. import contract_mappers as cm
 from .. import deps
 from ..schemas import CreateChangeRequestModel, ReviewChangeRequestModel
 
@@ -23,8 +24,51 @@ async def create_change_request(
 
     Validates the change against the current order state, classifies
     severity, and routes to approval if needed.
+
+    **Idempotency (FD-12):** the request carries a required
+    ``idempotency_key``. An identical replay returns the original change
+    request without creating a second approval; reusing the key with a
+    different body returns ``idempotency_conflict`` (HTTP 409). Keys are
+    scoped per order and expire after 24 hours.
     """
-    return await order_service.create_change_request(request)
+    from ....storage.factory import get_storage
+
+    storage_key = f"idempotency:change-request:{request.order_id}:{request.idempotency_key}"
+    payload_hash = cm.request_payload_hash(
+        request.model_dump(mode="json", exclude={"idempotency_key"})
+    )
+    storage = await get_storage()
+    try:
+        prior = await storage.get(storage_key)
+    except Exception:
+        prior = None
+
+    if isinstance(prior, dict) and prior.get("change_request_id"):
+        if prior.get("payload_hash") != payload_hash:
+            raise HTTPException(
+                status_code=409,
+                detail=cm.idempotency_conflict_detail(
+                    f"idempotency_key '{request.idempotency_key}' was already used "
+                    "for a different change request."
+                ),
+            )
+        return await order_service.get_change_request(prior["change_request_id"])
+
+    result = await order_service.create_change_request(request)
+
+    try:
+        await storage.set(
+            storage_key,
+            {
+                "change_request_id": result["change_request_id"],
+                "payload_hash": payload_hash,
+            },
+            ttl=86400,
+        )
+    except Exception:
+        pass
+
+    return result
 
 
 @router.get("/api/v1/change-requests", tags=["Change Requests"])
