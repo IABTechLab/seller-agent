@@ -11,7 +11,6 @@ import pytest
 
 # Stub broken flow modules
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
