@@ -34,29 +34,41 @@ _main_loop: asyncio.AbstractEventLoop | None = None
 
 
 def _broadcast_event(payload: dict) -> None:
-    """Thread-safe broadcast to all connected /events/stream clients."""
-    if _main_loop is None:
+    """Broadcast to all connected /events/stream clients.
+
+    Called synchronously from within an asyncio coroutine (bus.publish),
+    so put_nowait is safe to call directly on the event loop thread.
+    """
+    clients = list(_event_stream_clients)
+    logger.info("SSE broadcast: %d client(s), loop=%s, type=%s",
+                len(clients), "set" if _main_loop else "None",
+                payload.get("type", "?"))
+    if not clients:
         return
-    for q in list(_event_stream_clients):
+    for q in clients:
         try:
-            _main_loop.call_soon_threadsafe(q.put_nowait, payload)
-        except Exception:
-            pass
+            q.put_nowait(payload)
+        except asyncio.QueueFull:
+            logger.warning("SSE queue full, dropping event for one client")
+        except Exception as exc:
+            logger.debug("SSE queue put failed: %s", exc)
 
 
 def _on_bus_event(event: Any) -> None:
     """Layer A: bridge seller EventBus wildcard events to the SSE stream."""
     try:
-        _broadcast_event({
+        payload = {
             "layer": "a2a",
             "category": "booking_event",
             "type": event.event_type.value,
             "ts": event.timestamp.isoformat() if hasattr(event, "timestamp") else "",
             "summary": event.event_type.value.replace(".", " ").title(),
             "detail": event.model_dump(mode="json"),
-        })
+        }
+        logger.info("SSE bus event received: %s", event.event_type.value)
+        _broadcast_event(payload)
     except Exception:
-        logger.debug("_on_bus_event serialisation error", exc_info=True)
+        logger.warning("_on_bus_event error", exc_info=True)
 
 
 # Dedicated logger for booking-time forensic events. Per proposal §5.1 Step 2
@@ -2559,6 +2571,21 @@ async def create_quote(
     storage = await get_storage()
     await storage.set_quote(quote_id, quote.model_dump(mode="json"), ttl=86400)
 
+    # Broadcast to playground SSE stream
+    from ...events.helpers import emit_event
+    from ...events.models import EventType
+    await emit_event(
+        event_type=EventType.SESSION_CREATED,
+        payload={
+            "quote_id": quote_id,
+            "product_id": request.product_id,
+            "deal_type": request.deal_type,
+            "cpm": quote.pricing.final_cpm,
+            "impressions": request.impressions,
+            "event_label": "quote.created",
+        },
+    )
+
     return quote.model_dump(mode="json")
 
 
@@ -2756,6 +2783,21 @@ async def book_deal(
     # The snapshot fields land on the persisted record so
     # `honor_audience_plan_snapshot()` can read them at fulfillment time.
     await storage.set_deal(deal_id, deal_data)
+
+    # Broadcast to playground SSE stream
+    from ...events.helpers import emit_event
+    from ...events.models import EventType
+    await emit_event(
+        event_type=EventType.DEAL_CREATED,
+        payload={
+            "deal_id": deal_id,
+            "deal_type": deal.deal_type,
+            "product_id": deal.product.product_id,
+            "product_name": deal.product.name,
+            "cpm": deal.pricing.final_cpm,
+            "quote_id": request.quote_id,
+        },
+    )
 
     return deal_data
 
