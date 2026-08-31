@@ -314,6 +314,7 @@ class TestDealService:
 class TestOrderService:
     async def test_create_and_transition_order_happy_path(self, mock_storage):
         """Happy: create -> draft, then a valid draft->submitted transition."""
+        mock_storage._store["deal:DEMO-1"] = {"deal_id": "DEMO-1"}
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             order = await order_service.create_order(deal_id="DEMO-1", metadata={"k": "v"})
             assert order["status"] == "draft"
@@ -330,6 +331,24 @@ class TestOrderService:
         stored = mock_storage._store[f"order:{order['order_id']}"]
         assert stored["deal_id"] == "DEMO-1"
         assert stored["metadata"] == {"k": "v"}
+
+    async def test_create_order_unknown_deal_raises_404(self, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            with pytest.raises(HTTPException) as exc:
+                await order_service.create_order(deal_id="DEMO-MISSING")
+
+        assert exc.value.status_code == 404
+        assert exc.value.detail["error"] == "deal_not_found"
+        assert mock_storage._store == {}
+
+    async def test_create_order_unknown_quote_raises_404(self, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            with pytest.raises(HTTPException) as exc:
+                await order_service.create_order(quote_id="qt-missing")
+
+        assert exc.value.status_code == 404
+        assert exc.value.detail["error"] == "quote_not_found"
+        assert mock_storage._store == {}
 
     async def test_invalid_transition_returns_409_with_allowed(self, mock_storage):
         """Edge: draft->completed is rejected with allowed_transitions listed."""

@@ -33,11 +33,32 @@ async def create_order(
     quote_id: Optional[str] = None,
     metadata: Optional[dict] = None,
 ) -> dict[str, Any]:
-    """Create a new order and persist its state machine."""
+    """Create a new order and persist its state machine.
+
+    ``deal_id`` and ``quote_id`` may be omitted (an order can be drafted
+    before commercial terms exist). A provided id must already be in
+    storage; unknown ids 404 with the same structured errors as GET deal
+    and GET quote.
+    """
     from ..models.order_state_machine import OrderStateMachine
     from ..storage.factory import get_storage
 
     storage = await get_storage()
+
+    if deal_id:
+        deal = await storage.get_deal(deal_id)
+        if not deal:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "deal_not_found", "message": f"Deal '{deal_id}' not found."},
+            )
+    if quote_id:
+        quote = await storage.get_quote(quote_id)
+        if not quote:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "quote_not_found", "message": f"Quote '{quote_id}' not found."},
+            )
 
     order_id = f"ORD-{uuid.uuid4().hex[:12].upper()}"
     machine = OrderStateMachine(order_id=order_id)
@@ -332,6 +353,20 @@ async def create_change_request(request: Any) -> dict[str, Any]:
                 "message": f"Order '{request.order_id}' not found.",
             },
         )
+
+    # A non-empty deal_id on the order must still resolve. Empty/None is
+    # allowed (orders may exist before a deal is attached).
+    deal_id = order.get("deal_id") or ""
+    if deal_id:
+        deal = await storage.get_deal(deal_id)
+        if not deal:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "deal_not_found",
+                    "message": f"Deal '{deal_id}' not found.",
+                },
+            )
 
     # Build diffs
     diffs = [
