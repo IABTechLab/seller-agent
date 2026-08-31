@@ -398,6 +398,75 @@ class TestApprovalService:
                 await approval_service.get_approval("apr-missing")
         assert exc.value.status_code == 404
 
+    async def test_resume_after_approve_applies_decision(self, mock_storage):
+        """Happy: resume after approve hydrates snapshot via _state, not flow.state."""
+        from ad_seller.events.models import ApprovalRequest, ApprovalResponse, ApprovalStatus
+
+        req = ApprovalRequest(
+            event_id="evt-1",
+            flow_id="flow-1",
+            flow_type="proposal_handling",
+            gate_name="proposal_decision",
+            proposal_id="prop-1",
+            status=ApprovalStatus.APPROVED,
+            flow_state_snapshot={
+                "proposal_id": "prop-1",
+                "flow_id": "flow-1",
+                "flow_type": "proposal_handling",
+            },
+        )
+        mock_storage._store[f"approval:{req.approval_id}"] = req.model_dump(mode="json")
+        mock_storage._store[f"approval_response:{req.approval_id}"] = ApprovalResponse(
+            approval_id=req.approval_id,
+            decision="approve",
+            decided_by="lab",
+        ).model_dump(mode="json")
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            result = await approval_service.resume_flow(req.approval_id)
+
+        assert result["proposal_id"] == "prop-1"
+        assert result["status"] == "accepted"
+        assert result["recommendation"] == "approve"
+        assert result["resumed_from_approval"] == req.approval_id
+
+    async def test_resume_after_reject_applies_decision(self, mock_storage):
+        """Happy: reject path also resumes without assigning the read-only property."""
+        from ad_seller.events.models import ApprovalRequest, ApprovalResponse, ApprovalStatus
+
+        req = ApprovalRequest(
+            event_id="evt-2",
+            flow_id="flow-2",
+            flow_type="proposal_handling",
+            gate_name="proposal_decision",
+            proposal_id="prop-2",
+            status=ApprovalStatus.REJECTED,
+            flow_state_snapshot={
+                "proposal_id": "prop-2",
+                "flow_id": "flow-2",
+                "flow_type": "proposal_handling",
+            },
+        )
+        mock_storage._store[f"approval:{req.approval_id}"] = req.model_dump(mode="json")
+        mock_storage._store[f"approval_response:{req.approval_id}"] = ApprovalResponse(
+            approval_id=req.approval_id,
+            decision="reject",
+            decided_by="lab",
+        ).model_dump(mode="json")
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            result = await approval_service.resume_flow(req.approval_id)
+
+        assert result["proposal_id"] == "prop-2"
+        assert result["status"] == "rejected"
+        assert result["recommendation"] == "reject"
+
 
 # =============================================================================
 # session_service
