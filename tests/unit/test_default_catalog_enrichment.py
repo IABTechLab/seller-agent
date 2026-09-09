@@ -24,10 +24,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch). Same pattern used across the unit test suite.
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:

@@ -31,10 +31,9 @@ from __future__ import annotations
 import sys
 from types import ModuleType
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch) before importing main, mirroring test_quote_endpoints.py.
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
