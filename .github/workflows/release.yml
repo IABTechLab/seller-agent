@@ -1,0 +1,130 @@
+name: Release
+
+# Manually triggered, version-based release — mirrors the pattern used by
+# IABTechLab/iabgpp-es: bump the version, run the test suite, tag the exact
+# commit, push it, and record a GitHub Release with the CHANGELOG entry.
+#
+# Note: unlike buyer-agent, this repo has no AWS/ECR deploy workflow wired
+# up in GitHub Actions yet, so this workflow only versions and tags — it
+# does not deploy anywhere. Add a Deploy workflow first if you want release
+# tags here to also ship.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 2.5.0, no leading v)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout buyer-agent
+        uses: actions/checkout@v4
+        with:
+          repository: IABTechLab/buyer-agent
+          path: buyer-agent
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.11'
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Lint
+        run: uv run --locked ruff check src/
+
+      - name: Format check
+        run: uv run --locked ruff format --check src/ tests/
+
+      - name: Unit tests
+        env:
+          ANTHROPIC_API_KEY: test-key-for-ci
+          AD_BUYER_SRC_PATH: ${{ github.workspace }}/buyer-agent/src
+          CREWAI_TELEMETRY_OPT_OUT: "true"
+          CREWAI_DISABLE_TELEMETRY: "true"
+          CREWAI_DISABLE_TRACKING: "true"
+          LITELLM_TELEMETRY: "False"
+          OTEL_SDK_DISABLED: "true"
+          ANONYMIZED_TELEMETRY: "False"
+          POSTHOG_DISABLED: "1"
+        run: timeout --kill-after=10s 600s uv run --locked pytest tests/unit/ -v --tb=short --timeout=30 --timeout-method=thread
+
+      - name: Integration tests
+        env:
+          ANTHROPIC_API_KEY: test-key-for-ci
+          CREWAI_TELEMETRY_OPT_OUT: "true"
+          CREWAI_DISABLE_TELEMETRY: "true"
+          CREWAI_DISABLE_TRACKING: "true"
+          LITELLM_TELEMETRY: "False"
+          OTEL_SDK_DISABLED: "true"
+          ANONYMIZED_TELEMETRY: "False"
+          POSTHOG_DISABLED: "1"
+        run: timeout --kill-after=10s 600s uv run --locked pytest tests/integration/ -v --tb=short --timeout=60 --timeout-method=thread
+
+      - name: Bump version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          echo "Releasing v$VERSION"
+          uv version "$VERSION"
+          uv lock
+
+      - name: Update CHANGELOG
+        run: |
+          python3 - "${{ github.event.inputs.version }}" <<'EOF'
+          import re, sys, datetime
+          version = sys.argv[1]
+          date = datetime.date.today().isoformat()
+          path = "CHANGELOG.md"
+          text = open(path).read()
+          pattern = r"(## \[Unreleased\]\n)(.*?)(\n## \[)"
+          def repl(m):
+              return f"{m.group(1)}\n## [{version}] — {date}\n{m.group(2)}{m.group(3)}"
+          new_text, n = re.subn(pattern, repl, text, count=1, flags=re.S)
+          if n == 0:
+              sys.exit("Could not find an '## [Unreleased]' section in CHANGELOG.md")
+          open(path, "w").write(new_text)
+          EOF
+
+      - name: Check if release tag already exists
+        id: check
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if git show-ref --tags --verify --quiet "refs/tags/v$VERSION"; then
+            echo "Tag v$VERSION already exists"
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag v$VERSION does not exist"
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit, tag, and push
+        if: steps.check.outputs.version_changed == 'true'
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add pyproject.toml uv.lock CHANGELOG.md
+          git commit -m "Release v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.version_changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          gh release create "v$VERSION" --title "v$VERSION" --generate-notes
