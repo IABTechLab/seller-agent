@@ -121,8 +121,8 @@ jobs:
       - name: Commit, tag, and push
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          git config user.email "actions@github.com"
-          git config user.name "GitHub Actions"
+          git config user.email "mayank@iabtechlab.com"
+          git config user.name "Mayank Mishra"
           git add pyproject.toml uv.lock CHANGELOG.md
           git commit -m "Release v$VERSION"
           git tag "v$VERSION"
