@@ -106,6 +106,18 @@ jobs:
           open(path, "w").write(new_text)
           EOF
 
+      - name: Extract release notes from CHANGELOG
+        run: |
+          python3 - "${{ github.event.inputs.version }}" <<'EOF'
+          import re, sys
+          version = sys.argv[1]
+          text = open("CHANGELOG.md").read()
+          pattern = rf"## \[{re.escape(version)}\][^\n]*\n(.*?)(?=\n## \[|\Z)"
+          m = re.search(pattern, text, re.S)
+          body = (m.group(1) if m else "").strip()
+          open("release_notes.md", "w").write(body)
+          EOF
+
       - name: Commit, tag, and push
         run: |
           VERSION="${{ github.event.inputs.version }}"
@@ -117,9 +129,18 @@ jobs:
           git push origin HEAD:main
           git push origin "v$VERSION"
 
+      # Prefer the curated CHANGELOG entry; fall back to GitHub's
+      # auto-generated PR list only if that entry is empty (e.g. nobody
+      # updated CHANGELOG.md's Unreleased section in their PRs), so a
+      # release is never left with a blank description.
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+          if [ -s release_notes.md ]; then
+            gh release create "v$VERSION" --title "v$VERSION" --notes-file release_notes.md
+          else
+            echo "No CHANGELOG entry for v$VERSION — falling back to auto-generated notes."
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+          fi
