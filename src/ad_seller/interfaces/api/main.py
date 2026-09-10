@@ -21,6 +21,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+from ... import __version__
+
 logger = logging.getLogger(__name__)
 
 # Wire-format media types accepted on `audience_plan`-bearing requests per
@@ -40,7 +42,7 @@ app = FastAPI(
         "Supports product discovery, tiered pricing, proposal evaluation, "
         "multi-round negotiation, deal execution, order management, and change requests."
     ),
-    version="1.0.0",
+    version=__version__,
     contact={"name": "IAB Tech Lab", "url": "https://iabtechlab.com"},
     license_info={"name": "Apache 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
     root_path_in_servers=False,
