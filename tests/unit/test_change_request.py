@@ -72,6 +72,7 @@ def mock_storage():
             )
         ]
     )
+    storage.get_deal = AsyncMock(side_effect=lambda did: store.get(f"deal:{did}"))
     storage._store = store
     return storage
 
@@ -97,6 +98,7 @@ def _seed_order(mock_storage, order_id="ORD-TEST001", status="booked"):
         "metadata": {"campaign": "spring-2026"},
         "audit_log": {"order_id": order_id, "transitions": []},
     }
+    mock_storage._store["deal:DEMO-ABC123"] = {"deal_id": "DEMO-ABC123"}
 
 
 # =============================================================================
@@ -265,6 +267,29 @@ class TestCreateChangeRequest:
             )
         assert resp.status_code == 422
         assert resp.json()["detail"]["error"] == "validation_failed"
+
+    async def test_unresolvable_deal_id_does_not_create_pending_cr(self, client, mock_storage):
+        mock_storage._store["order:ORD-ORPHAN"] = {
+            "order_id": "ORD-ORPHAN",
+            "status": "booked",
+            "deal_id": "DEMO-GONE",
+            "metadata": {},
+            "audit_log": {"order_id": "ORD-ORPHAN", "transitions": []},
+        }
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/change-requests",
+                json={
+                    "order_id": "ORD-ORPHAN",
+                    "change_type": "impressions",
+                    "diffs": [{"field": "impressions", "old_value": 5000000, "new_value": 8000000}],
+                    "reason": "Increase campaign reach",
+                },
+            )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["error"] == "deal_not_found"
+        assert not any(k.startswith("change_request:") for k in mock_storage._store)
 
 
 class TestChangeRequestIdempotency:

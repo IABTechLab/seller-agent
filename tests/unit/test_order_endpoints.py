@@ -53,8 +53,24 @@ def mock_storage():
             and (not filters or not filters.get("status") or v.get("status") == filters["status"])
         ]
     )
+    storage.get_deal = AsyncMock(side_effect=lambda did: store.get(f"deal:{did}"))
+    storage.set_deal = AsyncMock(
+        side_effect=lambda did, data: store.__setitem__(f"deal:{did}", data)
+    )
+    storage.get_quote = AsyncMock(side_effect=lambda qid: store.get(f"quote:{qid}"))
+    storage.set_quote = AsyncMock(
+        side_effect=lambda qid, data, ttl=86400: store.__setitem__(f"quote:{qid}", data)
+    )
     storage._store = store
     return storage
+
+
+def _seed_deal(mock_storage, deal_id):
+    mock_storage._store[f"deal:{deal_id}"] = {"deal_id": deal_id}
+
+
+def _seed_quote(mock_storage, quote_id):
+    mock_storage._store[f"quote:{quote_id}"] = {"quote_id": quote_id}
 
 
 @pytest.fixture
@@ -87,6 +103,8 @@ class TestCreateOrder:
         assert "audit_log" in data
 
     async def test_create_order_with_deal_id(self, client, mock_storage):
+        _seed_deal(mock_storage, "DEMO-ABC123")
+        _seed_quote(mock_storage, "qt-test456")
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/orders",
@@ -102,6 +120,34 @@ class TestCreateOrder:
         assert data["deal_id"] == "DEMO-ABC123"
         assert data["quote_id"] == "qt-test456"
         assert data["metadata"]["campaign"] == "spring-2026"
+
+    async def test_unknown_deal_id_returns_404(self, client, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post("/api/v1/orders", json={"deal_id": "DEMO-MISSING"})
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["error"] == "deal_not_found"
+        assert not any(k.startswith("order:") for k in mock_storage._store)
+
+    async def test_unknown_quote_id_returns_404(self, client, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post("/api/v1/orders", json={"quote_id": "qt-missing"})
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["error"] == "quote_not_found"
+        assert not any(k.startswith("order:") for k in mock_storage._store)
+
+    async def test_unknown_quote_id_with_known_deal_returns_404(self, client, mock_storage):
+        _seed_deal(mock_storage, "DEMO-ABC123")
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/orders",
+                json={"deal_id": "DEMO-ABC123", "quote_id": "qt-missing"},
+            )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["error"] == "quote_not_found"
+        assert not any(k.startswith("order:") for k in mock_storage._store)
 
     async def test_order_persisted_to_storage(self, client, mock_storage):
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
@@ -128,6 +174,8 @@ class TestListOrders:
         assert resp.json()["orders"] == []
 
     async def test_list_returns_created_orders(self, client, mock_storage):
+        _seed_deal(mock_storage, "d1")
+        _seed_deal(mock_storage, "d2")
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             await client.post("/api/v1/orders", json={"deal_id": "d1"})
             await client.post("/api/v1/orders", json={"deal_id": "d2"})
@@ -165,6 +213,7 @@ class TestListOrders:
 
 class TestGetOrder:
     async def test_retrieve_order(self, client, mock_storage):
+        _seed_deal(mock_storage, "DEMO-X")
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             create_resp = await client.post("/api/v1/orders", json={"deal_id": "DEMO-X"})
             order_id = create_resp.json()["order_id"]
@@ -316,6 +365,7 @@ class TestTransitionOrder:
         assert resp.status_code == 404
 
     async def test_full_lifecycle_via_api(self, client, mock_storage):
+        _seed_deal(mock_storage, "DEMO-LIFE")
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             # Create
             r = await client.post("/api/v1/orders", json={"deal_id": "DEMO-LIFE"})
@@ -349,6 +399,7 @@ class TestTransitionOrder:
             assert r.json()["transition_count"] == 6
 
     async def test_transition_preserves_extra_fields(self, client, mock_storage):
+        _seed_deal(mock_storage, "DEMO-KEEP")
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             r = await client.post(
                 "/api/v1/orders",
