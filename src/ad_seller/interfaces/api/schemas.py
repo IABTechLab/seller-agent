@@ -38,7 +38,7 @@ from iab_agentic_primitives.protocol import (
 from iab_agentic_primitives.protocol import (
     ProductAvailsSearch as ProductAvailsSearch,  # noqa: PLC0414 — explicit re-export
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PricingRequest(BaseModel):
@@ -355,6 +355,7 @@ class FieldDiffModel(BaseModel):
 class CreateChangeRequestModel(BaseModel):
     """Request to create a change request for an order."""
 
+    idempotency_key: str = Field(min_length=1)
     order_id: str
     change_type: str
     diffs: list[FieldDiffModel] = []
