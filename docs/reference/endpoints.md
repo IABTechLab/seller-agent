@@ -6,7 +6,7 @@
 Routes registered on the FastAPI application
 (`ad_seller.interfaces.api.main:app`), enumerated from the router table.
 
-**Total: 88 endpoints**
+**Total: 89 endpoints**
 
 | Method | Path | Handler |
 | --- | --- | --- |
@@ -21,6 +21,7 @@ Routes registered on the FastAPI application
 | `GET` | `/api/v1/curators` | `list_curators` |
 | `POST` | `/api/v1/curators` | `register_curator` |
 | `GET` | `/api/v1/curators/{curator_id}` | `get_curator` |
+| `GET` | `/api/v1/deals` | `list_deals` |
 | `POST` | `/api/v1/deals` | `book_deal` |
 | `POST` | `/api/v1/deals/bulk` | `bulk_deal_operations` |
 | `POST` | `/api/v1/deals/curated` | `create_curated_deal` |

@@ -18,6 +18,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from iab_agentic_primitives.protocol import DealBookingRequest, DealBookingResponse
+from pydantic import BaseModel
 
 from ....services import deal_service
 from .. import contract_mappers as cm
@@ -281,6 +282,28 @@ async def agentic_audience_match(request: AgenticAudienceMatchRequest):
       into `STRONG | MODERATE | WEAK | POOR`.
     """
     return deal_service.match_agentic_audience(request.audience_ref)
+
+
+class DealListResponse(BaseModel):
+    """Page of stored deals in the shared booking-response shape."""
+
+    deals: list[DealBookingResponse]
+    count: int
+
+
+@router.get("/api/v1/deals", tags=["Deal Booking"], response_model=DealListResponse)
+async def list_deals(status: Optional[str] = None) -> DealListResponse:
+    """List stored deals, optionally filtered by status.
+
+    Registered ahead of ``/api/v1/deals/{deal_id}``; the two paths differ in
+    length so there is no shadowing, but keeping literal routes together
+    with ``/export`` keeps the EP-8.4 ordering rule easy to audit.
+    """
+    deals = await deal_service.list_deals(status=status)
+    return DealListResponse(
+        deals=[cm.internal_deal_to_response(d) for d in deals],
+        count=len(deals),
+    )
 
 
 @router.get("/api/v1/deals/export", tags=["Deal Booking"])
