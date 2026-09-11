@@ -189,6 +189,31 @@ def match_agentic_audience(ref: dict[str, Any]) -> dict[str, Any]:
 # =============================================================================
 
 
+async def _emit_deal_created(deal_data: dict[str, Any], source: str) -> None:
+    """Publish ``deal.created`` for a deal just persisted by a booking path.
+
+    ``source`` names the path (``quote``, ``template``, ``curated``) so
+    consumers of the event feed can tell how the deal came to exist.
+    Fail-open like every non-audit event: a bus failure never fails the
+    booking.
+    """
+    from ..events.helpers import emit_event
+    from ..events.models import EventType
+
+    product = deal_data.get("product") or {}
+    await emit_event(
+        event_type=EventType.DEAL_CREATED,
+        deal_id=deal_data.get("deal_id", ""),
+        payload={
+            "source": source,
+            "deal_type": deal_data.get("deal_type"),
+            "status": deal_data.get("status"),
+            "product_id": product.get("product_id") or deal_data.get("product_id"),
+            "quote_id": deal_data.get("quote_id"),
+        },
+    )
+
+
 async def book_deal(request: Any) -> dict[str, Any]:
     """Book a deal from a previously issued quote (``DealBookingRequestModel``).
 
@@ -341,6 +366,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
     # The snapshot fields land on the persisted record so
     # `honor_audience_plan_snapshot()` can read them at fulfillment time.
     await storage.set_deal(deal_id, deal_data)
+    await _emit_deal_created(deal_data, source="quote")
 
     return deal_data
 
@@ -615,6 +641,7 @@ async def create_deal_from_template(
 
     storage = await get_storage()
     await storage.set_deal(deal_id, deal_data)
+    await _emit_deal_created(deal_data, source="template")
 
     return deal_data
 
@@ -1352,6 +1379,7 @@ async def create_curated_deal(request: Any, catalog: dict[str, Any]) -> dict[str
 
     storage = await get_storage()
     await storage.set_deal(deal_id, deal_data)
+    await _emit_deal_created(deal_data, source="curated")
 
     return {
         "deal_id": deal_id,
