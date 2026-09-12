@@ -13,6 +13,12 @@
 bedrock-agentcore
 crewai[anthropic]>=1.14.0
 crewai-tools[mcp]>=1.14.0
+# Shared IAB agentic contract catalog (Product/QuoteRequest/DealBooking/registry
+# primitives). The crew path and API routers import iab_agentic_primitives, so
+# it must be in the AgentCore image. Pinned to the git-free GitHub archive
+# tarball because the CodeBuild image has no git (a git+https dep fails to
+# install). Keep in sync with the buyer agent's pin.
+iab-agentic-primitives[client] @ https://github.com/IABTechLab/iab-agentic-primitives/archive/refs/tags/v0.5.1.tar.gz
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 httpx>=0.27.0

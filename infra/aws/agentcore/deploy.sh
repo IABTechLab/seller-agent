@@ -56,7 +56,11 @@ DO_TEST=false
 TEST_ONLY=false
 DO_CLEANUP=false
 PROMPT='{"prompt": "list products"}'
-DEPLOY_MODE="chat"
+# Default to deploying all protocol runtimes (HTTP + MCP + A2A) so a plain
+# deploy brings up every integration surface (UI/orchestration over HTTP, tool
+# consumers over MCP, agent-to-agent over A2A), matching the ECS "all protocols
+# up" ergonomics. Use --mode <single> or --protocols <list> to narrow it.
+DEPLOY_MODE="all"
 STORAGE_TYPE="sqlite"
 INVENTORY_TYPE="${AD_SERVER_TYPE:-csv}"
 ENVIRONMENT="${ENVIRONMENT:-staging}"
@@ -86,7 +90,7 @@ while [[ $# -gt 0 ]]; do
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
-  --mode MODE           Deployment mode: all|mcp|http|crew|chat|a2a (default: chat)
+  --mode MODE           Deployment mode: all|mcp|http|crew|chat|a2a (default: all)
   --protocols LIST      Comma-list of protocol runtimes to deploy in one run
                         (e.g. mcp,http,a2a). Takes precedence over --mode.
   --inventory SOURCE    Inventory data source: csv|s3|gam|freewheel (default: csv)
@@ -133,6 +137,17 @@ done
 if ! echo "${VALID_MODES}" | grep -qw "${DEPLOY_MODE}"; then
   echo "ERROR: Invalid mode '${DEPLOY_MODE}'. Must be one of: ${VALID_MODES}" >&2
   exit 1
+fi
+
+# ── Validate --protocols tokens up-front (before any deploy) ─────────
+VALID_PROTOCOLS="mcp http crew chat a2a"
+if [[ -n "${PROTOCOLS:-}" ]]; then
+  for _p in ${PROTOCOLS//,/ }; do
+    if ! echo "${VALID_PROTOCOLS}" | grep -qw "${_p}"; then
+      echo "ERROR: Unknown protocol '${_p}' in --protocols. Must be from: ${VALID_PROTOCOLS}" >&2
+      exit 1
+    fi
+  done
 fi
 
 # ── Validate inventory ──────────────────────────────────────────────
@@ -681,6 +696,7 @@ deploy_a2a_runtime() {
 
   local env_args=(
     --env "AGENTCORE_MODE=a2a"
+    --env "PYTHONPATH=/app/src"
     --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"

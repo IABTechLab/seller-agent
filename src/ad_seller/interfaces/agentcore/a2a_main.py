@@ -19,6 +19,8 @@ Routes (match the buyer's ``A2AClient`` expectations —
 
 - ``GET  /a2a/seller/.well-known/agent-card.json`` — agent discovery card
 - ``POST /a2a/seller/jsonrpc``                     — JSON-RPC 2.0 ``message/send``
+- ``POST /invocations``                            — same handler; AgentCore's
+  data plane (InvokeAgentRuntime) always calls ``/invocations``
 - ``GET  /ping``                                   — AgentCore health probe
 
 Every ``message/send`` is translated to a ``{"prompt": ...}`` payload and
@@ -123,6 +125,15 @@ async def _handle_message_send(params: dict[str, Any]) -> dict[str, Any]:
     if context_id:
         payload["session_id"] = context_id
 
+    # Optional routing hint: A2A callers may request the crew path (real
+    # inventory/tools) by passing routing_mode in the message metadata (the
+    # A2A-idiomatic place for extra params) or at the top level. Absent that,
+    # _handle_invocation defaults to chat.
+    metadata = (params.get("message") or {}).get("metadata") or {}
+    routing_mode = metadata.get("routing_mode") or params.get("routing_mode")
+    if routing_mode:
+        payload["routing_mode"] = routing_mode
+
     result = await _handle_invocation(payload)
 
     return {
@@ -223,6 +234,13 @@ def build_app():
         routes=[
             Route(agent_card_path, agent_card, methods=["GET"]),
             Route(jsonrpc_path, jsonrpc, methods=["POST"]),
+            # AgentCore's data plane (InvokeAgentRuntime / `agentcore invoke`)
+            # always POSTs to /invocations regardless of the container's inner
+            # protocol, so the A2A JSON-RPC handler is also mounted there. A
+            # buyer reaching this runtime via InvokeAgentRuntime hits
+            # /invocations; a direct A2A client hits /a2a/seller/jsonrpc. Both
+            # share the same message/send handler.
+            Route("/invocations", jsonrpc, methods=["POST"]),
             Route("/ping", ping, methods=["GET"]),
         ]
     )

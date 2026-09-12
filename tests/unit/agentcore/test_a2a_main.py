@@ -99,6 +99,14 @@ class TestMessageSend:
         resp = client.post("/a2a/seller/jsonrpc", json={"not": "jsonrpc"})
         assert resp.json()["error"]["code"] == -32600
 
+    def test_invocations_alias_reaches_same_handler(self, client):
+        # AgentCore's data plane always POSTs /invocations; it must reach the
+        # same message/send handler as /a2a/seller/jsonrpc.
+        resp = client.post("/invocations", json=_jsonrpc("list ctv inventory"))
+        assert resp.status_code == 200
+        result = resp.json()["result"]
+        assert result["status"]["state"] == "completed"
+
 
 class TestHelpers:
     def test_extract_text_joins_multiple_parts(self):
