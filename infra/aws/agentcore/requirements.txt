@@ -1,8 +1,15 @@
 # Requirements for AgentCore CLI deployment path.
-# Used by: agentcore configure --requirements-file requirements-agentcore.txt
+# Used by: agentcore configure --requirements-file infra/aws/agentcore/requirements.txt
 #
-# Lists bedrock-agentcore SDK + all deps from pyproject.toml explicitly
-# (can't use -e . because the CLI Dockerfile installs requirements before copying source)
+# The toolkit-generated Dockerfile installs THIS file (it does not `pip install`
+# the ad_seller package), so every runtime import dependency must be listed
+# here — including the git-based shared contract library — or the container
+# fails at import with ModuleNotFoundError. Kept in sync with pyproject.toml.
+#
+# NOTE: the build image (astral uv slim) has no `git` binary, so a
+# `git+https://` source fails with "Git executable not found". Use the GitHub
+# archive tarball for iab-agentic-primitives — a plain HTTPS download that
+# needs no git. Keep it pinned to the same tag as pyproject.toml (v0.5.1).
 bedrock-agentcore
 crewai[anthropic]>=1.14.0
 crewai-tools[mcp]>=1.14.0
@@ -18,3 +25,4 @@ uvicorn>=0.30.0
 aiosqlite>=0.20.0
 asyncpg>=0.30.0
 redis>=5.0.0
+iab-agentic-primitives[client] @ https://github.com/IABTechLab/iab-agentic-primitives/archive/refs/tags/v0.5.1.tar.gz
