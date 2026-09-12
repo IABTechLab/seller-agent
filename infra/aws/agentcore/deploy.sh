@@ -526,6 +526,7 @@ deploy_mcp_runtime() {
   # Build env var args — AGENTCORE_MODE tells main.py to run MCP server
   local env_args=(
     --env "AGENTCORE_MODE=mcp"
+    --env "PYTHONPATH=/app/src"
     --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
     --env "MEMORY_LLM_MODEL=${MEMORY_MODEL}"
@@ -612,6 +613,7 @@ deploy_http_runtime() {
   # Build env var args — AGENTCORE_MODE tells main.py to run HTTP server
   local env_args=(
     --env "AGENTCORE_MODE=http"
+    --env "PYTHONPATH=/app/src"
     --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
     --env "MEMORY_LLM_MODEL=${MEMORY_MODEL}"
