@@ -10,12 +10,13 @@ Quotes are non-binding price offers from the seller. They have a 24-hour TTL and
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `product_id` | string | Yes | Product from the catalog |
+| `idempotency_key` | string | **Yes** | Requester-minted opaque key (UUID recommended). A replay with the same key and body returns the original quote instead of minting a second one; the same key reused with a different body is an `idempotency_conflict` (HTTP 409). |
+| `product_id` | string | Yes | Seller-issued product to quote, e.g. `prod-3f2a9c81`. Product IDs come from [`GET /products`](overview.md) — they are not fixed catalog slugs. |
 | `deal_type` | string | Yes | `PG` (Programmatic Guaranteed), `PD` (Preferred Deal), or `PA` (Private Auction) |
 | `impressions` | integer | No | Required for PG deals |
 | `flight_start` | string | No | ISO date, defaults to today |
 | `flight_end` | string | No | ISO date, defaults to today + 30 days |
-| `target_cpm` | float | No | Buyer's desired CPM; accepted if above floor |
+| `target_cpm` | Money object | No | Buyer's desired CPM; accepted if above floor. A `Money` object: `{"amount_micros": <int>, "currency": "USD"}`, where `1,000,000` micros = 1 currency unit. Money is never a bare float on the wire. |
 | `buyer_identity` | object | No | `seat_id`, `agency_id`, `advertiser_id`, `dsp_platform` |
 
 ### Deal Types
@@ -41,7 +42,8 @@ curl -X POST http://localhost:8000/api/v1/quotes \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <api_key>" \
   -d '{
-    "product_id": "display",
+    "idempotency_key": "<idempotency_key>",
+    "product_id": "prod-3f2a9c81",
     "deal_type": "PG",
     "impressions": 2000000,
     "flight_start": "2026-04-01",
@@ -53,36 +55,54 @@ curl -X POST http://localhost:8000/api/v1/quotes \
   }'
 ```
 
-Response:
+The response is a `{"quote": {...}}` envelope wrapping the shared `Quote` primitive. Every price is a `Money` object (integer micros, never a float):
 
 ```json
 {
-  "quote_id": "qt-a1b2c3d4e5f6",
-  "status": "available",
-  "product": {
-    "product_id": "display",
-    "name": "Premium Display",
-    "inventory_type": "display"
-  },
-  "pricing": {
-    "base_cpm": 12.0,
-    "tier_discount_pct": 10.0,
-    "volume_discount_pct": 5.0,
-    "final_cpm": 10.26,
-    "currency": "USD",
-    "pricing_model": "cpm",
-    "rationale": "Agency tier discount (10%) + volume discount (5%) applied"
-  },
-  "terms": {
-    "impressions": 2000000,
-    "flight_start": "2026-04-01",
-    "flight_end": "2026-06-30",
-    "guaranteed": true
-  },
-  "deal_type": "PG",
-  "buyer_tier": "advertiser",
-  "expires_at": "2026-04-02T00:00:00Z",
-  "created_at": "2026-04-01T00:00:00Z"
+  "quote": {
+    "quote_id": "qt-a1b2c3d4e5f6",
+    "status": "available",
+    "deal_type": "PG",
+    "product": {
+      "product_id": "prod-3f2a9c81",
+      "name": "Premium Display",
+      "inventory_type": "display"
+    },
+    "pricing": {
+      "pricing_type": "fixed",
+      "base_cpm": {"amount_micros": 12000000, "currency": "USD"},
+      "tier_discount_pct": 10.0,
+      "volume_discount_pct": 5.0,
+      "final_cpm": {"amount_micros": 10260000, "currency": "USD"},
+      "pricing_model": "cpm",
+      "rationale": "Agency tier discount (10%) + volume discount (5%) applied",
+      "base_cpp": null,
+      "final_cpp": null
+    },
+    "terms": {
+      "impressions": 2000000,
+      "flight_start": "2026-04-01",
+      "flight_end": "2026-06-30",
+      "guaranteed": true,
+      "grps": null,
+      "guaranteed_grps": null,
+      "target_demo": null
+    },
+    "availability": {
+      "inventory_available": true,
+      "estimated_fill_rate": null,
+      "competing_demand": null
+    },
+    "buyer_tier": "advertiser",
+    "rate_card_id": null,
+    "expires_at": "2026-04-02T00:00:00Z",
+    "seller_id": null,
+    "created_at": "2026-04-01T00:00:00Z",
+    "deal_id": null,
+    "media_type": "digital",
+    "linear_tv": null,
+    "consent_context": null
+  }
 }
 ```
 
@@ -92,11 +112,12 @@ Response:
 curl -X POST http://localhost:8000/api/v1/quotes \
   -H "Content-Type: application/json" \
   -d '{
-    "product_id": "video",
+    "idempotency_key": "<idempotency_key>",
+    "product_id": "prod-7c1e4b02",
     "deal_type": "PD",
     "flight_start": "2026-05-01",
     "flight_end": "2026-05-31",
-    "target_cpm": 18.50
+    "target_cpm": {"amount_micros": 18500000, "currency": "USD"}
   }'
 ```
 

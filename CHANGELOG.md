@@ -4,6 +4,10 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Docs
+
+- Correct quote, booking, order, and change-request examples to the current shared wire contract (idempotency keys, Money pricing, envelope responses, auth roles).
+
 ## [2.4.2] — 2026-08-17
 
 ### Added
