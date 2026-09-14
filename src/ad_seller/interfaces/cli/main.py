@@ -145,17 +145,21 @@ def price(
         is_authenticated=access_tier != AccessTier.PUBLIC,
     )
 
-    # Pricing via the SAME quote_service the REST /pricing route uses.
-    # Unpriced products (no base/floor CPM) surface the honest 422 as a
-    # readable CLI message rather than a traceback.
+    # Pricing via the SAME quote_service the REST /pricing route uses,
+    # which consults the operator rate card before catalog defaults
+    # (issue #69). Unpriced products (no base/floor CPM, and no matching
+    # rate card entry) surface the honest 422 as a readable CLI message
+    # rather than a traceback.
     from fastapi import HTTPException
 
     try:
-        pricing = quote_service.get_pricing(
-            product_id=product_id,
-            product=product,
-            buyer_context=context,
-            volume=volume,
+        pricing = asyncio.run(
+            quote_service.get_pricing(
+                product_id=product_id,
+                product=product,
+                buyer_context=context,
+                volume=volume,
+            )
         )
     except HTTPException as exc:
         console.print(f"[red]{exc.detail}[/red]")

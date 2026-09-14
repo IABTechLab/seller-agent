@@ -422,13 +422,19 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             # uncapped products report requested-as-available, capped products
             # cap at maximum_impressions). Replaces the former hardcoded
             # 1,000,000 placeholder that terminal-rejected any larger volume.
-            from ..services import catalog_service
+            from ..services import catalog_service, rate_card_service
 
             requested_impressions = self.state.proposal_data.get("impressions", 0)
             avails = catalog_service.check_avails(
                 product, requested_impressions=requested_impressions
             )
             available_impressions = avails["available_impressions"]
+
+            # Recommended price is the operator rate card's override when
+            # one is stored and matches this product's inventory type
+            # (issue #69), else the catalog base_cpm — unchanged from
+            # before. Floor stays the product's own floor_cpm regardless.
+            recommended_price = await rate_card_service.resolve_base_cpm(product)
 
             # Initialize evaluation with audience fields
             self.state.evaluation = ProposalEvaluation(
@@ -437,7 +443,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                 product_id=product_id,
                 requested_price=requested_price,
                 minimum_acceptable_price=product.floor_cpm,
-                recommended_price=product.base_cpm,
+                recommended_price=recommended_price,
                 price_acceptable=price_acceptable,
                 requested_impressions=requested_impressions,
                 available_impressions=available_impressions,
@@ -758,7 +764,11 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             proposal_id=self.state.proposal_id,
             product_id=product.product_id,
             buyer_context=self.state.buyer_context,
-            base_price=product.base_cpm,
+            # Anchor at the already-resolved recommended price (rate card
+            # override when one matched this product, else catalog
+            # base_cpm — see evaluate_pricing / issue #69), not the raw
+            # catalog base_cpm directly.
+            base_price=self.state.evaluation.recommended_price,
             floor_price=product.floor_cpm,
         )
 

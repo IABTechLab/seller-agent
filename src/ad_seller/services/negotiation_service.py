@@ -237,12 +237,19 @@ async def counter_proposal(
                 raise HTTPException(status_code=404, detail="Product not found")
             product_data = serialize_product(product)
 
+        # Anchor off the operator rate card's override when one is stored
+        # and matches this product's inventory type (issue #69), else the
+        # product's own base/floor CPM — unchanged from before.
+        from .rate_card_service import resolve_negotiation_anchor
+
+        anchor_base_price, anchor_floor_price = await resolve_negotiation_anchor(product_data)
+
         history = neg_engine.start_negotiation(
             proposal_id=proposal_id,
             product_id=product_id,
             buyer_context=buyer_context,
-            base_price=product_data.get("base_cpm", 0),
-            floor_price=product_data.get("floor_cpm", 0),
+            base_price=anchor_base_price,
+            floor_price=anchor_floor_price,
         )
 
         await emit_event(

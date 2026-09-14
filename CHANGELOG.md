@@ -4,6 +4,12 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- The operator rate card now drives pricing: matching entries override
+  catalog base CPM for quotes, bookings, and negotiation anchors (floors
+  still apply); previously it was stored but never read (issue #69).
+
 ## [2.4.2] — 2026-08-17
 
 ### Added

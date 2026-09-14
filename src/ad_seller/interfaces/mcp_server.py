@@ -506,7 +506,15 @@ async def create_package(
 
 @mcp.tool()
 async def get_rate_card() -> str:
-    """Get the current rate card (base CPMs by inventory type)."""
+    """Get the current rate card (base CPMs by inventory type).
+
+    ``source: "defaults"`` means no rate card has been stored — these are
+    generic reference values, not an operator-configured card, and do NOT
+    drive pricing. ``source: "stored"`` is the operator's actual card;
+    entries matching a product's inventory type override that product's
+    base CPM for quotes, bookings, and negotiation (floors still apply;
+    issue #69).
+    """
     storage = await _get_storage()
     rate_card = await storage.get("rate_card:current")
 
@@ -521,12 +529,13 @@ async def get_rate_card() -> str:
                     {"inventory_type": "native", "base_cpm": 10.0},
                     {"inventory_type": "audio", "base_cpm": 15.0},
                 ],
+                "updated_at": None,
                 "source": "defaults",
             },
             indent=2,
         )
 
-    return json.dumps(rate_card, indent=2)
+    return json.dumps({**rate_card, "source": "stored"}, indent=2)
 
 
 @mcp.tool()
@@ -564,7 +573,7 @@ async def get_pricing(product_id: str, buyer_tier: str = "public", volume: int =
         return json.dumps({"error": f"Product '{product_id}' not found"})
 
     context = BuyerContext(identity=BuyerIdentity(), is_authenticated=buyer_tier != "public")
-    pricing = quote_service.get_pricing(
+    pricing = await quote_service.get_pricing(
         product_id=product_id,
         product=product,
         buyer_context=context,
