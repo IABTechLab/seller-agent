@@ -4,6 +4,17 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Map internal deal status to the shared wire enum on read; deals
+  created via from-template, bulk, or curated paths no longer 500 on
+  GET (#73). Internal `confirmed` reads as `booked`, internal
+  `deprecated` (migrate/deprecate) reads as `cancelled`, and an
+  internal status with no wire translation now fails with an error
+  naming the status. Bulk-created deals also carry the quote's
+  deal type, product, pricing, and terms so the shared Deal primitive
+  can be built for them at all.
+
 ## [2.4.2] — 2026-08-17
 
 ### Added

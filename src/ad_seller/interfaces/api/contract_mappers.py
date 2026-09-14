@@ -310,13 +310,51 @@ def _openrtb_to_shared(params: dict[str, Any] | None) -> Optional[OpenRTBParams]
     )
 
 
+#: Internal deal statuses that have no member on the shared
+#: :class:`DealStatus` wire enum -> the wire value they mean. The
+#: from-template, bulk-create, curated, and migrate paths (and the MCP
+#: ``create_deal_from_template`` tool on top of them) store deals as
+#: ``"confirmed"``; migrate/deprecate leave the superseded deal as
+#: ``"deprecated"``. Neither exists on the shared enum, so mapping them
+#: here keeps GET /api/v1/deals/{deal_id} from raising (issue #73).
+#: Storage is left untouched — this is the wire boundary, and rewriting
+#: stored statuses would touch every write path and existing rows.
+INTERNAL_TO_WIRE_STATUS: dict[str, str] = {
+    # A confirmed (auto-booked) deal is a booked deal on the wire.
+    "confirmed": DealStatus.BOOKED.value,
+    # A deprecated deal is one buyers must stop targeting; the closest
+    # shared terminal state is cancelled.
+    "deprecated": DealStatus.CANCELLED.value,
+}
+
+
+def internal_deal_status_to_wire(status: Any) -> DealStatus:
+    """Map an internal deal status to the shared :class:`DealStatus`.
+
+    Internal statuses with no shared member are translated via
+    :data:`INTERNAL_TO_WIRE_STATUS`; anything else must already be a
+    shared value. An unmapped internal status fails loudly, naming the
+    offending status, instead of surfacing a bare ``ValueError`` from the
+    enum constructor.
+    """
+    raw = str(getattr(status, "value", status))
+    wire = INTERNAL_TO_WIRE_STATUS.get(raw, raw)
+    try:
+        return DealStatus(wire)
+    except ValueError:
+        raise ValueError(
+            f"Internal deal status {raw!r} has no shared DealStatus wire value; "
+            "add a translation to INTERNAL_TO_WIRE_STATUS in contract_mappers."
+        ) from None
+
+
 def internal_deal_to_shared_deal(data: dict[str, Any]) -> Deal:
     """Build the shared :class:`Deal` primitive from the internal deal dict."""
     product = data.get("product", {})
     return Deal(
         deal_id=data["deal_id"],
         deal_type=DealType(data["deal_type"]),
-        status=DealStatus(data.get("status", "proposed")),
+        status=internal_deal_status_to_wire(data.get("status", "proposed")),
         quote_id=data.get("quote_id"),
         product=ProductRef(
             product_id=product.get("product_id", ""),
