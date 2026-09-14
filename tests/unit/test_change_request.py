@@ -250,6 +250,7 @@ class TestCreateChangeRequest:
                     "order_id": "ORD-TEST001",
                     "change_type": "impressions",
                     "reason": "Increase campaign reach",
+                    "idempotency_key": "idem-null-deal-1",
                 },
             )
 
