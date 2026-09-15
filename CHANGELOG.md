@@ -4,6 +4,13 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- `deal.created` is now published from every booking path (quote,
+  template, curated, bulk, migration) with a `source` field; the event
+  is audit-class, so a bus failure falls back to the audit log and the
+  booking still succeeds.
+
 ### Changed
 
 - Booking (POST /api/v1/deals) now requires a verified buyer key matching
