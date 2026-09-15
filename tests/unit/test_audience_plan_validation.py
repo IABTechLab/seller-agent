@@ -19,6 +19,7 @@ import asyncio
 import logging
 import sys
 from types import ModuleType
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -51,6 +52,7 @@ from ad_seller.models.audience_capabilities import (  # noqa: E402
     MaxRefsPerRole,
     TaxonomyLockHashes,
 )
+from ad_seller.models.buyer_identity import BuyerIdentity  # noqa: E402
 from ad_seller.models.flow_state import ExecutionStatus  # noqa: E402
 from ad_seller.models.media_kit import (  # noqa: E402
     Package,
@@ -432,7 +434,13 @@ def http_client():
 
     from datetime import datetime, timedelta
 
-    app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    # Booking now requires a verified buyer (security fix). The quote
+    # seeded below is buyer_tier="public", so any authenticated key
+    # satisfies both the auth gate and the tier-consistency check --
+    # these tests exercise audience-plan validation, not auth.
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
+        identity=BuyerIdentity(seat_id="seat-audplan-1")
+    )
     transport = ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://test")
     # Build a minimal in-memory storage for the deal-booking happy path.

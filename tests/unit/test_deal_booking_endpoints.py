@@ -30,10 +30,50 @@ import httpx  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
 
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # noqa: E402
+from ad_seller.models.buyer_identity import BuyerIdentity  # noqa: E402
 
 # =============================================================================
 # Helpers
 # =============================================================================
+
+
+def _advertiser_key_record(
+    advertiser_id: str = "adv-test-1",
+    agency_id: str = "agency-test-1",
+    seat_id: str = "seat-test-1",
+):
+    """A MagicMock API key record whose identity resolves to ADVERTISER tier.
+
+    ``BuyerContext.effective_tier`` requires BOTH ``agency_id`` and
+    ``advertiser_id`` to reach ADVERTISER (progressive-revelation chain),
+    so all three fields are set to match a real ``ApiKeyRecord`` identity
+    and the default fixture quote's ``buyer_tier": "advertiser"``.
+    """
+    return MagicMock(
+        identity=BuyerIdentity(seat_id=seat_id, agency_id=agency_id, advertiser_id=advertiser_id)
+    )
+
+
+def _authenticate(record=None):
+    """Override the optional-key dependency with an authenticated buyer."""
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: (
+        record if record is not None else _advertiser_key_record()
+    )
+
+
+def _seed_quote_history(mock_storage, quote_id, buyer_id, product_id, quoted_cpm):
+    """Write a ``QuoteHistoryStore`` record directly, matching the shape
+    ``quote_service.create_quote`` writes at quote-creation time. Used to
+    exercise the booking endpoint's ownership check against a specific
+    recorded buyer."""
+    mock_storage._store[f"quote_history:{quote_id}"] = {
+        "quote_id": quote_id,
+        "buyer_id": buyer_id,
+        "product_id": product_id,
+        "quoted_cpm": quoted_cpm,
+        "quoted_at": datetime.utcnow().isoformat(),
+        "expires_at": None,
+    }
 
 
 def _make_available_quote(**overrides):
@@ -105,6 +145,7 @@ class TestBookDeal:
     async def test_happy_path_book_deal(self, client, mock_storage):
         quote = _make_available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
@@ -130,6 +171,7 @@ class TestBookDeal:
     async def test_quote_status_updated_to_booked(self, client, mock_storage):
         quote = _make_available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
@@ -146,6 +188,7 @@ class TestBookDeal:
     async def test_deal_stored_in_deal_storage(self, client, mock_storage):
         quote = _make_available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
@@ -161,6 +204,7 @@ class TestBookDeal:
     async def test_pa_deal_sets_auction_type_3(self, client, mock_storage):
         quote = _make_available_quote(deal_type="PA")
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
@@ -174,6 +218,7 @@ class TestBookDeal:
     # Error cases
 
     async def test_quote_not_found(self, client, mock_storage):
+        _authenticate()
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
                 "/api/v1/deals",
@@ -187,6 +232,7 @@ class TestBookDeal:
             expires_at=(datetime.utcnow() - timedelta(hours=1)).isoformat() + "Z",
         )
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
@@ -199,6 +245,7 @@ class TestBookDeal:
     async def test_already_booked_quote_returns_409(self, client, mock_storage):
         quote = _make_available_quote(status="booked")
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
@@ -212,6 +259,7 @@ class TestBookDeal:
         """FD-12: same idempotency_key -> same Deal, no duplicate booking."""
         quote = _make_available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             first = await client.post(
@@ -235,6 +283,7 @@ class TestBookDeal:
         quote_b = _make_available_quote(quote_id="qt-second222222")
         mock_storage._store[f"quote:{quote_a['quote_id']}"] = quote_a
         mock_storage._store[f"quote:{quote_b['quote_id']}"] = quote_b
+        _authenticate()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             first = await client.post(
@@ -254,8 +303,6 @@ class TestBookDeal:
         """FD-12 scopes the idempotency namespace per buyer — a record stored
         under one buyer's identity must not be visible to a different buyer
         who reuses the same client-chosen key (review follow-up on #50)."""
-        from ad_seller.models.buyer_identity import BuyerIdentity
-
         quote = _make_available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
         # As if buyer A already booked a (different) deal under this key.
@@ -264,7 +311,12 @@ class TestBookDeal:
             "payload_hash": "not-the-real-hash",
         }
 
-        buyer_b = MagicMock(identity=BuyerIdentity(advertiser_id="adv-buyer-b"))
+        # Full seat/agency/advertiser chain -- ADVERTISER tier, matching the
+        # default fixture quote's "advertiser" buyer_tier (the security fix's
+        # tier-consistency check requires this, unlike before).
+        buyer_b = _advertiser_key_record(
+            advertiser_id="adv-buyer-b", agency_id="agency-buyer-b", seat_id="seat-buyer-b"
+        )
         app.dependency_overrides[_get_optional_api_key_record] = lambda: buyer_b
         try:
             with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
@@ -305,6 +357,7 @@ class TestBookDeal:
         # True pre-PR50 shape as main actually writes it: bare, unscoped
         # key with no scope segment (buyer-scoping didn't exist yet either).
         mock_storage._store["idempotency:deal:idem-legacy"] = "DEMO-LEGACY0001"
+        _authenticate()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
@@ -317,6 +370,133 @@ class TestBookDeal:
         # No duplicate deal was minted.
         deal_keys = [k for k in mock_storage._store if k.startswith("deal:")]
         assert deal_keys == ["deal:DEMO-LEGACY0001"]
+
+
+# =============================================================================
+# Security fix: booking requires a verified buyer matching the quote
+# =============================================================================
+
+
+class TestBookDealRequiresVerifiedBuyer:
+    """POST /api/v1/deals used to book at the quoted price for ANY caller,
+    anonymous or not -- an optional key only scoped the idempotency key,
+    with no check that the caller was the buyer the quote was priced for.
+    These tests cover the closed gap: anonymous rejection, wrong-buyer
+    rejection (by recorded identity and by tier), and the owning buyer
+    still booking successfully."""
+
+    async def test_anonymous_booking_is_401(self, client, mock_storage):
+        """Default `client` fixture is anonymous -- no override needed."""
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-anon", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 401
+        assert resp.json()["detail"]["error"] == "authentication_required"
+
+    async def test_valid_key_but_wrong_buyer_is_403(self, client, mock_storage):
+        """A valid, authenticated key that is NOT the quote's owner is
+        rejected -- this is the exact hole the fix closes: a different
+        buyer who merely learned the quote_id could not book at the
+        original buyer's negotiated tier pricing."""
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _seed_quote_history(
+            mock_storage,
+            quote["quote_id"],
+            buyer_id="advertiser:adv-owner",
+            product_id=quote["product"]["product_id"],
+            quoted_cpm=quote["pricing"]["final_cpm"],
+        )
+        intruder = _advertiser_key_record(
+            advertiser_id="adv-intruder", agency_id="agency-intruder", seat_id="seat-intruder"
+        )
+        _authenticate(intruder)
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-intruder", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["error"] == "buyer_mismatch"
+
+    async def test_owning_buyer_books_successfully(self, client, mock_storage):
+        """The buyer recorded as the quote's owner (via QuoteHistoryStore,
+        written at quote-creation time) books normally."""
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _seed_quote_history(
+            mock_storage,
+            quote["quote_id"],
+            buyer_id="advertiser:adv-owner",
+            product_id=quote["product"]["product_id"],
+            quoted_cpm=quote["pricing"]["final_cpm"],
+        )
+        owner = _advertiser_key_record(
+            advertiser_id="adv-owner", agency_id="agency-owner", seat_id="seat-owner"
+        )
+        _authenticate(owner)
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-owner", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["deal"]["deal_id"].startswith("DEMO-")
+
+    async def test_lower_tier_buyer_is_403(self, client, mock_storage):
+        """No quote-history record (e.g. a quote seeded outside the normal
+        create-quote path), but the caller's verified tier is BELOW the
+        quote's priced tier -- rejected on tier consistency, the fix's
+        second line of defense when identity provenance is unavailable."""
+        quote = _make_available_quote()  # buyer_tier="advertiser"
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        # A valid key with no revealed identity resolves to PUBLIC tier.
+        public_tier_caller = MagicMock(identity=BuyerIdentity())
+        _authenticate(public_tier_caller)
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-lowtier", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["error"] == "buyer_tier_mismatch"
+
+    async def test_public_tier_quote_bookable_by_any_authenticated_buyer(
+        self, client, mock_storage
+    ):
+        """A quote priced at PUBLIC tier (no identity asserted at quote
+        time) asserted nothing buyer-specific -- any authenticated buyer
+        may book it; only fully anonymous callers are rejected."""
+        quote = _make_available_quote(buyer_tier="public")
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _seed_quote_history(
+            mock_storage,
+            quote["quote_id"],
+            buyer_id="public",
+            product_id=quote["product"]["product_id"],
+            quoted_cpm=quote["pricing"]["final_cpm"],
+        )
+        _authenticate()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-public-quote", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 200
 
 
 # =============================================================================
@@ -412,6 +592,11 @@ class TestQuoteToDealFlow:
     async def test_full_quote_to_deal_flow(self, client, mock_storage):
         from ad_seller.models.core import DealType, PricingModel
         from ad_seller.models.flow_state import ProductDefinition
+
+        # Same authenticated buyer creates the quote and books it -- the
+        # real QuoteHistoryStore record written by POST /api/v1/quotes now
+        # backs the booking endpoint's ownership check end-to-end.
+        _authenticate()
 
         products = {
             "ctv-premium-sports": ProductDefinition(

@@ -24,7 +24,7 @@ Coverage:
 import logging
 import sys
 from types import ModuleType
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -46,6 +46,7 @@ import httpx  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
 
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # noqa: E402
+from ad_seller.models.buyer_identity import BuyerIdentity  # noqa: E402
 
 # Wire-format media types per docs/api/audience_plan_wire_format.md §8.
 _UCP = "application/vnd.ucp.embedding+json; v=1"
@@ -140,6 +141,12 @@ def _make_audience_plan(plan_id: str = _FIXTURE_PLAN_ID) -> dict:
 def mock_storage():
     store: dict = {}
     storage = AsyncMock()
+    # Generic get/set are what QuoteHistoryStore (the booking endpoint's
+    # ownership check) uses -- without wiring them, unconfigured AsyncMock
+    # attributes return a truthy MagicMock instead of None, which the
+    # ownership check would misread as a real (bogus) history record.
+    storage.get = AsyncMock(side_effect=lambda k: store.get(k))
+    storage.set = AsyncMock(side_effect=lambda k, v, ttl=None: store.__setitem__(k, v))
     storage.get_quote = AsyncMock(side_effect=lambda qid: store.get(f"quote:{qid}"))
     storage.set_quote = AsyncMock(
         side_effect=lambda qid, data, ttl=86400: store.__setitem__(f"quote:{qid}", data)
@@ -154,7 +161,15 @@ def mock_storage():
 
 @pytest.fixture
 def client(mock_storage):
-    app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    # Booking now requires a verified buyer (security fix); the quotes
+    # here default to buyer_tier="advertiser", so an authenticated
+    # advertiser-tier key is used -- these tests exercise the audience-plan
+    # snapshot behavior, not auth, so a single fixed identity is fine.
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
+        identity=BuyerIdentity(
+            seat_id="seat-snap-1", agency_id="agency-snap-1", advertiser_id="adv-snap-1"
+        )
+    )
     transport = ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://test")
     yield c
