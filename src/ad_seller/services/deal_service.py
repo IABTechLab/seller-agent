@@ -194,8 +194,10 @@ async def _emit_deal_created(deal_data: dict[str, Any], source: str) -> None:
 
     ``source`` names the path (``quote``, ``template``, ``curated``) so
     consumers of the event feed can tell how the deal came to exist.
-    Fail-open like every non-audit event: a bus failure never fails the
-    booking.
+    ``deal.created`` is audit-class (``AUDIT_EVENT_TYPES``): on bus failure
+    the event is written to the audit fallback file and the booking still
+    succeeds; if that write also fails the error propagates after the deal
+    is already persisted.
     """
     from ..events.helpers import emit_event
     from ..events.models import EventType
