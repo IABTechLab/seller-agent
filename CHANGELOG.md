@@ -15,6 +15,10 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   surfacing later as an uncaught `AttributeError` in
   `apply_change_request`'s `order_meta.update(proposed)`, a 500 with no
   way to repair the order.
+- `deal.created` is now published from every booking path (quote,
+  template, curated, bulk, migration) with a `source` field; the event
+  is audit-class, so a bus failure falls back to the audit log and the
+  booking still succeeds.
 
 ### Changed
 
