@@ -22,8 +22,12 @@ no ``product_id`` or tier field, only ``inventory_type``/``base_cpm``/
 ``inventory_type`` matches the product's overrides the catalog base CPM
 as the starting price. The product's ``floor_cpm`` still applies — an
 override below floor is clamped up to the floor, never priced under
-it. No matching entry, or no stored rate card at all, falls back to
-catalog pricing — byte-identical to pre-issue-#69 behavior.
+it. When the product has no ``floor_cpm`` of its own, the clamp falls
+back to the global floor (``TieredPricingConfig.global_floor_cpm``) —
+an override is never applied unclamped just because the product didn't
+configure a floor. No matching entry, or no stored rate card at all,
+falls back to catalog pricing — byte-identical to pre-issue-#69
+behavior.
 
 Deliberately unpriced products (no ``base_cpm``/``floor_cpm`` at all —
 the honest-availability policy's 422-unpriceable path, see
@@ -65,6 +69,25 @@ def _find_entry(
     return None
 
 
+def _effective_floor_cpm(floor_cpm: Optional[float]) -> float:
+    """The floor to clamp a rate card override against.
+
+    ``ProductDefinition.floor_cpm`` is optional — plenty of products carry
+    a ``base_cpm`` with no floor configured at all — so an override on one
+    of those must not skip the clamp entirely just because there is no
+    product-specific floor to clamp to. Falls back to
+    ``TieredPricingConfig.global_floor_cpm``, the same backstop
+    ``PricingRulesEngine`` already enforces on quotes and bookings, rather
+    than inventing a separate constant here.
+    """
+    if floor_cpm is not None:
+        return floor_cpm
+
+    from ..models.pricing_tiers import TieredPricingConfig
+
+    return TieredPricingConfig.model_fields["global_floor_cpm"].default
+
+
 def _apply_override(
     *,
     catalog_cpm: float,
@@ -75,15 +98,16 @@ def _apply_override(
 ) -> float:
     """Clamp a matched rate card entry to the floor and log the provenance."""
     override_cpm = entry["base_cpm"]
-    if floor_cpm is not None and override_cpm < floor_cpm:
+    effective_floor = _effective_floor_cpm(floor_cpm)
+    if override_cpm < effective_floor:
         logger.info(
             "Rate card override for product %s (%s): $%.2f is below floor $%.2f; clamped to floor.",
             product_id,
             inventory_type,
             override_cpm,
-            floor_cpm,
+            effective_floor,
         )
-        return floor_cpm
+        return effective_floor
 
     logger.info(
         "Rate card override applied for product %s (%s): catalog base $%.2f -> $%.2f.",

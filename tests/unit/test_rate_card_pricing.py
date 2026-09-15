@@ -246,6 +246,25 @@ class TestResolveBaseCpm:
 
         assert exc.value.status_code == 422
 
+    async def test_negative_entry_with_no_product_floor_is_clamped_not_negative(self, mock_storage):
+        """Adversarial case (found in review of #78 by @Sirajmx): a product
+        with no ``floor_cpm`` of its own paired with a negative rate card
+        entry must not resolve to a negative price. ``_apply_override``
+        used to skip the clamp entirely whenever ``floor_cpm`` was
+        ``None``, so ``-5.0`` came straight through unclamped."""
+        from ad_seller.models.pricing_tiers import TieredPricingConfig
+
+        product = _make_product(base_cpm=35.0, floor_cpm=None)
+        mock_storage._store["rate_card:current"] = _rate_card(
+            [{"inventory_type": "ctv", "base_cpm": -5.0}]
+        )
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            price = await rate_card_service.resolve_base_cpm(product)
+
+        assert price >= 0
+        assert price == TieredPricingConfig.model_fields["global_floor_cpm"].default
+
 
 # =============================================================================
 # (2) Quoting — quote_service.create_quote
@@ -461,6 +480,41 @@ class TestNegotiationAnchorReflectsOverride:
         stored = mock_storage._store["negotiation:qt-neg3"]
         assert stored["base_price"] == 35.0
         assert stored["floor_price"] == 20.0
+
+    async def test_negative_entry_with_no_product_floor_never_yields_negative_base_price(
+        self, mock_storage
+    ):
+        """Adversarial case (found in review of #78 by @Sirajmx): quotes
+        and bookings were incidentally protected from a negative override
+        by ``PricingRulesEngine``'s unrelated ``global_floor_cpm``, but
+        negotiation anchored directly off ``resolve_negotiation_anchor``
+        with no such backstop — a negative rate card entry on a
+        floor-less product reached ``NegotiationHistory.base_price``
+        unclamped."""
+        mock_storage._store["product:ctv-premium-sports"] = {
+            "product_id": "ctv-premium-sports",
+            "inventory_type": "ctv",
+            "base_cpm": 35.0,
+            "floor_cpm": None,
+        }
+        mock_storage._store["rate_card:current"] = _rate_card(
+            [{"inventory_type": "ctv", "base_cpm": -5.0}]
+        )
+        mock_storage._store["quote:qt-neg4"] = {
+            "quote_id": "qt-neg4",
+            "product": {"product_id": "ctv-premium-sports"},
+        }
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            await negotiation_service.counter_proposal(
+                "qt-neg4", buyer_price=10.0, buyer_context=_public_context()
+            )
+
+        stored = mock_storage._store["negotiation:qt-neg4"]
+        assert stored["base_price"] >= 0
 
     async def test_proposal_flow_recommended_price_reflects_override(self):
         """ProposalHandlingFlow.evaluate_pricing (the primary negotiation

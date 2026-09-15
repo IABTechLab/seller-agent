@@ -512,7 +512,7 @@ class RateCardEntry(BaseModel):
     """Rate card entry mapping inventory type to base CPM."""
 
     inventory_type: str  # display, video, ctv, mobile_app, native, audio
-    base_cpm: float
+    base_cpm: float = Field(gt=0)  # a rate card entry can never price at or below zero
     currency: str = "USD"
     effective_date: Optional[str] = None
     notes: Optional[str] = None
