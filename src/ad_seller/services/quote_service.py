@@ -35,7 +35,7 @@ def _deal_type_map():
     }
 
 
-def get_pricing(
+async def get_pricing(
     product_id: str,
     product: Any,
     buyer_context: Any,
@@ -43,19 +43,22 @@ def get_pricing(
 ) -> dict[str, Any]:
     """Calculate tier/volume-adjusted pricing for a product.
 
-    Unpriced products (no base_cpm/floor_cpm) are a 422 — never a
-    fabricated price (see ``catalog_service.priceable_cpm``).
+    Base price is the operator rate card's override when one is stored
+    and matches the product's inventory type, else the catalog's
+    base_cpm/floor_cpm (issue #69; see ``rate_card_service.resolve_base_cpm``).
+    Unpriced products with no matching rate card entry are still a 422 —
+    never a fabricated price.
     """
     from ..engines.pricing_rules_engine import PricingRulesEngine
     from ..models.pricing_tiers import TieredPricingConfig
-    from . import catalog_service
+    from . import rate_card_service
 
     config = TieredPricingConfig(seller_organization_id="default")
     engine = PricingRulesEngine(config)
 
     decision = engine.calculate_price(
         product_id=product_id,
-        base_price=catalog_service.priceable_cpm(product),
+        base_price=await rate_card_service.resolve_base_cpm(product),
         buyer_context=buyer_context,
         volume=volume,
     )
@@ -152,16 +155,20 @@ async def create_quote(
         inventory_available=avails["available_impressions"] >= max(0, requested_volume),
     )
 
-    # Calculate price via PricingRulesEngine
+    # Calculate price via PricingRulesEngine. Base price is the operator
+    # rate card's override when one is stored and matches this product's
+    # inventory type (issue #69), else the catalog CPM avails already
+    # validated exists (check_avails guarantees at least one CPM exists;
+    # falls back to the floor when the product declares no base rate).
+    from . import rate_card_service
+
     config = TieredPricingConfig(seller_organization_id="default")
     engine = PricingRulesEngine(config)
 
     deal_type_enum = deal_type_map[deal_type_str]
     decision = engine.calculate_price(
         product_id=request.product_id,
-        # check_avails guarantees at least one CPM exists; fall back to the
-        # floor when the product declares no base rate (mirrors estimated_cpm).
-        base_price=avails["estimated_cpm"],
+        base_price=await rate_card_service.resolve_base_cpm(product),
         buyer_context=buyer_context,
         deal_type=deal_type_enum,
         volume=request.impressions or 0,

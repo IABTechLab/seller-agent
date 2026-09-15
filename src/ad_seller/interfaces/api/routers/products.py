@@ -189,7 +189,7 @@ async def get_pricing(
         agent_url=request.agent_url,
     )
 
-    pricing = quote_service.get_pricing(
+    pricing = await quote_service.get_pricing(
         product_id=request.product_id,
         product=product,
         buyer_context=context,

@@ -9,6 +9,9 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 - Booking (POST /api/v1/deals) now requires a verified buyer key matching
   the quote; the MCP deal-from-template tool is operator-gated. Previously
   anonymous callers could book any quote.
+- The operator rate card now drives pricing: matching entries override
+  catalog base CPM for quotes, bookings, and negotiation anchors (floors
+  still apply); previously it was stored but never read (issue #69).
 
 ### Fixed
 

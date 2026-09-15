@@ -512,17 +512,26 @@ class RateCardEntry(BaseModel):
     """Rate card entry mapping inventory type to base CPM."""
 
     inventory_type: str  # display, video, ctv, mobile_app, native, audio
-    base_cpm: float
+    base_cpm: float = Field(gt=0)  # a rate card entry can never price at or below zero
     currency: str = "USD"
     effective_date: Optional[str] = None
     notes: Optional[str] = None
 
 
 class RateCardResponse(BaseModel):
-    """Full rate card for the seller."""
+    """Full rate card for the seller.
+
+    ``source`` distinguishes an operator-stored rate card ("stored") from
+    the generic reference defaults returned when none has ever been set
+    ("defaults") — issue #69: the unset-state response used to return the
+    same shape as a real stored card with no way to tell them apart.
+    ``updated_at`` is ``None`` for the unset ("defaults") case; a stored
+    card always carries the ISO timestamp of its last PUT.
+    """
 
     entries: list[RateCardEntry]
-    updated_at: str
+    updated_at: Optional[str] = None
+    source: str = "stored"
 
 
 class DealPushRequest(BaseModel):

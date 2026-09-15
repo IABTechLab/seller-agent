@@ -546,9 +546,12 @@ async def create_deal_from_template(
             },
         )
 
-    # Calculate price. Honest pricing: base_cpm falling back to floor_cpm;
-    # unpriced products are a 422, never a fabricated price.
-    from . import catalog_service
+    # Calculate price. Base price is the operator rate card's override
+    # when one is stored and matches this product's inventory type
+    # (issue #69), else honest catalog pricing: base_cpm falling back to
+    # floor_cpm; unpriced products with no matching rate card entry are
+    # still a 422, never a fabricated price.
+    from . import rate_card_service
 
     config = TieredPricingConfig(seller_organization_id="default")
     engine = PricingRulesEngine(config)
@@ -556,7 +559,7 @@ async def create_deal_from_template(
 
     decision = engine.calculate_price(
         product_id=request.product_id,
-        base_price=catalog_service.priceable_cpm(product),
+        base_price=await rate_card_service.resolve_base_cpm(product),
         buyer_context=buyer_context,
         deal_type=deal_type_enum,
         volume=request.impressions or 0,
