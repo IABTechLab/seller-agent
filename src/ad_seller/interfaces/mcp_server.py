@@ -630,6 +630,10 @@ async def create_deal_from_template(
 ) -> str:
     """Create a deal directly from parameters (one-step, no quote needed).
     Returns the deal or a rejection if max_cpm is below floor."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from types import SimpleNamespace
 
     from fastapi import HTTPException
