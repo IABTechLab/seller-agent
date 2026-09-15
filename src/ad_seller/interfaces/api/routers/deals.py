@@ -14,6 +14,7 @@ matches routes in registration order. In particular
 and handler behavior are otherwise unchanged.
 """
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -41,6 +42,8 @@ from ..schemas import (
     DealResponse,
     SSPDealDistributeRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -304,10 +307,18 @@ async def list_deals(
     length so there is no shadowing, but keeping literal routes together
     with ``/export`` keeps the EP-8.4 ordering rule easy to audit.
     """
-    deals = [cm.internal_deal_to_response(d) for d in await deal_service.list_deals()]
+    deals: list[DealBookingResponse] = []
+    skipped: list[str] = []
+    for record in await deal_service.list_deals():
+        try:
+            deals.append(cm.internal_deal_to_response(record))
+        except Exception:
+            deal_id = str(record.get("deal_id"))
+            logger.warning("Skipping unserializable stored deal %s", deal_id, exc_info=True)
+            skipped.append(deal_id)
     if status is not None:
         deals = [d for d in deals if d.deal.status == status]
-    return DealListResponse(deals=deals, count=len(deals))
+    return DealListResponse(deals=deals, count=len(deals), skipped=skipped)
 
 
 @router.get("/api/v1/deals/export", tags=["Deal Booking"])
