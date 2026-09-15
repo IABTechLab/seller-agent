@@ -717,6 +717,14 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
                     "deal_id": deal_id,
                     "quote_id": op.quote_id,
                     "status": DealBookingStatus.CONFIRMED.value,
+                    # Carry the booked terms from the quote so the deal is
+                    # readable through GET /api/v1/deals/{deal_id} (the
+                    # shared Deal primitive requires deal_type; issue #73).
+                    "deal_type": quote.get("deal_type"),
+                    "product": quote.get("product", {}),
+                    "pricing": quote.get("pricing", {}),
+                    "terms": quote.get("terms", {}),
+                    "buyer_tier": quote.get("buyer_tier", "public"),
                     "created_at": now.isoformat() + "Z",
                     "notes": op.notes,
                 }

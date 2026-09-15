@@ -4,6 +4,23 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Booking (POST /api/v1/deals) now requires a verified buyer key matching
+  the quote; the MCP deal-from-template tool is operator-gated. Previously
+  anonymous callers could book any quote.
+
+### Fixed
+
+- Map internal deal status to the shared wire enum on read; deals
+  created via from-template, bulk, or curated paths no longer 500 on
+  GET (#73). Internal `confirmed` reads as `booked`, internal
+  `deprecated` (migrate/deprecate) reads as `cancelled`, and an
+  internal status with no wire translation now fails with an error
+  naming the status. Bulk-created deals also carry the quote's
+  deal type, product, pricing, and terms so the shared Deal primitive
+  can be built for them at all.
+
 ### Docs
 
 - Correct quote, booking, order, and change-request examples to the current shared wire contract (idempotency keys, Money pricing, envelope responses, auth roles).
