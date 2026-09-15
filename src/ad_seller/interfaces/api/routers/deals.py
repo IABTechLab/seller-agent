@@ -17,6 +17,7 @@ and handler behavior are otherwise unchanged.
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from iab_agentic_primitives.primitives import DealStatus
 from iab_agentic_primitives.protocol import DealBookingRequest, DealBookingResponse
 
 from ....services import deal_service
@@ -286,23 +287,27 @@ async def agentic_audience_match(request: AgenticAudienceMatchRequest):
 
 @router.get("/api/v1/deals", tags=["Deal Booking"], response_model=DealListResponse)
 async def list_deals(
-    status: Optional[str] = None,
+    status: DealStatus | None = None,
     _operator=Depends(deps._require_operator_api_key_record),
 ) -> DealListResponse:
-    """List stored deals, optionally filtered by status.
+    """List stored deals, optionally filtered by wire status.
 
     Operator-only: the list spans every buyer's deals. Buyers read their
     own deal with ``GET /api/v1/deals/{deal_id}``.
+
+    ``status`` is the shared :class:`DealStatus` value the deal carries on
+    the wire (the same value ``GET /api/v1/deals/{deal_id}`` returns), so
+    the filter is applied after mapping each stored record to its
+    response shape.
 
     Registered ahead of ``/api/v1/deals/{deal_id}``; the two paths differ in
     length so there is no shadowing, but keeping literal routes together
     with ``/export`` keeps the EP-8.4 ordering rule easy to audit.
     """
-    deals = await deal_service.list_deals(status=status)
-    return DealListResponse(
-        deals=[cm.internal_deal_to_response(d) for d in deals],
-        count=len(deals),
-    )
+    deals = [cm.internal_deal_to_response(d) for d in await deal_service.list_deals()]
+    if status is not None:
+        deals = [d for d in deals if d.deal.status == status]
+    return DealListResponse(deals=deals, count=len(deals))
 
 
 @router.get("/api/v1/deals/export", tags=["Deal Booking"])
