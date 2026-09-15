@@ -25,6 +25,12 @@ from httpx import ASGITransport  # noqa: E402
 
 from ad_seller.interfaces.api import deps  # noqa: E402
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # noqa: E402
+from ad_seller.storage.sqlite_backend import SQLiteBackend  # noqa: E402
+from tests.unit.test_deal_booking_endpoints import (  # noqa: E402
+    _authenticate,
+    _make_available_quote,
+)
+from tests.unit.test_trust_tier_verification import _mock_catalog  # noqa: E402
 
 
 def _deal(deal_id: str, status: str, deal_type: str = "PD") -> dict:
@@ -142,3 +148,67 @@ class TestDealList:
         body = resp.json()
         assert body["count"] == 2
         assert sorted(d["deal_id"] for d in body["deals"]) == ["DEMO-A", "DEMO-B"]
+
+    async def test_real_backend_scan_lists_stored_deals(self, client, tmp_path):
+        storage = SQLiteBackend(f"sqlite:///{tmp_path}/t.db")
+        await storage.connect()
+        await storage.set_deal("DEMO-A", _deal("DEMO-A", "confirmed"))
+        await storage.set_deal("DEMO-B", _deal("DEMO-B", "proposed", "PG"))
+        await storage.set("idempotency:x", {"deal_id": "DEMO-A", "payload_hash": "h"})
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            resp = await client.get("/api/v1/deals")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["count"] == 2
+        assert sorted(d["deal"]["deal_id"] for d in body["deals"]) == ["DEMO-A", "DEMO-B"]
+
+    async def test_list_empty_store(self, client, mock_storage):
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.get("/api/v1/deals")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"deals": [], "count": 0, "skipped": []}
+
+    async def test_list_non_matching_filter(self, client, mock_storage):
+        mock_storage._store["deal:DEMO-A"] = _deal("DEMO-A", "confirmed")
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.get("/api/v1/deals?status=cancelled")
+
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 0
+
+    async def test_export_lists_deals_booked_through_both_routes(self, client, tmp_path):
+        storage = SQLiteBackend(f"sqlite:///{tmp_path}/t.db")
+        await storage.connect()
+        quote = _make_available_quote()
+        await storage.set_quote(quote["quote_id"], quote)
+        _authenticate()
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(),
+            ),
+        ):
+            booked = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-list", "quote_id": quote["quote_id"]},
+            )
+            templated = await client.post(
+                "/api/v1/deals/from-template",
+                json={
+                    "deal_type": "PD",
+                    "product_id": "ctv-premium-sports",
+                    "impressions": 1000000,
+                },
+            )
+            exported = await client.get("/api/v1/deals/export?format=generic")
+
+        assert booked.status_code == 200, booked.text
+        assert templated.status_code == 201, templated.text
+        expected = sorted([booked.json()["deal"]["deal_id"], templated.json()["deal_id"]])
+        assert exported.status_code == 200
+        body = exported.json()
+        assert body["count"] == 2
+        assert sorted(d["deal_id"] for d in body["deals"]) == expected
