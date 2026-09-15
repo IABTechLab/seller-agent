@@ -192,8 +192,9 @@ def match_agentic_audience(ref: dict[str, Any]) -> dict[str, Any]:
 async def _emit_deal_created(deal_data: dict[str, Any], source: str) -> None:
     """Publish ``deal.created`` for a deal just persisted by a booking path.
 
-    ``source`` names the path (``quote``, ``template``, ``curated``) so
-    consumers of the event feed can tell how the deal came to exist.
+    ``source`` names the path (``quote``, ``template``, ``curated``,
+    ``bulk``, ``migration``) so consumers of the event feed can tell how
+    the deal came to exist.
     ``deal.created`` is audit-class (``AUDIT_EVENT_TYPES``): on bus failure
     the event is written to the audit fallback file and the booking still
     succeeds; if that write also fails the error propagates after the deal
@@ -761,6 +762,7 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
                     "notes": op.notes,
                 }
                 await storage.set_deal(deal_id, deal_data)
+                await _emit_deal_created(deal_data, source="bulk")
 
                 # Mark quote as booked
                 quote["status"] = QuoteStatus.BOOKED.value
@@ -1472,6 +1474,7 @@ async def migrate_deal(deal_id: str, request: Any) -> dict[str, Any]:
     }
 
     await storage.set_deal(new_deal_id, new_deal)
+    await _emit_deal_created(new_deal, source="migration")
 
     # Deprecate old deal
     old_deal["status"] = "deprecated"

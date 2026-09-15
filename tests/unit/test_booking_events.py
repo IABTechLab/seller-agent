@@ -136,6 +136,53 @@ class TestBookingEmitsDealCreated:
         assert [e.deal_id for e in events] == [result["deal_id"]]
         assert events[0].payload["source"] == "curated"
 
+    async def test_bulk_create_emits_deal_created(self, mock_storage, event_bus):
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        op = SimpleNamespace(action="create", quote_id=quote["quote_id"], deal_id=None, notes=None)
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", AsyncMock(return_value=mock_storage)),
+            patch("ad_seller.events.bus.get_event_bus", AsyncMock(return_value=event_bus)),
+        ):
+            results = await deal_service.bulk_deal_operations([op])
+
+        assert results[0]["success"] is True, results
+        events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
+        assert [e.deal_id for e in events] == [results[0]["deal_id"]]
+        assert events[0].payload["source"] == "bulk"
+
+    async def test_migration_emits_deal_created(self, mock_storage, event_bus):
+        old_id = "DEAL-ORIG"
+        mock_storage._store[f"deal:{old_id}"] = {
+            "deal_id": old_id,
+            "deal_type": "PD",
+            "status": "confirmed",
+            "product_id": "ctv-premium-sports",
+            "actual_price_cpm": 30.0,
+            "impressions": 1_000_000,
+        }
+        request = SimpleNamespace(
+            deal_type=None,
+            product_id=None,
+            max_cpm=None,
+            impressions=None,
+            flight_start=None,
+            flight_end=None,
+            buyer_seat_ids=None,
+            reason="better supply path",
+        )
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", AsyncMock(return_value=mock_storage)),
+            patch("ad_seller.events.bus.get_event_bus", AsyncMock(return_value=event_bus)),
+        ):
+            result = await deal_service.migrate_deal(old_id, request)
+
+        events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
+        assert [e.deal_id for e in events] == [result["new_deal_id"]]
+        assert events[0].payload["source"] == "migration"
+
 
 class TestDealCreatedIsAuditClass:
     """``deal.created`` is in ``AUDIT_EVENT_TYPES``: a bus failure falls back
