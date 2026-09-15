@@ -4,6 +4,12 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Booking (POST /api/v1/deals) now requires a verified buyer key matching
+  the quote; the MCP deal-from-template tool is operator-gated. Previously
+  anonymous callers could book any quote.
+
 ## [2.4.2] — 2026-08-17
 
 ### Added

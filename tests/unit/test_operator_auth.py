@@ -982,3 +982,75 @@ class TestMcpTransitionOrderGated:
             result = await mcp_server.transition_order(order_id="ord-1", new_status="approved")
         assert "approved" in result
         assert "operator_required" not in result
+
+
+class TestMcpCreateDealFromTemplateGated:
+    """The MCP twin of POST /api/v1/deals/from-template — unlike the REST
+    route (which accepts any authenticated buyer key), the MCP tool
+    previously booked with NO auth at all via `_public_context()`. It is
+    now gated like the rest of the privileged write-tool surface."""
+
+    async def test_http_without_key_is_denied_and_service_untouched(self):
+        from ad_seller.interfaces import mcp_server
+
+        service_mock = AsyncMock()
+        ctx = _fake_mcp_context(headers={})
+        with (
+            patch.object(mcp_server.mcp, "get_context", return_value=ctx),
+            patch(
+                "ad_seller.services.deal_service.create_deal_from_template",
+                new=service_mock,
+            ),
+        ):
+            result = await mcp_server.create_deal_from_template(
+                deal_type="PD", product_id="ctv-premium-sports"
+            )
+        assert "authentication_required" in result
+        service_mock.assert_not_awaited()
+
+    async def test_http_with_buyer_key_is_denied(self, mock_storage):
+        from ad_seller.interfaces import mcp_server
+
+        buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
+        ctx = _fake_mcp_context(headers={"authorization": f"Bearer {buyer_key}"})
+        with (
+            patch.object(mcp_server.mcp, "get_context", return_value=ctx),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            result = await mcp_server.create_deal_from_template(
+                deal_type="PD", product_id="ctv-premium-sports"
+            )
+        assert "operator_required" in result
+
+    async def test_http_with_operator_key_is_allowed(self, mock_storage):
+        from ad_seller.interfaces import mcp_server
+
+        op_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
+        ctx = _fake_mcp_context(headers={"x-api-key": op_key})
+        deal_data = {
+            "deal_id": "DEMO-MCP0001",
+            "deal_type": "PD",
+            "product_id": "ctv-premium-sports",
+            "actual_price_cpm": 30.0,
+            "currency": "USD",
+            "impressions": 1000000,
+            "flight_start": "2026-04-01",
+            "flight_end": "2026-04-30",
+            "buyer_tier": "public",
+            "activation_instructions": {},
+            "schain": {},
+            "created_at": "2026-04-01T00:00:00Z",
+        }
+        with (
+            patch.object(mcp_server.mcp, "get_context", return_value=ctx),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.deal_service.create_deal_from_template",
+                new=AsyncMock(return_value=deal_data),
+            ),
+        ):
+            result = await mcp_server.create_deal_from_template(
+                deal_type="PD", product_id="ctv-premium-sports"
+            )
+        assert "DEMO-MCP0001" in result
+        assert "operator_required" not in result
