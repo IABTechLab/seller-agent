@@ -108,6 +108,17 @@ class TestDealList:
         assert body["count"] == 1
         assert body["deals"][0]["deal"]["deal_id"] == "DEMO-B"
 
+    async def test_list_filters_on_wire_status(self, client, mock_storage):
+        mock_storage._store["deal:DEMO-A"] = _deal("DEMO-A", "confirmed")
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            booked = await client.get("/api/v1/deals?status=booked")
+            internal = await client.get("/api/v1/deals?status=confirmed")
+
+        assert booked.status_code == 200
+        assert booked.json()["count"] == 1
+        assert booked.json()["deals"][0]["deal"]["deal_id"] == "DEMO-A"
+        assert internal.status_code == 422
+
     async def test_export_returns_stored_deals(self, client, mock_storage):
         mock_storage._store["deal:DEMO-A"] = _deal("DEMO-A", "confirmed")
         mock_storage._store["deal:DEMO-B"] = _deal("DEMO-B", "proposed", "PG")
