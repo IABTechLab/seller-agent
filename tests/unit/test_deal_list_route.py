@@ -119,6 +119,19 @@ class TestDealList:
         assert booked.json()["deals"][0]["deal"]["deal_id"] == "DEMO-A"
         assert internal.status_code == 422
 
+    async def test_list_skips_unserializable_record(self, client, mock_storage):
+        mock_storage._store["deal:DEMO-A"] = _deal("DEMO-A", "confirmed")
+        mock_storage._store["deal:DEMO-B"] = _deal("DEMO-B", "weird")
+        mock_storage._store["deal:DEMO-C"] = _deal("DEMO-C", "confirmed", deal_type=None)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.get("/api/v1/deals")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["count"] == 1
+        assert body["deals"][0]["deal"]["deal_id"] == "DEMO-A"
+        assert sorted(body["skipped"]) == ["DEMO-B", "DEMO-C"]
+
     async def test_export_returns_stored_deals(self, client, mock_storage):
         mock_storage._store["deal:DEMO-A"] = _deal("DEMO-A", "confirmed")
         mock_storage._store["deal:DEMO-B"] = _deal("DEMO-B", "proposed", "PG")

@@ -412,6 +412,9 @@ class DealListResponse(BaseModel):
 
     deals: list[DealBookingResponse]
     count: int
+    # deal_ids of stored rows that could not be mapped to the wire shape; a
+    # bad row is reported here instead of taking the whole list down.
+    skipped: list[str] = []
 
 
 class DealRejectionDetail(BaseModel):
