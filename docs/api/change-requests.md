@@ -32,6 +32,7 @@ Severity is auto-classified based on change type and magnitude:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `idempotency_key` | string | **Yes** | Requester-minted opaque key (UUID recommended). A replay with the same key and body returns the original change request instead of creating a second one; the same key reused with a different body is an `idempotency_conflict` (HTTP 409). Required since [#64](https://github.com/IABTechLab/seller-agent/pull/64). |
 | `order_id` | string | Yes | The order to modify |
 | `change_type` | string | Yes | One of: `flight_dates`, `impressions`, `pricing`, `creative`, `targeting`, `cancellation`, `other` |
 | `diffs` | array | No | List of field-level changes: `{field, old_value, new_value}` |
@@ -45,6 +46,7 @@ Severity is auto-classified based on change type and magnitude:
 curl -X POST http://localhost:8000/api/v1/change-requests \
   -H "Content-Type: application/json" \
   -d '{
+    "idempotency_key": "<idempotency_key>",
     "order_id": "ORD-A1B2C3D4E5F6",
     "change_type": "flight_dates",
     "diffs": [
@@ -64,6 +66,7 @@ Because the date shift is 2 days (within the 3-day threshold), this is classifie
 curl -X POST http://localhost:8000/api/v1/change-requests \
   -H "Content-Type: application/json" \
   -d '{
+    "idempotency_key": "<idempotency_key>",
     "order_id": "ORD-A1B2C3D4E5F6",
     "change_type": "pricing",
     "diffs": [
@@ -112,7 +115,7 @@ curl http://localhost:8000/api/v1/change-requests/CR-A1B2C3D4E5F6
 
 **POST** `/api/v1/change-requests/{cr_id}/review`
 
-Approve or reject a change request that is in `pending_approval` status.
+Approve or reject a change request that is in `pending_approval` status. Requires an **operator** credential — the decision is the seller's, not the requesting buyer's (anonymous → 401, buyer key → 403).
 
 ### Request Body
 
@@ -124,6 +127,7 @@ Approve or reject a change request that is in `pending_approval` status.
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/change-requests/CR-A1B2C3D4E5F6/review \
+  -H "Authorization: Bearer <operator_api_key>" \
   -H "Content-Type: application/json" \
   -d '{
     "decision": "approve",
@@ -138,10 +142,11 @@ Returns **409** if the change request is not in `pending_approval` status.
 
 **POST** `/api/v1/change-requests/{cr_id}/apply`
 
-Applies an approved change request to the order. Updates the order metadata with the proposed values and diffs.
+Applies an approved change request to the order. Updates the order metadata with the proposed values and diffs. Requires an **operator** credential (order mutation) — anonymous → 401, buyer key → 403.
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/change-requests/CR-A1B2C3D4E5F6/apply
+curl -X POST http://localhost:8000/api/v1/change-requests/CR-A1B2C3D4E5F6/apply \
+  -H "Authorization: Bearer <operator_api_key>"
 ```
 
 Returns **409** if the change request is not in `approved` status.
