@@ -538,6 +538,16 @@ class TestIdempotentReplayUnaffected:
             )
             assert quote["pricing"]["final_cpm"] == 50.0
 
+            # #77 makes POST /api/v1/deals require a verified buyer key.
+            # This quote is public-tier (_public_context() above), so any
+            # authenticated buyer satisfies that check, same pattern as
+            # #77's own test_public_tier_quote_bookable_by_any_authenticated_buyer.
+            from ad_seller.models.buyer_identity import BuyerIdentity
+
+            app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
+                identity=BuyerIdentity()
+            )
+
             first = await client.post(
                 "/api/v1/deals",
                 json={"idempotency_key": "idem-ratecard-1", "quote_id": quote["quote_id"]},
