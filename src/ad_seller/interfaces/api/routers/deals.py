@@ -18,7 +18,6 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from iab_agentic_primitives.protocol import DealBookingRequest, DealBookingResponse
-from pydantic import BaseModel
 
 from ....services import deal_service
 from .. import contract_mappers as cm
@@ -33,6 +32,7 @@ from ..schemas import (
     DealDeprecationRequest,
     DealFromTemplateRequest,
     DealFromTemplateResponse,
+    DealListResponse,
     DealMigrationRequest,
     DealPerformanceResponse,
     DealPushRequest,
@@ -282,13 +282,6 @@ async def agentic_audience_match(request: AgenticAudienceMatchRequest):
       into `STRONG | MODERATE | WEAK | POOR`.
     """
     return deal_service.match_agentic_audience(request.audience_ref)
-
-
-class DealListResponse(BaseModel):
-    """Page of stored deals in the shared booking-response shape."""
-
-    deals: list[DealBookingResponse]
-    count: int
 
 
 @router.get("/api/v1/deals", tags=["Deal Booking"], response_model=DealListResponse)
