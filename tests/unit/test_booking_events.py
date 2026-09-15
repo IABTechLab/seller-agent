@@ -183,6 +183,26 @@ class TestBookingEmitsDealCreated:
         assert [e.deal_id for e in events] == [result["new_deal_id"]]
         assert events[0].payload["source"] == "migration"
 
+    async def test_idempotent_replay_emits_once(self, client, mock_storage, event_bus):
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
+        body = {"idempotency_key": "idem-replay", "quote_id": quote["quote_id"]}
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.bus.get_event_bus", AsyncMock(return_value=event_bus)),
+        ):
+            first = await client.post("/api/v1/deals", json=body)
+            second = await client.post("/api/v1/deals", json=body)
+
+        assert first.status_code == 200, first.text
+        assert second.status_code == 200, second.text
+        deal_id = first.json()["deal"]["deal_id"]
+        assert second.json()["deal"]["deal_id"] == deal_id
+        events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
+        assert [e.deal_id for e in events] == [deal_id]
+
 
 class TestDealCreatedIsAuditClass:
     """``deal.created`` is in ``AUDIT_EVENT_TYPES``: a bus failure falls back
