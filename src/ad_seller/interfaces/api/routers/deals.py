@@ -285,8 +285,14 @@ async def agentic_audience_match(request: AgenticAudienceMatchRequest):
 
 
 @router.get("/api/v1/deals", tags=["Deal Booking"], response_model=DealListResponse)
-async def list_deals(status: Optional[str] = None) -> DealListResponse:
+async def list_deals(
+    status: Optional[str] = None,
+    _operator=Depends(deps._require_operator_api_key_record),
+) -> DealListResponse:
     """List stored deals, optionally filtered by status.
+
+    Operator-only: the list spans every buyer's deals. Buyers read their
+    own deal with ``GET /api/v1/deals/{deal_id}``.
 
     Registered ahead of ``/api/v1/deals/{deal_id}``; the two paths differ in
     length so there is no shadowing, but keeping literal routes together

@@ -8,7 +8,7 @@ make export read the stored deals.
 
 import sys
 from types import ModuleType
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -23,6 +23,7 @@ for _mod_name in _broken_flows:
 import httpx  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
 
+from ad_seller.interfaces.api import deps  # noqa: E402
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # noqa: E402
 
 
@@ -62,6 +63,7 @@ def mock_storage():
 @pytest.fixture
 def client():
     app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    app.dependency_overrides[deps._require_operator_api_key_record] = lambda: MagicMock()
     transport = ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://test")
     yield c
@@ -76,6 +78,13 @@ class TestDealList:
             if getattr(r, "path", "") == "/api/v1/deals" and "GET" in getattr(r, "methods", set())
         ]
         assert get_paths == ["/api/v1/deals"]
+
+    async def test_list_requires_operator_key(self, client, mock_storage):
+        app.dependency_overrides.pop(deps._require_operator_api_key_record)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.get("/api/v1/deals")
+
+        assert resp.status_code == 401
 
     async def test_list_returns_every_stored_deal(self, client, mock_storage):
         mock_storage._store["deal:DEMO-A"] = _deal("DEMO-A", "confirmed")
