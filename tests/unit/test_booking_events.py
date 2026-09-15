@@ -7,7 +7,7 @@ empty, so an inbox polling ``GET /events`` never saw it.
 
 import sys
 from types import ModuleType, SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -135,3 +135,63 @@ class TestBookingEmitsDealCreated:
         events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
         assert [e.deal_id for e in events] == [result["deal_id"]]
         assert events[0].payload["source"] == "curated"
+
+
+class TestDealCreatedIsAuditClass:
+    """``deal.created`` is in ``AUDIT_EVENT_TYPES``: a bus failure falls back
+    to the audit log and the booking still succeeds; a fallback failure
+    propagates, but only after the deal is persisted."""
+
+    async def test_bus_failure_writes_fallback_and_booking_succeeds(self, client, mock_storage):
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
+        broken_bus = SimpleNamespace(publish=AsyncMock(side_effect=RuntimeError("bus down")))
+        fallback = MagicMock()
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.bus.get_event_bus", AsyncMock(return_value=broken_bus)),
+            patch("ad_seller.events.helpers.write_audit_fallback", fallback),
+        ):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-bus-down", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 200, resp.text
+        fallback.assert_called_once()
+        record = fallback.call_args.args[0]
+        assert record["event_type"] == "deal.created"
+
+    async def test_fallback_failure_propagates_after_persist(self, mock_storage):
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
+        broken_bus = SimpleNamespace(publish=AsyncMock(side_effect=RuntimeError("bus down")))
+        fallback = MagicMock(side_effect=OSError("disk full"))
+
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        try:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as raw:
+                with (
+                    patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+                    patch("ad_seller.events.bus.get_event_bus", AsyncMock(return_value=broken_bus)),
+                    patch("ad_seller.events.helpers.write_audit_fallback", fallback),
+                ):
+                    resp = await raw.post(
+                        "/api/v1/deals",
+                        json={
+                            "idempotency_key": "idem-fallback-down",
+                            "quote_id": quote["quote_id"],
+                        },
+                    )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 500, resp.text
+        deal_ids = [k.removeprefix("deal:") for k in mock_storage._store if k.startswith("deal:")]
+        assert len(deal_ids) == 1
+        persisted = await mock_storage.get_deal(deal_ids[0])
+        assert persisted["deal_id"] == deal_ids[0]
+        assert persisted["quote_id"] == quote["quote_id"]
