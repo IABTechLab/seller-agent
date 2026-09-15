@@ -37,9 +37,10 @@ Creating keys via the HTTP API itself requires an operator credential. Mint the 
 
 ```bash
 ad-seller create-operator-key --label "Primary operator"
+KEY=$(ad-seller create-operator-key --label ci --quiet)
 ```
 
-Run this with the same storage config (`.env`) as the server so the key lands in the backend the server reads. The full key is printed **once** — store it securely.
+Run this with the same storage config (`.env`) as the server so the key lands in the backend the server reads. The full key is printed **once** — store it securely. `--quiet` / `-q` prints only the key, for scripting.
 
 List operator keys (metadata only — secrets are never re-shown):
 

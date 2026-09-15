@@ -371,6 +371,25 @@ class TestCliBootstrap:
         assert not records[0]["identity"].get("seat_id")
         close_mock.assert_awaited_once()
 
+    def test_create_operator_key_quiet_prints_only_the_key(self, mock_storage, capsys):
+        from ad_seller.interfaces.cli.main import create_operator_key
+
+        known = "ask_live_quiet_only_key"
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.storage.factory.close_storage", new_callable=AsyncMock) as close_mock,
+            patch(
+                "ad_seller.auth.api_key_service.generate_api_key",
+                return_value=known,
+            ),
+        ):
+            create_operator_key(label="ci", expires_in_days=None, quiet=True)
+
+        captured = capsys.readouterr()
+        assert captured.out == f"{known}\n"
+        assert captured.err == ""
+        close_mock.assert_awaited_once()
+
     def test_duplicate_label_exits_nonzero_and_closes_storage(self, mock_storage):
         import typer
 
