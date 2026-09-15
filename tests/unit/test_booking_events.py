@@ -68,6 +68,16 @@ def client():
     app.dependency_overrides.clear()
 
 
+_PAYLOAD_KEYS = ("source", "deal_type", "status", "product_id", "quote_id")
+
+
+def _assert_payload(event, **expected):
+    """Pin every ``deal.created`` payload key (``quote_id`` is ``None`` on
+    paths that book without a quote)."""
+    assert set(expected) == set(_PAYLOAD_KEYS), "pin all five payload keys"
+    assert event.payload == expected
+
+
 class TestBookingEmitsDealCreated:
     async def test_quote_booking_emits_deal_created(self, client, mock_storage, event_bus):
         quote = _make_available_quote()
@@ -87,8 +97,14 @@ class TestBookingEmitsDealCreated:
         deal_id = resp.json()["deal"]["deal_id"]
         events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
         assert [e.deal_id for e in events] == [deal_id]
-        assert events[0].payload["deal_type"] == quote["deal_type"]
-        assert events[0].payload["source"] == "quote"
+        _assert_payload(
+            events[0],
+            source="quote",
+            deal_type=quote["deal_type"],
+            status="proposed",
+            product_id="ctv-premium-sports",
+            quote_id=quote["quote_id"],
+        )
 
     async def test_template_booking_emits_deal_created(self, client, mock_storage, event_bus):
         # from-template requires an authenticated buyer; supply a minimal key record.
@@ -119,8 +135,14 @@ class TestBookingEmitsDealCreated:
         deal_id = resp.json()["deal_id"]
         events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
         assert [e.deal_id for e in events] == [deal_id]
-        assert events[0].payload["deal_type"] == "PD"
-        assert events[0].payload["source"] == "template"
+        _assert_payload(
+            events[0],
+            source="template",
+            deal_type="PD",
+            status="confirmed",
+            product_id="ctv-premium-sports",
+            quote_id=None,
+        )
 
     async def test_curated_booking_emits_deal_created(self, mock_storage, event_bus):
         catalog = _catalog(_make_product(base_cpm=45.0, floor_cpm=35.0))
@@ -134,7 +156,14 @@ class TestBookingEmitsDealCreated:
 
         events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
         assert [e.deal_id for e in events] == [result["deal_id"]]
-        assert events[0].payload["source"] == "curated"
+        _assert_payload(
+            events[0],
+            source="curated",
+            deal_type="PMP",
+            status="confirmed",
+            product_id="ctv-premium-sports",
+            quote_id=None,
+        )
 
     async def test_bulk_create_emits_deal_created(self, mock_storage, event_bus):
         quote = _make_available_quote()
@@ -150,7 +179,14 @@ class TestBookingEmitsDealCreated:
         assert results[0]["success"] is True, results
         events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
         assert [e.deal_id for e in events] == [results[0]["deal_id"]]
-        assert events[0].payload["source"] == "bulk"
+        _assert_payload(
+            events[0],
+            source="bulk",
+            deal_type=quote["deal_type"],
+            status="confirmed",
+            product_id="ctv-premium-sports",
+            quote_id=quote["quote_id"],
+        )
 
     async def test_migration_emits_deal_created(self, mock_storage, event_bus):
         old_id = "DEAL-ORIG"
@@ -181,7 +217,14 @@ class TestBookingEmitsDealCreated:
 
         events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
         assert [e.deal_id for e in events] == [result["new_deal_id"]]
-        assert events[0].payload["source"] == "migration"
+        _assert_payload(
+            events[0],
+            source="migration",
+            deal_type="PD",
+            status="confirmed",
+            product_id="ctv-premium-sports",
+            quote_id=None,
+        )
 
     async def test_idempotent_replay_emits_once(self, client, mock_storage, event_bus):
         quote = _make_available_quote()
