@@ -27,6 +27,15 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- Discounts no longer take a quote below the product's own `floor_cpm`.
+  `PricingRulesEngine.calculate_price` clamped only to the global floor
+  (default $1.00) and was not passed the product floor at all, so a product
+  declaring a $14.00 floor could be quoted to an advertiser-tier buyer at
+  $12.75. The engine would then reject that same price if it were offered
+  back, since `is_price_acceptable` does check the product floor. The
+  effective floor is now the higher of the global and product floors,
+  applied inside the engine so quoting, from-template booking, and the
+  pricing helper all inherit it.
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal

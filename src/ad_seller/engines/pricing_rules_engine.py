@@ -62,6 +62,7 @@ class PricingRulesEngine:
         deal_type: DealType = DealType.PREFERRED_DEAL,
         volume: int = 0,
         inventory_type: Optional[str] = None,
+        product_floor: Optional[float] = None,
     ) -> PricingDecision:
         """Calculate the final price for a buyer.
 
@@ -72,6 +73,10 @@ class PricingRulesEngine:
             deal_type: Type of deal being created
             volume: Number of impressions
             inventory_type: Type of inventory
+            product_floor: The product's own ``floor_cpm``, when it has one.
+                The discounted price is never taken below it. Optional
+                because plenty of products declare no floor, in which case
+                the global floor is the only backstop.
 
         Returns:
             PricingDecision with final price and rationale
@@ -142,10 +147,25 @@ class PricingRulesEngine:
                 price = price * (1 - volume_discount)
                 applied_rules.append(f"Volume discount: -{volume_discount * 100:.1f}%")
 
-        # Enforce floor price
-        if price < self._config.global_floor_cpm:
-            price = self._config.global_floor_cpm
-            applied_rules.append(f"Floor enforced: ${self._config.global_floor_cpm}")
+        # Enforce the floor. The effective floor is the HIGHER of the global
+        # backstop and the product's own floor: a product that declares it
+        # will not go below $14 must not be discounted to $12.75 just
+        # because the global floor is $1.
+        #
+        # This used to clamp to the global floor alone, and the product floor
+        # was not even passed in, so a tier discount could quote below a
+        # product's own floor. The engine would then REJECT its own quoted
+        # price if handed back to is_price_acceptable, which does check the
+        # product floor ("Below product floor ($14.0 CPM)"). Two other paths
+        # already respected it (rate_card_service clamps an override to it,
+        # is_price_acceptable checks it), so the waterfall was the outlier.
+        floor = self._config.global_floor_cpm
+        if product_floor is not None:
+            floor = max(floor, product_floor)
+
+        if price < floor:
+            price = floor
+            applied_rules.append(f"Floor enforced: ${floor}")
 
         # Enforce ceiling if set
         if self._config.global_ceiling_cpm and price > self._config.global_ceiling_cpm:

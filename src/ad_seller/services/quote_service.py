@@ -61,6 +61,7 @@ async def get_pricing(
         base_price=await rate_card_service.resolve_base_cpm(product),
         buyer_context=buyer_context,
         volume=volume,
+        product_floor=product.floor_cpm,
     )
 
     return {
@@ -173,6 +174,7 @@ async def create_quote(
         deal_type=deal_type_enum,
         volume=request.impressions or 0,
         inventory_type=product.inventory_type,
+        product_floor=product.floor_cpm,
     )
 
     # The seller's own computed price IS the quoted price. `target_cpm` is
