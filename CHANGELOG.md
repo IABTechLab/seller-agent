@@ -4,6 +4,13 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- `GET /api/v1/deals` lists stored deals (operator key; optional
+  wire-status filter; unserializable rows reported in `skipped`), and
+  `GET /api/v1/deals/export` now reads stored deals instead of an index
+  nothing wrote.
+
 ### Changed
 
 - Booking (POST /api/v1/deals) now requires a verified buyer key matching

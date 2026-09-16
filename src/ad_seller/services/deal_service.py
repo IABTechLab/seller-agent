@@ -802,23 +802,24 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
 # =============================================================================
 
 
-async def export_deals(format: str = "generic", status: Optional[str] = None) -> dict[str, Any]:
-    """Export deals in DSP-native format for platform connectors."""
+async def list_deals(status: Optional[str] = None) -> list[dict[str, Any]]:
+    """Return every stored deal, optionally filtered by status.
+
+    Both booking paths persist deals under ``deal:<id>``; the storage
+    backend enumerates them via ``list_deals()`` (a ``deal:*`` key scan).
+    """
     from ..storage.factory import get_storage
 
     storage = await get_storage()
+    deals = await storage.list_deals()
+    if status:
+        deals = [d for d in deals if d.get("status") == status]
+    return deals
 
-    # Collect all deals (scan deal:* keys)
-    all_deals = []
-    # Storage doesn't have a list_deals method, so we track deal IDs
-    deal_index = await storage.get("deal_index") or {"deal_ids": []}
 
-    for deal_id in deal_index.get("deal_ids", []):
-        deal = await storage.get_deal(deal_id)
-        if deal:
-            if status and deal.get("status") != status:
-                continue
-            all_deals.append(deal)
+async def export_deals(format: str = "generic", status: Optional[str] = None) -> dict[str, Any]:
+    """Export deals in DSP-native format for platform connectors."""
+    all_deals = await list_deals(status=status)
 
     if format == "ttd":
         # The Trade Desk format

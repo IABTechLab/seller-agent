@@ -14,9 +14,11 @@ matches routes in registration order. In particular
 and handler behavior are otherwise unchanged.
 """
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from iab_agentic_primitives.primitives import DealStatus
 from iab_agentic_primitives.protocol import DealBookingRequest, DealBookingResponse
 
 from ....services import deal_service
@@ -32,6 +34,7 @@ from ..schemas import (
     DealDeprecationRequest,
     DealFromTemplateRequest,
     DealFromTemplateResponse,
+    DealListResponse,
     DealMigrationRequest,
     DealPerformanceResponse,
     DealPushRequest,
@@ -39,6 +42,8 @@ from ..schemas import (
     DealResponse,
     SSPDealDistributeRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -281,6 +286,39 @@ async def agentic_audience_match(request: AgenticAudienceMatchRequest):
       into `STRONG | MODERATE | WEAK | POOR`.
     """
     return deal_service.match_agentic_audience(request.audience_ref)
+
+
+@router.get("/api/v1/deals", tags=["Deal Booking"], response_model=DealListResponse)
+async def list_deals(
+    status: DealStatus | None = None,
+    _operator=Depends(deps._require_operator_api_key_record),
+) -> DealListResponse:
+    """List stored deals, optionally filtered by wire status.
+
+    Operator-only: the list spans every buyer's deals. Buyers read their
+    own deal with ``GET /api/v1/deals/{deal_id}``.
+
+    ``status`` is the shared :class:`DealStatus` value the deal carries on
+    the wire (the same value ``GET /api/v1/deals/{deal_id}`` returns), so
+    the filter is applied after mapping each stored record to its
+    response shape.
+
+    Registered ahead of ``/api/v1/deals/{deal_id}``; the two paths differ in
+    length so there is no shadowing, but keeping literal routes together
+    with ``/export`` keeps the EP-8.4 ordering rule easy to audit.
+    """
+    deals: list[DealBookingResponse] = []
+    skipped: list[str] = []
+    for record in await deal_service.list_deals():
+        try:
+            deals.append(cm.internal_deal_to_response(record))
+        except Exception:
+            deal_id = str(record.get("deal_id"))
+            logger.warning("Skipping unserializable stored deal %s", deal_id, exc_info=True)
+            skipped.append(deal_id)
+    if status is not None:
+        deals = [d for d in deals if d.deal.status == status]
+    return DealListResponse(deals=deals, count=len(deals), skipped=skipped)
 
 
 @router.get("/api/v1/deals/export", tags=["Deal Booking"])

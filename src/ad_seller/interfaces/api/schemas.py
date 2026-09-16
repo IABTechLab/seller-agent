@@ -35,6 +35,7 @@ from iab_agentic_primitives.protocol import (
 from iab_agentic_primitives.protocol import (
     AvailsStatus as AvailsStatus,  # noqa: PLC0414 — explicit re-export
 )
+from iab_agentic_primitives.protocol import DealBookingResponse
 from iab_agentic_primitives.protocol import (
     ProductAvailsSearch as ProductAvailsSearch,  # noqa: PLC0414 — explicit re-export
 )
@@ -404,6 +405,16 @@ class DealFromTemplateResponse(BaseModel):
     activation_instructions: dict[str, str]
     schain: Optional[dict[str, Any]] = None
     created_at: str
+
+
+class DealListResponse(BaseModel):
+    """Page of stored deals in the shared booking-response shape."""
+
+    deals: list[DealBookingResponse]
+    count: int
+    # deal_ids of stored rows that could not be mapped to the wire shape; a
+    # bad row is reported here instead of taking the whole list down.
+    skipped: list[str] = []
 
 
 class DealRejectionDetail(BaseModel):
