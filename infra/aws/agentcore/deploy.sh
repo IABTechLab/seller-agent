@@ -1080,6 +1080,30 @@ if [[ "${TEST_ONLY}" == "false" ]]; then
 
   echo ""
   echo "✅ Deploy complete (mode=${DEPLOY_MODE}, storage=${STORAGE_TYPE})"
+
+  # Req 6.1/6.2/6.5: register each deployed runtime to the AAMP registry
+  # (endpoint_url + auth_required + advertised token endpoint/scope) and print
+  # the cross-org connection info. Only when auth is on (a JWT seller is what a
+  # cross-org buyer discovers); print-only when AAMP_REGISTRY_URL is unset.
+  if [[ "${DEPLOY_AUTH}" == "true" ]]; then
+    # Resolve the deployed runtime ARNs from .bedrock_agentcore.yaml (written by
+    # `agentcore configure`), dependency-free.
+    _arn_for() {
+      awk -v name="  $1:" '
+        $0==name {inblk=1; next}
+        inblk && /^  [A-Za-z0-9_]+:/ {inblk=0}
+        inblk && /agent_arn:/ { gsub(/^[[:space:]]*agent_arn:[[:space:]]*/,""); print; exit }
+      ' "${REPO_ROOT}/.bedrock_agentcore.yaml" 2>/dev/null
+    }
+    export SELLER_MCP_RUNTIME_ARN="$(_arn_for "${MCP_AGENT_NAME}")"
+    export SELLER_A2A_RUNTIME_ARN="$(_arn_for "${A2A_AGENT_NAME}")"
+    export SELLER_HTTP_RUNTIME_ARN="$(_arn_for "${HTTP_AGENT_NAME}")"
+    export SELLER_TOKEN_ENDPOINT="${AUTH_TOKEN_ENDPOINT:-${SELLER_TOKEN_ENDPOINT:-}}"
+    export SELLER_INVOKE_SCOPE="${AUTH_ALLOWED_SCOPES:-${SELLER_INVOKE_SCOPE:-seller-agent/invoke}}"
+    echo ""
+    PYTHONPATH="${REPO_ROOT}/src" python3 -m ad_seller.registry.runtime_registration || \
+      echo "  ⚠️  runtime registration/print step failed (non-fatal)"
+  fi
 fi
 
 # =============================================================================

@@ -399,3 +399,29 @@ class TestBedrockTokenGrant:
         """A failed grant warns but does not abort the deploy."""
         content = self._content()
         assert "runtime token mint may 403" in content
+
+
+# ===================================================================
+# Req 6.1/6.2/6.5: deploy.sh registers runtimes + prints connection info
+# ===================================================================
+
+
+class TestRuntimeRegistrationStep:
+    """**Validates: Requirement 6** — post-deploy registration/print wiring."""
+
+    def _content(self):
+        return DEPLOY_SCRIPT.read_text()
+
+    def test_registration_module_invoked(self):
+        content = self._content()
+        assert "ad_seller.registry.runtime_registration" in content
+
+    def test_registration_gated_on_auth(self):
+        content = self._content()
+        # The registration/print step lives under the DEPLOY_AUTH branch.
+        assert 'if [[ "${DEPLOY_AUTH}" == "true" ]]; then' in content
+
+    def test_runtime_arns_exported_for_registration(self):
+        content = self._content()
+        for var in ("SELLER_MCP_RUNTIME_ARN", "SELLER_A2A_RUNTIME_ARN", "SELLER_HTTP_RUNTIME_ARN"):
+            assert var in content
