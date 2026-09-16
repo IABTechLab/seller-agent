@@ -27,7 +27,7 @@ All event types are defined in `src/ad_seller/events/models.py` as the `EventTyp
 
 | Event Type | Value | Description |
 |-----------|-------|-------------|
-| `DEAL_CREATED` | `deal.created` | A deal was generated from an accepted proposal |
+| `DEAL_CREATED` | `deal.created` | A deal was persisted by a booking path; `payload.source` is one of `quote`, `template`, `curated`, `bulk`, `migration` |
 | `DEAL_REGISTERED` | `deal.registered` | The deal was registered in the system |
 | `DEAL_SYNCED` | `deal.synced` | The deal was synced to the ad server |
 

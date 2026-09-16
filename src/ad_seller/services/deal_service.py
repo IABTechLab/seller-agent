@@ -189,6 +189,34 @@ def match_agentic_audience(ref: dict[str, Any]) -> dict[str, Any]:
 # =============================================================================
 
 
+async def _emit_deal_created(deal_data: dict[str, Any], source: str) -> None:
+    """Publish ``deal.created`` for a deal just persisted by a booking path.
+
+    ``source`` names the path (``quote``, ``template``, ``curated``,
+    ``bulk``, ``migration``) so consumers of the event feed can tell how
+    the deal came to exist.
+    ``deal.created`` is audit-class (``AUDIT_EVENT_TYPES``): on bus failure
+    the event is written to the audit fallback file and the booking still
+    succeeds; if that write also fails the error propagates after the deal
+    is already persisted.
+    """
+    from ..events.helpers import emit_event
+    from ..events.models import EventType
+
+    product = deal_data.get("product") or {}
+    await emit_event(
+        event_type=EventType.DEAL_CREATED,
+        deal_id=deal_data.get("deal_id", ""),
+        payload={
+            "source": source,
+            "deal_type": deal_data.get("deal_type"),
+            "status": deal_data.get("status"),
+            "product_id": product.get("product_id") or deal_data.get("product_id"),
+            "quote_id": deal_data.get("quote_id"),
+        },
+    )
+
+
 async def book_deal(request: Any) -> dict[str, Any]:
     """Book a deal from a previously issued quote (``DealBookingRequestModel``).
 
@@ -341,6 +369,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
     # The snapshot fields land on the persisted record so
     # `honor_audience_plan_snapshot()` can read them at fulfillment time.
     await storage.set_deal(deal_id, deal_data)
+    await _emit_deal_created(deal_data, source="quote")
 
     return deal_data
 
@@ -615,6 +644,7 @@ async def create_deal_from_template(
 
     storage = await get_storage()
     await storage.set_deal(deal_id, deal_data)
+    await _emit_deal_created(deal_data, source="template")
 
     return deal_data
 
@@ -732,6 +762,7 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
                     "notes": op.notes,
                 }
                 await storage.set_deal(deal_id, deal_data)
+                await _emit_deal_created(deal_data, source="bulk")
 
                 # Mark quote as booked
                 quote["status"] = QuoteStatus.BOOKED.value
@@ -1352,6 +1383,7 @@ async def create_curated_deal(request: Any, catalog: dict[str, Any]) -> dict[str
 
     storage = await get_storage()
     await storage.set_deal(deal_id, deal_data)
+    await _emit_deal_created(deal_data, source="curated")
 
     return {
         "deal_id": deal_id,
@@ -1442,6 +1474,7 @@ async def migrate_deal(deal_id: str, request: Any) -> dict[str, Any]:
     }
 
     await storage.set_deal(new_deal_id, new_deal)
+    await _emit_deal_created(new_deal, source="migration")
 
     # Deprecate old deal
     old_deal["status"] = "deprecated"
