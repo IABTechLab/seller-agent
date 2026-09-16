@@ -31,7 +31,7 @@ The seller agent exposes four communication interfaces:
 |-----------|----------|----------|
 | **MCP** | `/mcp` (Streamable HTTP), `/mcp-sse/sse` (legacy) | Primary interface — 46 tools for Claude, ChatGPT, Codex, Cursor, and buyer agents |
 | **A2A** | `/a2a/{agent}/jsonrpc` | Conversational JSON-RPC 2.0 for natural language queries |
-| **REST** | `/api/v1/*` | Programmatic access — 87 endpoints across 25 groups |
+| **REST** | `/api/v1/*` | Programmatic access — 88 endpoints across 25 groups |
 | **Chat** | `/chat` | Web-based conversational interface for human buyers |
 
 > [Protocol Documentation](https://iabtechlab.github.io/seller-agent/api/mcp/)
@@ -215,7 +215,7 @@ INDEX_EXCHANGE_API_URL=https://api.indexexchange.com
 
 ## API Reference
 
-87 endpoints across 25 groups:
+88 endpoints across 25 groups:
 
 | Group | Endpoints | Description |
 |-------|-----------|-------------|

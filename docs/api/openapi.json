@@ -120,6 +120,38 @@
               "default": 50,
               "title": "Limit"
             }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -161,6 +193,38 @@
               "type": "string",
               "title": "Event Id"
             }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -186,13 +250,57 @@
       }
     },
     "/auth/api-keys": {
-      "get": {
+      "post": {
         "tags": [
           "Authentication"
         ],
-        "summary": "List Api Keys",
-        "description": "List all API keys (metadata only, no secrets).",
-        "operationId": "list_api_keys_auth_api_keys_get",
+        "summary": "Create Api Key",
+        "description": "Create a new BUYER-role API key for a buyer identity.\n\nRequires an operator credential. Operator keys are created via\n``POST /auth/api-keys/operator``.\n\nThe response contains the full API key which is shown ONLY ONCE.\nStore it securely \u2014 it cannot be retrieved again.",
+        "operationId": "create_api_key_auth_api_keys_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -201,25 +309,133 @@
                 "schema": {}
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       },
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "List Api Keys",
+        "description": "List all API keys (metadata only, no secrets).",
+        "operationId": "list_api_keys_auth_api_keys_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/api-keys/operator": {
       "post": {
         "tags": [
           "Authentication"
         ],
-        "summary": "Create Api Key",
-        "description": "Create a new API key for a buyer.\n\nThe response contains the full API key which is shown ONLY ONCE.\nStore it securely \u2014 it cannot be retrieved again.",
-        "operationId": "create_api_key_auth_api_keys_post",
+        "summary": "Create Operator Api Key",
+        "description": "Create a new OPERATOR-role API key (no buyer identity).\n\nRequires an existing operator credential. Bootstrap the FIRST\noperator key with ``ad-seller create-operator-key`` (writes directly\nto storage, no network surface).\n\nThe response contains the full API key which is shown ONLY ONCE.\nStore it securely \u2014 it cannot be retrieved again.",
+        "operationId": "create_operator_api_key_auth_api_keys_operator_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateApiKeyRequest"
+                "$ref": "#/components/schemas/CreateOperatorApiKeyRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -260,6 +476,38 @@
               "type": "string",
               "title": "Key Id"
             }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -298,6 +546,38 @@
             "schema": {
               "type": "string",
               "title": "Key Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -351,7 +631,7 @@
           "Pricing"
         ],
         "summary": "Get Rate Card",
-        "description": "Get the current rate card (base CPMs by inventory type).\n\nThe rate card drives floor pricing during inventory sync and\ndeal creation. Can be updated via PUT to reflect ad server rate cards.",
+        "description": "Get the current rate card (base CPMs by inventory type).\n\nMatching entries override the catalog product's base CPM as the\nstarting price for quotes, from-template bookings, and negotiation\nanchors (floors still apply) \u2014 see ``rate_card_service`` (issue #69).\nCan be updated via PUT to reflect ad server rate cards.\n\n``source: \"defaults\"`` means no rate card has ever been stored for\nthis seller \u2014 the entries below are generic reference values, not an\noperator-configured card, and they do NOT drive pricing (a stored\nentry has to match a product's inventory type to take effect).\n``source: \"stored\"`` is the operator's actual card.",
         "operationId": "get_rate_card_api_v1_rate_card_get",
         "responses": {
           "200": {
@@ -369,21 +649,55 @@
           "Pricing"
         ],
         "summary": "Update Rate Card",
-        "description": "Update the rate card with current base CPMs from ad server.\n\nPublishers should update this when their ad server rate cards change.\nThe pricing engine uses these values as base prices before applying\ntier discounts and volume adjustments.",
+        "description": "Update the rate card with current base CPMs from ad server.\n\nPublishers should update this when their ad server rate cards change.\nAn entry whose ``inventory_type`` matches a catalog product overrides\nthat product's base CPM as the starting price for quotes,\nfrom-template bookings, and negotiation anchors \u2014 the product's floor\nCPM still applies (issue #69; see ``rate_card_service``). Products\nwith no matching entry keep pricing from the catalog, unchanged.",
         "operationId": "update_rate_card_api_v1_rate_card_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
+                "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/RateCardEntry"
                 },
-                "type": "array",
                 "title": "Entries"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -444,6 +758,38 @@
               "type": "boolean",
               "default": false,
               "title": "Incremental"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -978,7 +1324,7 @@
           "Products"
         ],
         "summary": "Override Inventory Type",
-        "description": "Override the auto-detected inventory type for a product.\n\nPublishers can correct misclassified inventory types from ad server sync\nor apply custom categorization. The override persists across future syncs.",
+        "description": "Override the auto-detected inventory type for a product.\n\nPublishers can correct misclassified inventory types from ad server sync\nor apply custom categorization. The override persists across future syncs.\nRequires an operator credential (catalog mutation).",
         "operationId": "override_inventory_type_api_v1_products__product_id__inventory_type_post",
         "parameters": [
           {
@@ -1098,7 +1444,7 @@
           "Products"
         ],
         "summary": "Delete Inventory Type Override",
-        "description": "Remove an inventory type override, reverting to auto-detected type.",
+        "description": "Remove an inventory type override, reverting to auto-detected type.\n\nRequires an operator credential (catalog mutation).",
         "operationId": "delete_inventory_type_override_api_v1_products__product_id__inventory_type_delete",
         "parameters": [
           {
@@ -1108,6 +1454,38 @@
             "schema": {
               "type": "string",
               "title": "Product Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -1339,7 +1717,7 @@
           "Negotiation"
         ],
         "summary": "Post Negotiation Message",
-        "description": "Canonical negotiation surface \u2014 accepts the shared NegotiationMessage.\n\nThe seller now validates the SAME message the buyer emits: a required\n``action`` enum (accept/counter/reject/final_offer) plus ``buyer_price``\nas :class:`Money`. A well-formed counter no longer 422s (the historical\nbug). Priced actions (counter/final_offer) run the seller's untouched\nnegotiation engine; accept/reject are recorded as terminal rounds off\nthe existing history.",
+        "description": "Canonical negotiation surface \u2014 accepts the shared NegotiationMessage.\n\nThe seller now validates the SAME message the buyer emits: a required\n``action`` enum (accept/counter/reject/final_offer) plus ``buyer_price``\nas :class:`Money`. A well-formed counter no longer 422s (the historical\nbug). Priced actions (counter/final_offer) run the seller's untouched\nnegotiation engine; accept/reject are recorded as terminal rounds off\nthe existing history.\n\n**Idempotency (FD-12):** the request carries a required\n``idempotency_key``. A replay with a key already used for an identical\nbody returns the same round without consuming another one from the\nnegotiation's ``max_rounds`` budget; the same key reused with a\ndifferent body is an ``idempotency_conflict`` (HTTP 409). The key is\nscoped per buyer, same as ``/api/v1/quotes`` and ``/api/v1/deals``.",
         "operationId": "post_negotiation_message_api_v1_negotiations_messages_post",
         "parameters": [
           {
@@ -1457,7 +1835,7 @@
           "Deal Booking"
         ],
         "summary": "Book Deal",
-        "description": "Book a deal from a previously issued quote.\n\nThe seller validates the quote, generates a Deal ID, and returns\nconfirmed terms. This is the commit point \u2014 the quote becomes bound.\n\n**Wire format (proposal \u00a75.6 + \u00a76 row 14b):** the seller accepts both\naudience-plan content types --\n``application/vnd.ucp.embedding+json; v=1`` (legacy UCP carrier) and\n``application/vnd.iab.agentic-audiences+json; v=1`` (new IAB Agentic\nAudiences alias). FastAPI's body parsing is content-type-permissive, so\nboth names round-trip the same Pydantic model with no custom dependency\nneeded; the dual acceptance is exercised by\n``tests/unit/test_deal_booking_snapshot.py``.\n\n**Snapshot (proposal \u00a75.1 Step 2 + wire-format \u00a76.5):** when the request\ncarries an ``audience_plan``, the seller persists it verbatim as\n``audience_plan_snapshot`` against the deal record and returns the\nsnapshot plus a per-role ``audience_match_summary`` so the buyer can\nverify the booking. The snapshot is authoritative for the lifetime of\nthe deal -- if seller capabilities change mid-flight, the snapshot is\nhonored (see ``services/fulfillment.honor_audience_plan_snapshot``).\n\n**Forensic logging (proposal \u00a75.1 Step 2):** the\n``audience_plan_id`` hash is logged at INFO via\n``ad_seller.audience.booking``. The buyer logs the same hash on its\nside; matching entries are the cross-system anchor for dispute\nresolution.\n\n**Idempotency (FD-12):** the request carries a required\n``idempotency_key``. A replay with a key already booked returns the\nsame Deal without minting a second one (no duplicate side effect).",
+        "description": "Book a deal from a previously issued quote.\n\nThe seller validates the quote, generates a Deal ID, and returns\nconfirmed terms. This is the commit point \u2014 the quote becomes bound.\n\n**Wire format (proposal \u00a75.6 + \u00a76 row 14b):** the seller accepts both\naudience-plan content types --\n``application/vnd.ucp.embedding+json; v=1`` (legacy UCP carrier) and\n``application/vnd.iab.agentic-audiences+json; v=1`` (new IAB Agentic\nAudiences alias). FastAPI's body parsing is content-type-permissive, so\nboth names round-trip the same Pydantic model with no custom dependency\nneeded; the dual acceptance is exercised by\n``tests/unit/test_deal_booking_snapshot.py``.\n\n**Snapshot (proposal \u00a75.1 Step 2 + wire-format \u00a76.5):** when the request\ncarries an ``audience_plan``, the seller persists it verbatim as\n``audience_plan_snapshot`` against the deal record and returns the\nsnapshot plus a per-role ``audience_match_summary`` so the buyer can\nverify the booking. The snapshot is authoritative for the lifetime of\nthe deal -- if seller capabilities change mid-flight, the snapshot is\nhonored (see ``services/fulfillment.honor_audience_plan_snapshot``).\n\n**Forensic logging (proposal \u00a75.1 Step 2):** the\n``audience_plan_id`` hash is logged at INFO via\n``ad_seller.audience.booking``. The buyer logs the same hash on its\nside; matching entries are the cross-system anchor for dispute\nresolution.\n\n**Authentication (security fix):** every other money-moving path\n(quotes, proposals, negotiation, template booking) requires a verified\nbuyer via ``deps._verified_buyer_context``; this route was deliberately\nskipped when that wave landed (July 2026, EP-5.2) because it books at\nthe already-capped quoted price -- price integrity was covered, but the\ncaller's identity was not. An OPTIONAL key was used only to scope the\nidempotency namespace, so anyone who learned a ``quote_id`` could book\nit at another buyer's negotiated tier pricing. A verified buyer is now\nREQUIRED (401 if absent), and the caller must be the buyer the\nreferenced quote was priced for -- both by recorded identity (when the\nquote's origin is on record via ``QuoteHistoryStore``) and by tier\n(403 ``buyer_mismatch`` / ``buyer_tier_mismatch`` otherwise). A quote\npriced at the PUBLIC tier (no identity asserted at quote time) has\nnothing buyer-specific to steal, so any authenticated buyer may book it.\n\n**Idempotency (FD-12):** the request carries a required\n``idempotency_key``. A replay with a key already used for an identical\nbody returns the same Deal without minting a second one (no duplicate\nside effect); the same key reused with a different body is an\n``idempotency_conflict`` (HTTP 409). The key is scoped per buyer\n(FD-12) \u2014 the now-required API key identity takes priority, matching\nthe priority order used to resolve buyer identity elsewhere.",
         "operationId": "book_deal_api_v1_deals_post",
         "parameters": [
           {
@@ -1869,15 +2247,49 @@
         "summary": "Push Deal To Buyers",
         "description": "Push a deal to one or more buyer endpoints via IAB Deals API v1.0.\n\nThe seller sends deal terms to buyer DSPs. Each buyer receives an\nHTTP POST with the full IAB Deal object and responds with acceptance status.\n\nThis is the standardized deal distribution path \u2014 alternative to\nSSP-mediated distribution (PubMatic, Index Exchange, etc.).",
         "operationId": "push_deal_to_buyers_api_v1_deals_push_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DealPushRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -1959,15 +2371,49 @@
         "summary": "Distribute Deal Via Ssp",
         "description": "Distribute a deal through configured SSP(s).\n\nRoutes the deal to the appropriate SSP based on routing rules\nor explicit ssp_name. The SSP handles DSP-side distribution.\n\nSupports multiple SSPs: PubMatic (MCP), Index Exchange (REST),\nMagnite (REST), or any configured SSP connector.",
         "operationId": "distribute_deal_via_ssp_api_v1_deals_distribute_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SSPDealDistributeRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -2067,15 +2513,49 @@
         "summary": "Register Curator",
         "description": "Register a new curator.\n\nCurators can then create deals against this publisher's inventory\nvia the /api/v1/deals/curated endpoint.",
         "operationId": "register_curator_api_v1_curators_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CuratorRegistrationRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -3334,6 +3814,40 @@
         "summary": "Create Package",
         "description": "Create a curated package (Layer 2).",
         "operationId": "create_package_packages_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3496,6 +4010,38 @@
               "type": "string",
               "title": "Package Id"
             }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "requestBody": {
@@ -3547,6 +4093,38 @@
               "type": "string",
               "title": "Package Id"
             }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -3579,15 +4157,49 @@
         "summary": "Assemble Package",
         "description": "Assemble a dynamic package (Layer 3) from product IDs.\n\nProduct ids resolve catalog-first with storage fallback (issue #34) \u2014\nthe same resolution as ``POST /packages``. Zero resolution is a 422\nnaming the unresolved ids; partial resolution surfaces\n``unresolved_ids``/``warnings`` on the response.",
         "operationId": "assemble_package_packages_assemble_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DynamicPackageRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -3619,12 +4231,56 @@
         "summary": "Sync Packages",
         "description": "Trigger ad server inventory sync (Layer 1).",
         "operationId": "sync_packages_packages_sync_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -3771,6 +4427,38 @@
               "type": "string",
               "title": "Agent Id"
             }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -3803,15 +4491,49 @@
         "summary": "Discover Agent",
         "description": "Discover an agent by URL.\n\nFetches the agent's card from .well-known/agent.json, checks\nall configured registries (AAMP + extras) for verification, and\nregisters the agent locally with appropriate trust status.",
         "operationId": "discover_agent_registry_agents_discover_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DiscoverAgentRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -3851,6 +4573,38 @@
             "schema": {
               "type": "string",
               "title": "Agent Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -3892,7 +4646,7 @@
           "Quotes"
         ],
         "summary": "Create Quote",
-        "description": "Request a non-binding price quote from the seller.\n\nThe seller evaluates the request against existing pricing rules and\nreturns a quote with pricing, terms, and availability. Quotes are\nephemeral with a 24-hour TTL \u2014 no Deal ID is created.",
+        "description": "Request a non-binding price quote from the seller.\n\nThe seller evaluates the request against existing pricing rules and\nreturns a quote with pricing, terms, and availability. Quotes are\nephemeral with a 24-hour TTL \u2014 no Deal ID is created.\n\n**Idempotency (FD-12):** the request carries a required\n``idempotency_key``. A replay with a key already used for an identical\nbody returns the same Quote without minting a second one; the same key\nreused with a different body is an ``idempotency_conflict`` (HTTP 409).\nThe key is scoped per buyer (FD-12) \u2014 buyer verification runs before\nthe replay lookup so a second buyer can never ride an unverified\nreplay of the first buyer's key.",
         "operationId": "create_quote_api_v1_quotes_post",
         "parameters": [
           {
@@ -4406,7 +5160,7 @@
           "Orders"
         ],
         "summary": "Transition Order",
-        "description": "Transition an order to a new state.\n\nValidates the transition against the state machine rules and\nrecords the change in the audit log.",
+        "description": "Transition an order to a new state.\n\nValidates the transition against the state machine rules and\nrecords the change in the audit log. Requires an operator\ncredential \u2014 state transitions drive billing-relevant lifecycle.",
         "operationId": "transition_order_api_v1_orders__order_id__transition_post",
         "parameters": [
           {
@@ -4610,7 +5364,7 @@
           "Change Requests"
         ],
         "summary": "Create Change Request",
-        "description": "Submit a change request for an existing order.\n\nValidates the change against the current order state, classifies\nseverity, and routes to approval if needed.",
+        "description": "Submit a change request for an existing order.\n\nValidates the change against the current order state, classifies\nseverity, and routes to approval if needed.\n\n**Idempotency (FD-12):** the request carries a required\n``idempotency_key``. An identical replay returns the original change\nrequest without creating a second approval; reusing the key with a\ndifferent body returns ``idempotency_conflict`` (HTTP 409). Keys are\nscoped per order and expire after 24 hours.",
         "operationId": "create_change_request_api_v1_change_requests_post",
         "parameters": [
           {
@@ -4851,7 +5605,7 @@
           "Change Requests"
         ],
         "summary": "Review Change Request",
-        "description": "Approve or reject a pending change request.",
+        "description": "Approve or reject a pending change request.\n\nRequires an operator credential \u2014 the decision is the seller's, not\nthe requesting buyer's.",
         "operationId": "review_change_request_api_v1_change_requests__cr_id__review_post",
         "parameters": [
           {
@@ -4934,7 +5688,7 @@
           "Change Requests"
         ],
         "summary": "Apply Change Request",
-        "description": "Apply an approved change request to the order.\n\nUpdates the order with the proposed values from the change request.",
+        "description": "Apply an approved change request to the order.\n\nUpdates the order with the proposed values from the change request.\nRequires an operator credential (order mutation).",
         "operationId": "apply_change_request_api_v1_change_requests__cr_id__apply_post",
         "parameters": [
           {
@@ -6073,10 +6827,15 @@
         },
         "type": "object",
         "title": "CreateApiKeyRequest",
-        "description": "Request to create a new API key for a buyer."
+        "description": "Request to create a new BUYER-role API key.\n\nOperator keys are created via POST /auth/api-keys/operator\n(CreateOperatorApiKeyRequest) \u2014 they carry no buyer identity."
       },
       "CreateChangeRequestModel": {
         "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Idempotency Key"
+          },
           "order_id": {
             "type": "string",
             "title": "Order Id"
@@ -6118,11 +6877,35 @@
         },
         "type": "object",
         "required": [
+          "idempotency_key",
           "order_id",
           "change_type"
         ],
         "title": "CreateChangeRequestModel",
         "description": "Request to create a change request for an order."
+      },
+      "CreateOperatorApiKeyRequest": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          },
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Days"
+          }
+        },
+        "type": "object",
+        "title": "CreateOperatorApiKeyRequest",
+        "description": "Request to create a new OPERATOR-role API key (no buyer identity)."
       },
       "CreateOrderRequest": {
         "properties": {
@@ -9326,6 +10109,7 @@
           },
           "base_cpm": {
             "type": "number",
+            "exclusiveMinimum": 0.0,
             "title": "Base Cpm"
           },
           "currency": {

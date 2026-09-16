@@ -190,6 +190,6 @@ Base URL: https://your-publisher.example.com
 Auth: Authorization: Bearer sk-operator-XXXXX
 ```
 
-The seller agent exposes 87 REST endpoints. See the [API Overview](../api/overview.md).
+The seller agent exposes 88 REST endpoints. See the [API Overview](../api/overview.md).
 
 For ChatGPT specifically, you can also create a **Custom GPT** with Actions pointing to the REST API's OpenAPI spec at `https://your-publisher.example.com/openapi.json`.
