@@ -149,6 +149,69 @@ class TestEngineRespectsTheProductFloor:
         assert decision.final_price >= global_floor
 
 
+class TestRuleOverridesAreAlsoFloored:
+    """A rule's `base_price_override` is subject to the floor too.
+
+    Pinning this deliberately rather than leaving it as a side effect. The
+    clamp sits after the rule-override branch in `calculate_price`, so an
+    operator rule saying "charge exactly $8" on a product with a $14 floor
+    now yields $14. That is consistent with `rate_card_service`, which
+    already clamps a rate card override UP to the product floor, and with
+    the floor being a floor: the product declares a price it will not go
+    below, and an override is not an exemption from it.
+
+    It is also the behaviour an untested clamp would have introduced
+    silently, which is exactly how the `target_cpm` defect survived. If the
+    intent ever changes to "an explicit operator override wins over the
+    floor", this test is the thing that has to change with it.
+    """
+
+    @staticmethod
+    def _config_with_override(override_price):
+        from ad_seller.models.pricing_tiers import PricingRule
+
+        return TieredPricingConfig(
+            seller_organization_id="default",
+            rules=[
+                PricingRule(
+                    rule_id="rule-override-1",
+                    rule_name="Flat override for this product",
+                    product_ids=["ctv-premium-sports"],
+                    base_price_override=override_price,
+                )
+            ],
+        )
+
+    def test_override_below_the_product_floor_is_clamped_up(self):
+        engine = PricingRulesEngine(self._config_with_override(8.0))
+
+        decision = engine.calculate_price(
+            product_id="ctv-premium-sports",
+            base_price=BASE_CPM,
+            buyer_context=_advertiser_context(),
+            volume=IMPRESSIONS,
+            product_floor=HIGH_FLOOR,
+        )
+
+        assert decision.final_price == HIGH_FLOOR
+        assert any("Price override" in rule for rule in decision.applied_rules)
+        assert any("Floor enforced" in rule for rule in decision.applied_rules)
+
+    def test_override_above_the_product_floor_is_untouched(self):
+        """The override still wins wherever the floor does not bite."""
+        engine = PricingRulesEngine(self._config_with_override(22.0))
+
+        decision = engine.calculate_price(
+            product_id="ctv-premium-sports",
+            base_price=BASE_CPM,
+            buyer_context=_advertiser_context(),
+            volume=IMPRESSIONS,
+            product_floor=HIGH_FLOOR,
+        )
+
+        assert decision.final_price == 22.0
+
+
 class TestEngineNeverQuotesAPriceItWouldReject:
     """The invariant the old code broke, stated directly.
 
