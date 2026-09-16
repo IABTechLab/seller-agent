@@ -237,7 +237,16 @@ class TestCreateQuote:
         assert detail["error"] == "unsupported_capability"
         assert detail["unsupported"][0]["capability"] == "linear_tv"
 
-    async def test_target_cpm_accepted_when_above_floor(self, client, mock_storage):
+    async def test_target_cpm_below_our_price_does_not_lower_the_quote(self, client, mock_storage):
+        """`target_cpm` is advisory and must not set the price.
+
+        This test previously asserted the opposite: a $32.00 target against
+        this product's $35.00 price came back as $32.00, because the old code
+        accepted any buyer number that cleared the floors. That conceded
+        margin on request and bypassed negotiation. The buyer here is
+        unauthenticated, so public tier, so no discount applies and $35.00 is
+        the seller's price.
+        """
         with (
             patch(
                 "ad_seller.interfaces.api.main._get_static_product_catalog",
@@ -256,7 +265,29 @@ class TestCreateQuote:
             )
 
         assert resp.status_code == 200
-        assert resp.json()["quote"]["pricing"]["final_cpm"]["amount_micros"] == 32_000_000
+        assert resp.json()["quote"]["pricing"]["final_cpm"]["amount_micros"] == 35_000_000
+
+    async def test_target_cpm_above_our_price_does_not_raise_the_quote(self, client, mock_storage):
+        """The overcharge direction: a high target must not become the price."""
+        with (
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_mock_catalog(_products()),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+        ):
+            resp = await client.post(
+                "/api/v1/quotes",
+                json=_body(
+                    product_id="ctv-premium-sports",
+                    deal_type="PD",
+                    impressions=1000000,
+                    target_cpm={"amount_micros": 40_000_000, "currency": "USD"},
+                ),
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["quote"]["pricing"]["final_cpm"]["amount_micros"] == 35_000_000
 
     async def test_target_cpm_rejected_below_floor(self, client, mock_storage):
         with (
