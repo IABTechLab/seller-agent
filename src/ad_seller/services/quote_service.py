@@ -175,16 +175,40 @@ async def create_quote(
         inventory_type=product.inventory_type,
     )
 
-    # Evaluate target_cpm if provided
+    # The seller's own computed price IS the quoted price. `target_cpm` is
+    # ADVISORY: the shared protocol spec defines it as "Buyer's desired CPM
+    # ... Advisory", ie. the buyer's statement of what it expects to pay,
+    # formed from its own rate card and spend history before the seller has
+    # priced anything. It is an input to whether we quote or negotiate, never
+    # a figure that sets the price.
+    #
+    # This block previously overwrote final_cpm with request.target_cpm
+    # whenever that value cleared the floors, which was wrong in BOTH
+    # directions. Above our price it charged the buyer's higher number while
+    # `tier_discount_pct` and `rationale` still advertised the discount we
+    # had just computed and then discarded (a real booking quoted
+    # "Advertiser tier: -15% | Final price: $12.75" and billed $15.00).
+    # Below our price it conceded margin automatically to any buyer who named
+    # a number above the floor, bypassing negotiation entirely, because
+    # is_price_acceptable is a floor check and not a pricing decision.
+    #
+    # A discount is a decision the seller makes, not a number the buyer can
+    # assert. If we ever want to honour a lower target automatically, that is
+    # a deliberate pricing policy and belongs in PricingRulesEngine where it
+    # would be reflected in the rationale, not applied silently here.
     final_cpm = decision.final_price
-    if request.target_cpm is not None:
-        acceptable, _ = engine.is_price_acceptable(
-            offered_price=request.target_cpm,
-            product_floor=product.floor_cpm,
-            buyer_context=buyer_context,
+
+    if request.target_cpm is not None and request.target_cpm < final_cpm:
+        # Worth observing: the buyer wants a better price than we quoted.
+        # This is the signal that a negotiation is likely, and the seller's
+        # negotiation surface is where a concession gets recorded.
+        logger.info(
+            "Buyer target CPM $%.2f is below the quoted $%.2f for product %s; "
+            "quoting our price. Buyer may negotiate.",
+            request.target_cpm,
+            final_cpm,
+            request.product_id,
         )
-        if acceptable:
-            final_cpm = request.target_cpm
 
     # Build timestamps
     now = datetime.utcnow()

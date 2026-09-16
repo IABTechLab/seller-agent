@@ -12,6 +12,18 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 - The operator rate card now drives pricing: matching entries override
   catalog base CPM for quotes, bookings, and negotiation anchors (floors
   still apply); previously it was stored but never read (issue #69).
+- `QuoteRequest.target_cpm` is now treated as **advisory**, per its
+  definition in the shared protocol spec, and no longer sets the quoted
+  price. The seller's computed price is what it quotes. Previously any
+  buyer-supplied target that cleared the floors replaced `final_cpm`,
+  which was wrong in both directions: above the seller's price it
+  overcharged while `tier_discount_pct` and `rationale` still advertised
+  the discount that had just been discarded (a booking quoted
+  "Advertiser tier: -15% | Final price: $12.75 CPM" and billed $15.00),
+  and below it the seller conceded margin automatically, bypassing
+  negotiation. **Behaviour change for buyers** who relied on a low
+  `target_cpm` being accepted without negotiating: they now receive the
+  seller's price and can negotiate from there.
 
 ### Fixed
 
