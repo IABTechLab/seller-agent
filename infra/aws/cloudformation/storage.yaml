@@ -71,7 +71,7 @@ Resources:
     UpdateReplacePolicy: Snapshot
     Properties:
       Engine: aurora-postgresql
-      EngineVersion: "16.4"
+      EngineVersion: "16.9"
       DatabaseName: ad_seller
       MasterUsername: !Ref DBMasterUsername
       MasterUserPassword: !Ref DBMasterPasswordSSMParam

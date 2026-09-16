@@ -78,6 +78,22 @@ Resources:
   # ---------------------------------------------------------------------------
   # Ingress rules on EXISTING security groups (no modification to network.yaml)
   # ---------------------------------------------------------------------------
+  # Self-referencing 443 ingress: the interface VPC endpoints above share THIS
+  # security group, so their ENIs must accept HTTPS from the runtime ENIs (also
+  # in this SG). Without it the runtime's 443 calls to bedrock/sts/secrets/logs
+  # endpoints hang — the container never becomes healthy and emits no logs
+  # (it cannot even reach the CloudWatch Logs endpoint). This is the required
+  # companion to the 443 egress rule above.
+  AgentCoreHttpsSelfIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AgentCoreSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref AgentCoreSecurityGroup
+      Description: HTTPS between runtime ENIs and the shared-SG interface endpoints
+
   AuroraIngressFromAgentCore:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -142,6 +158,70 @@ Resources:
     Properties:
       VpcId: !Ref VpcId
       ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1Id
+        - !Ref PrivateSubnet2Id
+      SecurityGroupIds:
+        - !Ref AgentCoreSecurityGroup
+      PrivateDnsEnabled: true
+
+  # ---------------------------------------------------------------------------
+  # Endpoints a private-subnet CUSTOMER_VPC runtime ALSO needs (Req 10.1).
+  # Without these a runtime in a private subnet with no NAT egress cannot:
+  #   - bedrock-agentcore : invoke/serve the AgentCore data plane
+  #   - bedrock-runtime   : mint the Bedrock bearer token + call the model
+  #   - sts               : resolve/verify its execution-role identity
+  #   - secretsmanager    : read the Aurora DB password at startup
+  # A missing one fails on a PRECEDING AWS call (e.g. token mint) before the
+  # Aurora connection is even attempted, which is why the Aurora backend
+  # appeared unreachable. Interface endpoints give the private subnet a path to
+  # each service without a NAT gateway.
+  # ---------------------------------------------------------------------------
+  BedrockAgentCoreEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.bedrock-agentcore"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1Id
+        - !Ref PrivateSubnet2Id
+      SecurityGroupIds:
+        - !Ref AgentCoreSecurityGroup
+      PrivateDnsEnabled: true
+
+  BedrockRuntimeEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.bedrock-runtime"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1Id
+        - !Ref PrivateSubnet2Id
+      SecurityGroupIds:
+        - !Ref AgentCoreSecurityGroup
+      PrivateDnsEnabled: true
+
+  StsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1Id
+        - !Ref PrivateSubnet2Id
+      SecurityGroupIds:
+        - !Ref AgentCoreSecurityGroup
+      PrivateDnsEnabled: true
+
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.secretsmanager"
       VpcEndpointType: Interface
       SubnetIds:
         - !Ref PrivateSubnet1Id

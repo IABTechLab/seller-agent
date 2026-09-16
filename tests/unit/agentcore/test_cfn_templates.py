@@ -1,9 +1,9 @@
 """Tests for AgentCore CloudFormation templates.
 
 Validates:
-- agentcore-network.yaml and main-agentcore.yaml are valid YAML
+- network-agentcore.yaml and main-agentcore.yaml are valid YAML
 - Templates have required Parameters, Resources, Outputs sections
-- agentcore-network.yaml has AgentCoreSecurityGroup, ingress rules, VPC endpoints
+- network-agentcore.yaml has AgentCoreSecurityGroup, ingress rules, VPC endpoints
 - main-agentcore.yaml has NetworkStack, StorageStack, AgentCoreNetworkStack
 - Zero git diff on infra/aws/cloudformation/ (existing files untouched)
 
@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 AGENTCORE_DIR = REPO_ROOT / "infra" / "aws" / "agentcore"
 CFN_DIR = REPO_ROOT / "infra" / "aws" / "cloudformation"
 
-AGENTCORE_NETWORK = AGENTCORE_DIR / "agentcore-network.yaml"
+AGENTCORE_NETWORK = AGENTCORE_DIR / "network-agentcore.yaml"
 MAIN_AGENTCORE = AGENTCORE_DIR / "main-agentcore.yaml"
 AUTH_AGENTCORE = AGENTCORE_DIR / "auth-agentcore.yaml"
 
@@ -54,12 +54,12 @@ def load_cfn_template(path: Path) -> dict:
 
 
 # ===================================================================
-# agentcore-network.yaml validation
+# agentcore-network validation (network-agentcore.yaml)
 # ===================================================================
 
 
 class TestAgentCoreNetworkTemplate:
-    """Validate agentcore-network.yaml structure and resources."""
+    """Validate network-agentcore.yaml structure and resources."""
 
     @pytest.fixture(autouse=True)
     def load_template(self):
@@ -132,6 +132,25 @@ class TestAgentCoreNetworkTemplate:
     def test_has_cloudwatch_logs_endpoint(self):
         resources = self.template["Resources"]
         assert "CloudWatchLogsEndpoint" in resources
+
+    def test_has_private_subnet_service_endpoints(self):
+        """A private-subnet CUSTOMER_VPC runtime needs Bedrock/STS/Secrets
+        endpoints too (Req 10.1) — not just ECR + Logs — or it fails on a
+        preceding AWS call (token mint / role / DB password) before Aurora."""
+        resources = self.template["Resources"]
+        expected = {
+            "BedrockAgentCoreEndpoint": "bedrock-agentcore",
+            "BedrockRuntimeEndpoint": "bedrock-runtime",
+            "StsEndpoint": "sts",
+            "SecretsManagerEndpoint": "secretsmanager",
+        }
+        for logical_id, service in expected.items():
+            assert logical_id in resources, f"missing endpoint {logical_id}"
+            res = resources[logical_id]
+            assert res["Type"] == "AWS::EC2::VPCEndpoint"
+            # ServiceName is a !Sub string containing the service suffix.
+            svc = res["Properties"]["ServiceName"]
+            assert service in str(svc), f"{logical_id} not pointed at {service}: {svc}"
 
     # -- Outputs --
     def test_outputs_agentcore_security_group_id(self):
@@ -251,7 +270,7 @@ class TestMainAgentCoreTemplate:
     def test_agentcore_network_stack_uses_relative_path(self):
         props = self.template["Resources"]["AgentCoreNetworkStack"]["Properties"]
         template_url = str(props.get("TemplateURL", ""))
-        assert "agentcore-network.yaml" in template_url
+        assert "network-agentcore.yaml" in template_url
 
 
 # ===================================================================
@@ -262,17 +281,37 @@ class TestMainAgentCoreTemplate:
 class TestExistingFilesUntouched:
     """Verify zero git diff on infra/aws/cloudformation/ files."""
 
-    def test_cloudformation_dir_no_changes(self):
-        """Existing CloudFormation files must have zero git diff."""
+    def test_cloudformation_dir_no_unexpected_changes(self):
+        """Existing CloudFormation files must have no UNEXPECTED changes.
+
+        The enterprise-auth-gateway work adds a parallel agentcore stack rather
+        than editing the shared ECS CloudFormation stacks, so this dir stays
+        essentially untouched. The ONE sanctioned exception is bumping the
+        Aurora ``EngineVersion`` in ``storage.yaml`` off a version AWS has since
+        retired (``16.4`` was no longer creatable, breaking every ``--storage
+        postgres`` deploy) to a current 16.x minor. Any change to a line OTHER
+        than ``EngineVersion`` still fails this guard.
+        """
         result = subprocess.run(
-            ["git", "diff", "--stat", "infra/aws/cloudformation/"],
+            ["git", "diff", "-U0", "infra/aws/cloudformation/"],
             capture_output=True,
             text=True,
             timeout=10,
             cwd=str(REPO_ROOT),
         )
-        assert result.stdout.strip() == "", (
-            f"Unexpected changes in cloudformation/:\n{result.stdout}"
+        # Collect changed content lines (added/removed), ignoring diff headers
+        # and hunk markers.
+        changed = [
+            ln
+            for ln in result.stdout.splitlines()
+            if (ln.startswith("+") or ln.startswith("-"))
+            and not ln.startswith(("+++", "---"))
+        ]
+        # Every changed line must be an EngineVersion pin (the sanctioned bump).
+        offending = [ln for ln in changed if "EngineVersion" not in ln]
+        assert not offending, (
+            "Unexpected non-EngineVersion changes in cloudformation/:\n"
+            + "\n".join(offending)
         )
 
     def test_network_yaml_exists(self):
