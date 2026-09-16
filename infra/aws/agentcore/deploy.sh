@@ -310,6 +310,45 @@ _authorizer_config_json() {
     --allowed-scopes "${AUTH_ALLOWED_SCOPES}"
 }
 
+# Grant bedrock:CallWithBearerToken to a runtime's execution role (Req 11).
+# The runtime mints its own short-lived Bedrock token from this role at startup
+# (ad_seller.llm.bedrock_token) for the Anthropic Messages path, which the
+# toolkit-created execution role does NOT get by default (it has InvokeModel
+# for the SigV4/Converse path only). We attach a SEPARATELY-NAMED inline policy
+# so the toolkit's own BedrockAgentCoreRuntimeExecutionPolicy-* rewrite on each
+# deploy does not clobber it. Idempotent: put-role-policy overwrites in place.
+# Best-effort — a failure here (e.g. no IAM write perms) warns but does not fail
+# the deploy; the runtime falls back to a baked key if one was supplied.
+_grant_bedrock_bearer_token_permission() {
+  local agent_name="$1"
+  local role_arn role_name
+  # The per-runtime execution_role is written to .bedrock_agentcore.yaml by
+  # `agentcore configure`. Resolve THIS agent's runtime role without a YAML lib:
+  # find the agent's block, then the FIRST `execution_role:` under it (the
+  # runtime role; the CodeBuild role appears later in a nested block).
+  role_arn=$(awk -v name="  ${agent_name}:" '
+    $0==name {inblk=1; next}
+    inblk && /^  [A-Za-z0-9_]+:/ {inblk=0}
+    inblk && /execution_role:/ && !/execution_role_auto_create/ {
+      gsub(/^[[:space:]]*execution_role:[[:space:]]*/,""); print; exit
+    }
+  ' "${REPO_ROOT}/.bedrock_agentcore.yaml" 2>/dev/null)
+  if [[ -z "${role_arn}" ]]; then
+    echo "  ⚠️  Could not resolve execution role for ${agent_name}; skipping bedrock:CallWithBearerToken grant." >&2
+    return 0
+  fi
+  role_name="${role_arn##*/}"
+  echo "  Granting bedrock:CallWithBearerToken to ${role_name} (self-sustaining Bedrock token)…"
+  aws iam put-role-policy \
+    --role-name "${role_name}" \
+    --policy-name "BedrockCallWithBearerToken" \
+    --policy-document '{"Version":"2012-10-17","Statement":[{"Sid":"BedrockBearerTokenMessagesPath","Effect":"Allow","Action":"bedrock:CallWithBearerToken","Resource":"*"}]}' \
+    --region "${REGION}" \
+    ${AWS_PROFILE:+--profile "${AWS_PROFILE}"} 2>&1 \
+    && echo "  ✅ bedrock:CallWithBearerToken granted to ${role_name}" \
+    || echo "  ⚠️  Could not grant bedrock:CallWithBearerToken to ${role_name} (check IAM perms); runtime token mint may 403." >&2
+}
+
 # =============================================================================
 # Infrastructure deployment (postgres mode only)
 # =============================================================================
@@ -648,12 +687,18 @@ deploy_mcp_runtime() {
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
     --env "MEMORY_LLM_MODEL=${MEMORY_MODEL}"
     --env "ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL=${ANTHROPIC_BASE_URL}"
-    --env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}"
     --env "PYTHONPATH=/app/src"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
     --env "CREW_MEMORY_ENABLED=true"
   )
+  # Req 11: only bake a Bedrock key when one was explicitly supplied. Otherwise
+  # omit it entirely so the runtime mints a fresh token from its execution role
+  # at startup (ad_seller.llm.bedrock_token). Baking an empty/stale value here
+  # would leave an expired token that shadows the role-mint.
+  if [[ -n "${BEDROCK_API_KEY}" ]]; then
+    env_args+=(--env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}")
+  fi
 
   if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
     env_args+=(
@@ -681,6 +726,13 @@ deploy_mcp_runtime() {
   # Deploy
   echo ">>> Deploying MCP runtime..."
   agentcore deploy "${env_args[@]}" --auto-update-on-conflict
+
+  # Req 11: on a Bedrock base URL the runtime mints its own token from its
+  # execution role at startup (authoritative, even over a baked key) — so the
+  # role always needs bedrock:CallWithBearerToken here.
+  if [[ "${ANTHROPIC_BASE_URL}" == *bedrock-runtime* || "${ANTHROPIC_BASE_URL}" == *bedrock*amazonaws.com* ]]; then
+    _grant_bedrock_bearer_token_permission "${agent_name}"
+  fi
 
   echo "✅ MCP runtime deployed: ${agent_name}"
 }
@@ -741,13 +793,17 @@ deploy_http_runtime() {
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
     --env "MEMORY_LLM_MODEL=${MEMORY_MODEL}"
     --env "ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL=${ANTHROPIC_BASE_URL}"
-    --env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}"
     --env "PYTHONPATH=/app/src"
     --env "ROUTING_MODE=${routing_mode}"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
     --env "CREW_MEMORY_ENABLED=true"
   )
+  # Req 11: only bake a Bedrock key when one was explicitly supplied; otherwise
+  # omit it so the runtime mints a fresh token from its execution role at startup.
+  if [[ -n "${BEDROCK_API_KEY}" ]]; then
+    env_args+=(--env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}")
+  fi
 
   if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
     env_args+=(
@@ -775,6 +831,11 @@ deploy_http_runtime() {
   # Deploy
   echo ">>> Deploying HTTP runtime..."
   agentcore deploy "${env_args[@]}" --auto-update-on-conflict
+
+  # Req 11: on a Bedrock base URL the runtime mints its own token — grant the role.
+  if [[ "${ANTHROPIC_BASE_URL}" == *bedrock-runtime* || "${ANTHROPIC_BASE_URL}" == *bedrock*amazonaws.com* ]]; then
+    _grant_bedrock_bearer_token_permission "${agent_name}"
+  fi
 
   echo "✅ HTTP runtime deployed: ${agent_name}"
 }
@@ -860,6 +921,11 @@ deploy_a2a_runtime() {
 
   echo ">>> Deploying A2A runtime..."
   agentcore deploy "${env_args[@]}" --auto-update-on-conflict
+
+  # Req 11: on a Bedrock base URL the runtime mints its own token — grant the role.
+  if [[ "${ANTHROPIC_BASE_URL}" == *bedrock-runtime* || "${ANTHROPIC_BASE_URL}" == *bedrock*amazonaws.com* ]]; then
+    _grant_bedrock_bearer_token_permission "${agent_name}"
+  fi
 
   echo "✅ A2A runtime deployed: ${agent_name}"
 }

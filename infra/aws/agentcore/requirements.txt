@@ -31,4 +31,6 @@ uvicorn>=0.30.0
 aiosqlite>=0.20.0
 asyncpg>=0.30.0
 redis>=5.0.0
-iab-agentic-primitives[client] @ https://github.com/IABTechLab/iab-agentic-primitives/archive/refs/tags/v0.5.1.tar.gz
+# Mints a short-lived Bedrock bearer token from the runtime execution role at
+# startup (ad_seller.llm.bedrock_token) so no expiring token is baked into --env.
+aws-bedrock-token-generator>=1.0.0

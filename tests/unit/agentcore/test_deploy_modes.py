@@ -353,3 +353,49 @@ class TestProtocolsFlag:
         assert "bogus" in (result.stdout + result.stderr)
 
 
+# ===================================================================
+# Req 11: self-sustaining Bedrock token — deploy.sh grants the exec role
+# bedrock:CallWithBearerToken and stops baking an empty/stale key.
+# ===================================================================
+
+
+class TestBedrockTokenGrant:
+    """**Validates: Requirement 11**
+
+    deploy.sh must (1) grant bedrock:CallWithBearerToken to each runtime's
+    execution role via a separately-named inline policy, wired into all three
+    runtime deploys, and (2) only bake ANTHROPIC_COMPATIBLE_LLM_API_KEY when a
+    token was actually supplied.
+    """
+
+    def _content(self):
+        return DEPLOY_SCRIPT.read_text()
+
+    def test_grant_helper_defined(self):
+        content = self._content()
+        assert "_grant_bedrock_bearer_token_permission()" in content
+        assert "bedrock:CallWithBearerToken" in content
+        assert "BedrockCallWithBearerToken" in content  # dedicated policy name
+        assert "put-role-policy" in content
+
+    def test_grant_wired_into_all_three_runtimes(self):
+        """def + one call in each of mcp/http/a2a = 4 references."""
+        content = self._content()
+        assert content.count("_grant_bedrock_bearer_token_permission") >= 4
+
+    def test_grant_gated_on_bedrock_base_url(self):
+        """The grant runs when the Anthropic base URL is a Bedrock endpoint
+        (the runtime mints authoritatively there, even over a baked key)."""
+        content = self._content()
+        assert '"${ANTHROPIC_BASE_URL}" == *bedrock-runtime*' in content
+
+    def test_key_env_not_baked_when_empty(self):
+        """The API-key --env is appended conditionally, not baked unconditionally."""
+        content = self._content()
+        # The old unconditional form must be gone; the conditional append present.
+        assert 'env_args+=(--env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}")' in content
+
+    def test_grant_is_best_effort(self):
+        """A failed grant warns but does not abort the deploy."""
+        content = self._content()
+        assert "runtime token mint may 403" in content

@@ -58,6 +58,14 @@ os.environ.setdefault(
     "SELLER_AGENT_URL", f"http://localhost:{os.environ.get('INTERNAL_API_PORT', '8001')}"
 )
 
+# Durable Bedrock auth: if no Anthropic-compatible API key was supplied but the
+# Bedrock Messages base URL is configured, mint a fresh bearer token from the
+# runtime's execution role NOW (at startup). This avoids baking a short-lived
+# token into --env at deploy time (which expires and 403s every crew call).
+from ad_seller.llm.bedrock_token import ensure_bedrock_token  # noqa: E402
+
+ensure_bedrock_token()
+
 from bedrock_agentcore.runtime import BedrockAgentCoreApp  # noqa: E402
 
 logger = logging.getLogger(__name__)

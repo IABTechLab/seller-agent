@@ -38,6 +38,12 @@ os.environ.setdefault("STORAGE_TYPE", "sqlite")
 os.environ.setdefault("AD_SERVER_TYPE", "csv")
 os.environ.setdefault("CSV_DATA_DIR", "./data/csv/samples/aws_workshop")
 
+# Durable Bedrock auth: mint a fresh bearer token from the execution role at
+# startup when none was supplied (see ad_seller.llm.bedrock_token).
+from ad_seller.llm.bedrock_token import ensure_bedrock_token  # noqa: E402
+
+ensure_bedrock_token()
+
 logger = logging.getLogger(__name__)
 
 
