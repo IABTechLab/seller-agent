@@ -309,7 +309,12 @@ async def _get_chat():
 
 
 def _build_buyer_context(payload: dict):
-    """Build a BuyerContext from the payload's buyer_tier field."""
+    """Build a CLAIMED BuyerContext from the payload's buyer_tier field.
+
+    This is the SELF-DECLARED context (no verification). Price-moving paths must
+    use ``_verified_buyer_context_from_payload`` instead, which caps this claim
+    at the registry-verified ceiling. Kept as the claimed-context helper.
+    """
     tier = payload.get("buyer_tier", "public")
     identity_fields = _TIER_MAP.get(tier)
     if not identity_fields:
@@ -323,6 +328,34 @@ def _build_buyer_context(payload: dict):
         is_authenticated=tier != "public",
         authentication_method="a2a",
         request_type="deal",
+    )
+
+
+async def _verified_buyer_context_from_payload(payload: dict):
+    """AgentCore entrypoint adapter over the shared verification core (Req 8).
+
+    Extracts the buyer identity from the payload and delegates to
+    ``ad_seller.auth.verification.verify_buyer_context`` — the SAME verify → cap
+    → floor → persist → block logic the FastAPI routers use. a2a reaches this via
+    ``_handle_invocation``; the mcp tools call the core directly. Re-raises the
+    transport-neutral ``BlockedAgentError`` so the caller returns a 403-equivalent.
+    Returns None for an unmapped/public tier (unchanged behavior).
+    """
+    tier = payload.get("buyer_tier", "public")
+    fields = _TIER_MAP.get(tier)
+    # Unmapped tier, or the public tier (empty identity fields) → no context,
+    # matching the prior _build_buyer_context behavior.
+    if not fields:
+        return None
+
+    from ad_seller.interfaces.agentcore.verification import verify_buyer_context
+    return await verify_buyer_context(
+        endpoint="agentcore:invoke",
+        buyer_tier=tier,
+        agency_id=fields.get("agency_id"),
+        advertiser_id=fields.get("advertiser_id"),
+        seat_id=fields.get("seat_id"),
+        agent_url=payload.get("agent_url") or payload.get("buyer_agent_url"),
     )
 
 
@@ -701,7 +734,17 @@ async def _handle_invocation(payload: dict):
         return {"error": "Missing 'prompt', 'message', or 'input' field"}
 
     session_id = _extract_session_id(payload)
-    buyer_context = _build_buyer_context(payload)
+    try:
+        buyer_context = await _verified_buyer_context_from_payload(payload)
+    except Exception as exc:
+        from ad_seller.interfaces.agentcore.verification import BlockedAgentError
+
+        if isinstance(exc, BlockedAgentError):
+            logger.warning("Rejected blocked buyer agent: %s", exc.agent_url)
+            return {"error": "Agent is blocked. Contact the seller operator for access."}
+        # Fail-closed: never crash the invoke on a verification error.
+        logger.warning("Buyer verification error (%s) — proceeding public.", exc)
+        buyer_context = None
 
     if session_id:
         logger.info("Session: %s — prompt: %s", session_id, prompt[:80])
