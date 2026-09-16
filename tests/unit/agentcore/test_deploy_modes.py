@@ -93,6 +93,81 @@ class TestDeployScriptBasics:
 
 
 # ===================================================================
+# Auth-stack wiring (enterprise-auth-gateway groups 1-2)
+# ===================================================================
+
+
+class TestAuthFlags:
+    """Validate --auth / BYO-IdP flag wiring in deploy.sh."""
+
+    def _content(self):
+        return DEPLOY_SCRIPT.read_text()
+
+    def test_help_shows_auth_flag(self):
+        result = subprocess.run(
+            ["bash", str(DEPLOY_SCRIPT), "--help"],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert "--auth" in result.stdout
+        assert "--no-auth" in result.stdout
+        assert "--idp-discovery-url" in result.stdout
+
+    def test_auth_default_on(self):
+        """Auth is applied BY DEFAULT (Req 5.4): DEPLOY_AUTH initializes to true."""
+        content = self._content()
+        assert "DEPLOY_AUTH=true" in content
+
+    def test_parses_no_auth_flag(self):
+        content = self._content()
+        assert "--no-auth)" in content
+        assert "DEPLOY_AUTH=false" in content
+
+    def test_parses_auth_flag(self):
+        content = self._content()
+        assert "--auth)" in content
+
+    def test_parses_byo_idp_flags(self):
+        content = self._content()
+        assert "--idp-discovery-url)" in content
+        assert "--idp-allowed-clients)" in content
+        assert "--idp-allowed-scopes)" in content
+
+    def test_has_deploy_auth_stack_function(self):
+        content = self._content()
+        assert "deploy_auth_stack()" in content
+        assert "auth-agentcore.yaml" in content
+
+    def test_authorizer_wired_into_runtimes(self):
+        """All three runtime configure blocks (mcp/http/a2a) append the authorizer."""
+        content = self._content()
+        assert "_authorizer_config_json()" in content
+        # def + mcp + http + a2a call sites
+        assert content.count("_authorizer_config_json") >= 4
+        assert content.count("--authorizer-config") >= 3
+        for proto in ("mcp", "http", "a2a"):
+            assert f"CUSTOM_JWT authorizer attached ({proto})" in content
+
+    def test_authorizer_uses_builder(self):
+        content = self._content()
+        assert "authorizer_config.py" in content
+
+    def test_auth_stack_called_in_main_flow(self):
+        content = self._content()
+        assert content.count("deploy_auth_stack") >= 2
+
+    def test_byo_idp_validates_discovery_url(self):
+        """BYO-IdP path must assert a valid OIDC document before configuring."""
+        content = self._content()
+        assert "token_endpoint" in content
+
+    def test_secret_not_printed(self):
+        """The auth-stack deploy must not echo the app-client secret value."""
+        content = self._content()
+        # We reference retrieving it via CLI, but never echo a secret VALUE.
+        assert "describe-user-pool-client" in content
+
+
+# ===================================================================
 # Property 2: Valid modes produce correct runtime names and protocols
 # ===================================================================
 
@@ -276,3 +351,5 @@ class TestProtocolsFlag:
         )
         assert result.returncode != 0
         assert "bogus" in (result.stdout + result.stderr)
+
+

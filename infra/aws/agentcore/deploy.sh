@@ -62,6 +62,12 @@ PROMPT='{"prompt": "list products"}'
 # up" ergonomics. Use --mode <single> or --protocols <list> to narrow it.
 DEPLOY_MODE="all"
 STORAGE_TYPE="sqlite"
+# Per-runtime CUSTOM_JWT auth is applied BY DEFAULT (cross-org is the primary
+# target). --no-auth reverts to the legacy SigV4/PUBLIC deploy (Req 5.4).
+DEPLOY_AUTH=true
+IDP_DISCOVERY_URL="${IDP_DISCOVERY_URL:-}"
+IDP_ALLOWED_CLIENTS="${IDP_ALLOWED_CLIENTS:-}"
+IDP_ALLOWED_SCOPES="${IDP_ALLOWED_SCOPES:-}"
 INVENTORY_TYPE="${AD_SERVER_TYPE:-csv}"
 ENVIRONMENT="${ENVIRONMENT:-staging}"
 STACK_PREFIX="${STACK_PREFIX:-ad-seller-${ENVIRONMENT}}"
@@ -78,6 +84,11 @@ while [[ $# -gt 0 ]]; do
     --protocols)  PROTOCOLS="$2"; shift 2 ;;
     --storage)    STORAGE_TYPE="$2"; shift 2 ;;
     --inventory)  INVENTORY_TYPE="$2"; shift 2 ;;
+    --auth)               DEPLOY_AUTH=true; shift ;;
+    --no-auth)            DEPLOY_AUTH=false; shift ;;
+    --idp-discovery-url)  IDP_DISCOVERY_URL="$2"; shift 2 ;;
+    --idp-allowed-clients) IDP_ALLOWED_CLIENTS="$2"; shift 2 ;;
+    --idp-allowed-scopes)  IDP_ALLOWED_SCOPES="$2"; shift 2 ;;
     --region)     REGION="$2"; shift 2 ;;
     --name)       AGENT_NAME="$2"; shift 2 ;;
     --profile)    AWS_PROFILE="$2"; shift 2 ;;
@@ -95,6 +106,14 @@ Options:
                         (e.g. mcp,http,a2a). Takes precedence over --mode.
   --inventory SOURCE    Inventory data source: csv|s3|gam|freewheel (default: csv)
   --storage BACKEND     Deal/order persistence: sqlite|postgres (default: sqlite)
+  --no-auth             Opt OUT of per-runtime CUSTOM_JWT auth (legacy SigV4/PUBLIC,
+                        same-account/dev). Auth is applied BY DEFAULT (cross-org).
+  --auth                Explicitly enable Cognito CUSTOM_JWT auth (this is the default;
+                        kept for clarity / to override an env-set opt-out)
+  --idp-discovery-url URL   BYO-IdP: use this OIDC discovery URL instead of the
+                        shipped Cognito stack (skips auth-agentcore.yaml deploy)
+  --idp-allowed-clients CSV Comma-separated client_ids for the BYO-IdP authorizer
+  --idp-allowed-scopes CSV  Comma-separated scopes for the BYO-IdP authorizer
   --region REGION       AWS region (default: us-west-2)
   --name NAME           AgentCore runtime name override
   --profile PROFILE     AWS CLI profile
@@ -198,6 +217,98 @@ fi
 
 # Must run from repo root
 cd "${REPO_ROOT}"
+
+# =============================================================================
+# Auth stack deployment (--auth) — seller-owned Cognito for cross-org JWT
+# =============================================================================
+# The seller OWNS the shared Cognito pool (ownership decision 2026-09-15).
+# Deploys auth-agentcore.yaml and reads DiscoveryUrl/AppClientId/InvokeScope into
+# env vars the per-runtime CUSTOM_JWT authorizer wiring (group 3) consumes.
+# BYO-IdP (--idp-discovery-url): skip the Cognito deploy, use the supplied issuer.
+deploy_auth_stack() {
+  local stack_name="${STACK_PREFIX}-auth"
+
+  # BYO-IdP path: no Cognito stack; validate the discovery URL and use it directly.
+  if [[ -n "${IDP_DISCOVERY_URL}" ]]; then
+    echo "============================================="
+    echo "  Auth: BYO-IdP (skipping Cognito stack)"
+    echo "  Discovery: ${IDP_DISCOVERY_URL}"
+    echo "============================================="
+    # Assert the discovery URL returns a valid OIDC document up front.
+    if ! curl -fsS "${IDP_DISCOVERY_URL}" | grep -q '"token_endpoint"'; then
+      echo "ERROR: --idp-discovery-url did not return a valid OIDC document" >&2
+      exit 1
+    fi
+    AUTH_DISCOVERY_URL="${IDP_DISCOVERY_URL}"
+    AUTH_ALLOWED_CLIENTS="${IDP_ALLOWED_CLIENTS}"
+    AUTH_ALLOWED_SCOPES="${IDP_ALLOWED_SCOPES}"
+    echo "✅ BYO-IdP validated"
+    return 0
+  fi
+
+  echo "============================================="
+  echo "  Deploying seller Cognito auth stack"
+  echo "  Stack: ${stack_name}"
+  echo "============================================="
+
+  # If the stack already exists and is healthy, REUSE it (read outputs only) —
+  # no redundant CloudFormation mutation. Only deploy when absent or unhealthy.
+  local existing_status
+  existing_status=$(aws cloudformation describe-stacks --stack-name "${stack_name}" \
+    --region "${REGION}" --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "MISSING")
+  if [[ "${existing_status}" == "CREATE_COMPLETE" || "${existing_status}" == "UPDATE_COMPLETE" ]]; then
+    echo "  Reusing existing stack (${existing_status}) — reading outputs, no redeploy."
+  else
+    aws cloudformation deploy \
+      --template-file "${SCRIPT_DIR}/auth-agentcore.yaml" \
+      --stack-name "${stack_name}" \
+      --parameter-overrides "Environment=${ENVIRONMENT}" "DeployCognito=true" \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --region "${REGION}" \
+      --no-fail-on-empty-changeset
+  fi
+
+  local outputs
+  outputs=$(aws cloudformation describe-stacks --stack-name "${stack_name}" \
+    --region "${REGION}" --query "Stacks[0].Outputs" --output json)
+
+  _out() { echo "${outputs}" | python3 -c "
+import json,sys
+for o in json.load(sys.stdin):
+    if o['OutputKey']=='$1': print(o['OutputValue']); break
+" 2>/dev/null || echo ""; }
+
+  AUTH_DISCOVERY_URL="$(_out DiscoveryUrl)"
+  AUTH_ALLOWED_CLIENTS="$(_out AppClientId)"
+  AUTH_ALLOWED_SCOPES="$(_out InvokeScope)"
+  AUTH_TOKEN_ENDPOINT="$(_out TokenEndpoint)"
+
+  echo "  DiscoveryUrl : ${AUTH_DISCOVERY_URL}"
+  echo "  AppClientId  : ${AUTH_ALLOWED_CLIENTS}"
+  echo "  InvokeScope  : ${AUTH_ALLOWED_SCOPES}"
+  echo "  TokenEndpoint: ${AUTH_TOKEN_ENDPOINT}"
+  echo "  (app-client secret: retrieve via 'aws cognito-idp describe-user-pool-client' — never printed here)"
+  echo "✅ Auth stack deployed"
+}
+
+# Emit the CUSTOM_JWT authorizer JSON on stdout (group 3), or nothing when auth
+# is disabled. Callers append it to configure_args. Built from the auth-stack
+# outputs (or BYO-IdP inputs) via authorizer_config.py, so every runtime
+# validates the SAME shared pool/client/scope. bash-3.2 safe (no namerefs).
+# Usage: mapfile-free — AUTHZ_JSON=$(_authorizer_config_json); [[ -n "$AUTHZ_JSON" ]] && configure_args+=(--authorizer-config "$AUTHZ_JSON")
+_authorizer_config_json() {
+  if [[ "${DEPLOY_AUTH}" != "true" ]]; then
+    return 0
+  fi
+  if [[ -z "${AUTH_DISCOVERY_URL}" ]]; then
+    echo "ERROR: auth requested but AUTH_DISCOVERY_URL is empty — run deploy_auth_stack first" >&2
+    exit 1
+  fi
+  python3 "${SCRIPT_DIR}/authorizer_config.py" \
+    --discovery-url "${AUTH_DISCOVERY_URL}" \
+    --allowed-clients "${AUTH_ALLOWED_CLIENTS}" \
+    --allowed-scopes "${AUTH_ALLOWED_SCOPES}"
+}
 
 # =============================================================================
 # Infrastructure deployment (postgres mode only)
@@ -521,6 +632,12 @@ deploy_mcp_runtime() {
     echo "  VPC mode: SG=${VPC_SECURITY_GROUP}, Subnets=${VPC_SUBNET_1},${VPC_SUBNET_2}"
   fi
 
+  AUTHZ_JSON=$(_authorizer_config_json)
+  if [[ -n "${AUTHZ_JSON}" ]]; then
+    configure_args+=(--authorizer-config "${AUTHZ_JSON}")
+    echo "  CUSTOM_JWT authorizer attached (mcp)"
+  fi
+
   agentcore configure "${configure_args[@]}"
 
   # Build env var args — AGENTCORE_MODE tells main.py to run MCP server
@@ -608,6 +725,12 @@ deploy_http_runtime() {
     echo "  VPC mode: SG=${VPC_SECURITY_GROUP}, Subnets=${VPC_SUBNET_1},${VPC_SUBNET_2}"
   fi
 
+  AUTHZ_JSON=$(_authorizer_config_json)
+  if [[ -n "${AUTHZ_JSON}" ]]; then
+    configure_args+=(--authorizer-config "${AUTHZ_JSON}")
+    echo "  CUSTOM_JWT authorizer attached (http)"
+  fi
+
   agentcore configure "${configure_args[@]}"
 
   # Build env var args — AGENTCORE_MODE tells main.py to run HTTP server
@@ -692,6 +815,12 @@ deploy_a2a_runtime() {
       --security-groups "${VPC_SECURITY_GROUP}"
     )
     echo "  VPC mode: SG=${VPC_SECURITY_GROUP}, Subnets=${VPC_SUBNET_1},${VPC_SUBNET_2}"
+  fi
+
+  AUTHZ_JSON=$(_authorizer_config_json)
+  if [[ -n "${AUTHZ_JSON}" ]]; then
+    configure_args+=(--authorizer-config "${AUTHZ_JSON}")
+    echo "  CUSTOM_JWT authorizer attached (a2a)"
   fi
 
   agentcore configure "${configure_args[@]}"
@@ -813,8 +942,22 @@ if [[ "${TEST_ONLY}" == "false" ]]; then
   echo "  Storage    : ${STORAGE_TYPE}"
   echo "  Region     : ${REGION}"
   echo "  LLM Model  : ${LLM_MODEL}"
+  if [[ "${DEPLOY_AUTH}" == "true" ]]; then
+    echo "  Auth       : $([[ -n "${IDP_DISCOVERY_URL}" ]] && echo "BYO-IdP" || echo "Cognito (CUSTOM_JWT)")"
+  else
+    echo "  Auth       : disabled (--no-auth)"
+  fi
   [[ -n "${AWS_PROFILE}" ]] && echo "  AWS Profile: ${AWS_PROFILE}"
   echo "============================================="
+
+  # Deploy the seller-owned Cognito auth stack (or validate BYO-IdP) first,
+  # so the per-runtime CUSTOM_JWT authorizer wiring can consume its outputs.
+  # Auth is default-on; --no-auth (DEPLOY_AUTH=false) reverts to SigV4/PUBLIC.
+  if [[ "${DEPLOY_AUTH}" == "true" ]]; then
+    deploy_auth_stack
+  else
+    echo "  Auth: DISABLED (--no-auth) — legacy SigV4/PUBLIC runtimes"
+  fi
 
   # Deploy infrastructure if postgres
   if [[ "${STORAGE_TYPE}" == "postgres" ]]; then

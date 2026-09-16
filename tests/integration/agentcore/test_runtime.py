@@ -46,6 +46,7 @@ class RuntimeConfig:
     region: str
     profile: Optional[str]
     agent_name: str
+    bearer_token: Optional[str] = None
 
 
 @pytest.fixture(scope="session")
@@ -66,21 +67,98 @@ def runtime_config(request) -> RuntimeConfig:
                 with open(yaml_path) as f:
                     cfg = yaml.safe_load(f)
                 agents = cfg.get("agents", {})
-                # Find the first agent with a runtime ARN
-                for name, agent_cfg in agents.items():
-                    bc = agent_cfg.get("bedrock_agentcore", {})
-                    candidate = bc.get("agent_arn", "")
-                    if candidate:
-                        arn = candidate
-                        agent_name = name
-                        break
+                # If a specific --agent-name was given, resolve THAT agent's ARN
+                # (deploy.sh --test-only passes e.g. a4a_aamp_seller_omixaj_http).
+                # Otherwise fall back to the first agent that has an ARN.
+                if agent_name and agent_name in agents:
+                    bc = agents[agent_name].get("bedrock_agentcore", {})
+                    arn = bc.get("agent_arn", "") or arn
+                if not arn:
+                    for name, agent_cfg in agents.items():
+                        bc = agent_cfg.get("bedrock_agentcore", {})
+                        candidate = bc.get("agent_arn", "")
+                        if candidate:
+                            arn = candidate
+                            agent_name = name
+                            break
             except Exception as e:
                 logger.warning("Failed to read .bedrock_agentcore.yaml: %s", e)
 
     if not arn:
         pytest.skip("No runtime ARN available — set SELLER_RUNTIME_ARN or deploy first")
 
-    return RuntimeConfig(arn=arn, region=region, profile=profile, agent_name=agent_name)
+    token = _mint_bearer_token(region)
+    return RuntimeConfig(arn=arn, region=region, profile=profile,
+                         agent_name=agent_name, bearer_token=token)
+
+
+def _mint_bearer_token(region: str) -> Optional[str]:
+    """Mint a client_credentials JWT from the seller-owned Cognito auth stack.
+
+    Reads the auth stack (``${STACK_PREFIX}-auth``, default ad-seller-staging-auth)
+    outputs for AppClientId / TokenEndpoint / InvokeScope, fetches the app-client
+    secret via cognito-idp, and POSTs grant_type=client_credentials. Returns the
+    access token, or None when the auth stack is absent (a --no-auth / legacy
+    deploy) so the tests fall back to SigV4 without failing on setup.
+    """
+    import urllib.parse
+    import urllib.request
+
+    stack = os.environ.get("AUTH_STACK_NAME", "ad-seller-staging-auth")
+
+    def _aws_json(args: list[str]):
+        r = subprocess.run(["aws", *args, "--region", region, "--output", "json"],
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            return None
+        return json.loads(r.stdout) if r.stdout.strip() else None
+
+    outputs = _aws_json(["cloudformation", "describe-stacks", "--stack-name", stack,
+                         "--query", "Stacks[0].Outputs"])
+    if not outputs:
+        logger.warning("Auth stack %s not found — tests will use SigV4 (no bearer token)", stack)
+        return None
+    out = {o["OutputKey"]: o["OutputValue"] for o in outputs}
+    client_id = out.get("AppClientId")
+    token_endpoint = out.get("TokenEndpoint")
+    scope = out.get("InvokeScope", "seller-agent/invoke")
+    if not client_id or not token_endpoint:
+        logger.warning("Auth stack missing AppClientId/TokenEndpoint — no bearer token")
+        return None
+
+    # Pool id is embedded in the discovery URL; derive it to read the secret.
+    pool_id = out.get("UserPoolId")
+    secret_info = _aws_json(["cognito-idp", "describe-user-pool-client",
+                            "--user-pool-id", pool_id, "--client-id", client_id,
+                            "--query", "UserPoolClient.ClientSecret"])
+    # describe-user-pool-client with a scalar query returns a bare JSON string
+    client_secret = secret_info if isinstance(secret_info, str) else None
+    if not client_secret:
+        logger.warning("Could not read app-client secret — no bearer token")
+        return None
+
+    import base64
+    basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    data = urllib.parse.urlencode(
+        {"grant_type": "client_credentials", "scope": scope}
+    ).encode()
+    req = urllib.request.Request(
+        token_endpoint, data=data,
+        headers={"Authorization": f"Basic {basic}",
+                 "Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())["access_token"]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Token mint failed: %s", e)
+        return None
+
+
+@pytest.fixture(scope="session")
+def bearer_token(runtime_config) -> Optional[str]:
+    """Back-compat fixture: the token also lives on runtime_config.bearer_token."""
+    return runtime_config.bearer_token
 
 
 def invoke_runtime(
@@ -89,6 +167,7 @@ def invoke_runtime(
     timeout: int = 120,
     max_retries: int = 3,
     retry_wait: int = 30,
+    bearer_token: Optional[str] = None,
 ) -> dict:
     """Invoke the runtime and return parsed response.
 
@@ -102,6 +181,13 @@ def invoke_runtime(
 
     # Build agentcore invoke command
     cmd = ["agentcore", "invoke", payload_json]
+    # Target the specific runtime (else the toolkit uses default_agent, which
+    # after --mode all is a2a — wrong protocol for the chat/crew tests).
+    if config.agent_name:
+        cmd += ["--agent", config.agent_name]
+    token = bearer_token if bearer_token is not None else config.bearer_token
+    if token:
+        cmd += ["--bearer-token", token]
     env = os.environ.copy()
     if config.profile:
         env["AWS_PROFILE"] = config.profile
