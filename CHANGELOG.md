@@ -23,6 +23,13 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   naming the status. Bulk-created deals also carry the quote's
   deal type, product, pricing, and terms so the shared Deal primitive
   can be built for them at all.
+- The API root (`GET /`) and the agent card
+  (`GET /.well-known/agent.json`) now report the package version from
+  `ad_seller.__version__` instead of a hardcoded literal, so a release
+  bump cannot leave a served surface advertising a stale version. Both
+  had repeated `"2.4.2"` and already survived two bumps unnoticed. A
+  regression test scans `src/` for the literal and fails if it appears
+  outside the top-level `__init__.py`.
 
 ### Docs
 

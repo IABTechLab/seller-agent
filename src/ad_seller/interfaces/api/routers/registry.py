@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from .... import __version__
 from .. import deps
 from ..schemas import DiscoverAgentRequest, UpdateTrustRequest
 
@@ -48,7 +49,7 @@ async def agent_card():
             "proposal evaluation, multi-round negotiation, and deal execution."
         ),
         url=settings.seller_agent_url,
-        version="2.4.2",
+        version=__version__,
         provider=AgentProvider(
             name=settings.seller_organization_name,
             url=settings.seller_agent_url,
