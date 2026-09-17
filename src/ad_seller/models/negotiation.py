@@ -101,6 +101,11 @@ class NegotiationHistory(BaseModel):
 
     negotiation_id: str = Field(default_factory=lambda: f"neg-{uuid.uuid4().hex[:8]}")
     proposal_id: str
+    # The quote this negotiation concerns, when one was named. It arrives on
+    # the wire (``NegotiationMessage.quote_id``) and used to be dropped here,
+    # so nothing could correlate a negotiation to the quote a buyer books —
+    # booking then struck the stale quoted price and logged success.
+    quote_id: Optional[str] = None
     product_id: str
     buyer_tier: AccessTier
     strategy: NegotiationStrategy
