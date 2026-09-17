@@ -30,6 +30,15 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   had repeated `"2.4.2"` and already survived two bumps unnoticed. A
   regression test scans `src/` for the literal and fails if it appears
   outside the top-level `__init__.py`.
+- The test suite now runs against a per-run temporary SQLite database
+  instead of whatever `DATABASE_URL` or a local `.env` points at, so runs
+  no longer share persisted state. Previously the suite wrote a database
+  into the working tree and reused it, which made the first run green and
+  every later run fail: the negotiation idempotency short-circuit replayed
+  the response cached by the earlier run, so the mocked `counter_proposal`
+  was never called and `test_self_asserted_advertiser_identity_is_floored`
+  raised on a `None` `await_args`. CI never caught it because every job
+  starts from a clean checkout.
 
 ### Docs
 
