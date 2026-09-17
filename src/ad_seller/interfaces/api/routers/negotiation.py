@@ -23,7 +23,12 @@ from iab_agentic_primitives.protocol.negotiation import PRICED_ACTIONS
 from ....services import negotiation_service
 from .. import contract_mappers as cm
 from .. import deps
-from ..schemas import CounterOfferRequest, ProposalRequest, ProposalResponse
+from ..schemas import (
+    CounterOfferRequest,
+    NegotiationStatusResponse,
+    ProposalRequest,
+    ProposalResponse,
+)
 
 router = APIRouter()
 
@@ -84,9 +89,45 @@ async def counter_proposal(
     )
 
 
-@router.get("/proposals/{proposal_id}/negotiation", tags=["Negotiation"])
-async def get_negotiation_status(proposal_id: str):
-    """Get full negotiation history for a proposal."""
+@router.get(
+    "/proposals/{proposal_id}/negotiation",
+    response_model=NegotiationStatusResponse,
+    tags=["Negotiation"],
+)
+async def get_negotiation_status(
+    proposal_id: str,
+    api_key_record=Depends(deps._get_optional_api_key_record),
+):
+    """Get the negotiation status for a proposal.
+
+    Information disclosure fix: this route previously had NO auth
+    dependency and no ``response_model``, and answered with whatever the
+    service produced — which included the seller's ``strategy``,
+    ``base_price``, ``floor_price`` and ``limits.max_rounds``. Any caller
+    who knew or guessed a proposal id learned the seller's floor and its
+    remaining concession budget, the two things a negotiating seller must
+    never reveal. The service no longer projects those fields and
+    ``NegotiationStatusResponse`` pins the wire shape.
+
+    Auth now matches the sibling negotiation routes (``POST
+    /proposals/{proposal_id}/counter``, ``POST
+    /api/v1/negotiations/messages``): the caller's API key is resolved and
+    run through the EP-5.2 verified-buyer-context path. A GET carries no
+    body identity to self-assert, so an anonymous caller cannot be verified
+    as a party to the negotiation and is rejected with 401 rather than
+    handed another buyer's negotiation state.
+    """
+    buyer_context = await deps._verified_buyer_context(
+        endpoint="GET /proposals/{proposal_id}/negotiation",
+        api_key_record=api_key_record,
+    )
+    if not buyer_context.is_authenticated:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return await negotiation_service.get_negotiation_status(proposal_id)
 
 

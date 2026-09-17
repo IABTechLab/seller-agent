@@ -216,6 +216,30 @@ class CounterOfferRequest(BaseModel):
     agent_url: Optional[str] = None
 
 
+class NegotiationStatusResponse(BaseModel):
+    """Buyer-facing negotiation status for ``GET /proposals/{id}/negotiation``.
+
+    Deliberately NOT a dump of the internal ``NegotiationHistory``. The
+    seller's ``strategy``, ``base_price``, ``floor_price`` and
+    ``NegotiationLimits`` (``max_rounds``) are internal guardrails and must
+    never cross the wire — the shared ``Negotiation`` primitive excludes all
+    four for exactly that reason. Pinning the wire shape here also keeps a
+    later addition to the service's history dict from silently re-leaking
+    them.
+    """
+
+    negotiation_id: str
+    proposal_id: str
+    product_id: str
+    buyer_tier: str
+    status: str
+    total_rounds: int
+    rounds: list[dict[str, Any]] = []
+    started_at: str
+    completed_at: Optional[str] = None
+    package_id: Optional[str] = None
+
+
 class QuoteBuyerIdentityModel(BaseModel):
     """Buyer identity in a quote request."""
 
