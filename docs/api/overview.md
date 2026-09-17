@@ -159,13 +159,15 @@ Registry reads are public; mutations require an operator credential.
 
 ## Change Requests
 
+Every route here requires a credential (anonymous → 401). Reads are scoped to the caller's own change requests; an operator credential sees the whole queue.
+
 | Method | Path | Summary |
 |--------|------|---------|
-| POST | `/api/v1/change-requests` | Submit a change request for an existing order |
-| GET | `/api/v1/change-requests` | List change requests, optionally filtered by order or status |
-| GET | `/api/v1/change-requests/{cr_id}` | Get a change request by ID |
-| POST | `/api/v1/change-requests/{cr_id}/review` | Approve or reject a pending change request |
-| POST | `/api/v1/change-requests/{cr_id}/apply` | Apply an approved change request to the order |
+| POST | `/api/v1/change-requests` | Submit a change request for an existing order (auth required; actor stamped from the credential) |
+| GET | `/api/v1/change-requests` | List the caller's change requests, optionally filtered by order or status (auth required) |
+| GET | `/api/v1/change-requests/{cr_id}` | Get a change request by ID (auth required; another actor's record reads 404) |
+| POST | `/api/v1/change-requests/{cr_id}/review` | Approve or reject a pending change request (operator auth required) |
+| POST | `/api/v1/change-requests/{cr_id}/apply` | Apply an approved change request to the order (operator auth required) |
 
 ## Audit
 

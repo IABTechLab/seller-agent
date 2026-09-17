@@ -353,7 +353,15 @@ class FieldDiffModel(BaseModel):
 
 
 class CreateChangeRequestModel(BaseModel):
-    """Request to create a change request for an order."""
+    """Request to create a change request for an order.
+
+    ``requested_by`` is deliberately ABSENT. The actor is stamped
+    server-side from the presented credential
+    (``auth.dependencies.actor_from_api_key``) — it is the field a human
+    reviewer trusts when approving, so it must never be a wire string the
+    requester chooses. A body that still carries ``requested_by`` is
+    accepted and the value ignored (pydantic drops unknown fields).
+    """
 
     idempotency_key: str = Field(min_length=1)
     order_id: str
@@ -361,7 +369,6 @@ class CreateChangeRequestModel(BaseModel):
     diffs: list[FieldDiffModel] = []
     proposed_values: Optional[dict] = None
     reason: str = ""
-    requested_by: str = "system"
 
 
 class ReviewChangeRequestModel(BaseModel):
@@ -370,6 +377,56 @@ class ReviewChangeRequestModel(BaseModel):
     decision: str  # "approve" or "reject"
     decided_by: str = "system"
     reason: str = ""
+
+
+class ChangeRequestResponse(BaseModel):
+    """Wire shape of a change request.
+
+    Declared explicitly so the router cannot serialise the stored record
+    wholesale. In particular ``rollback_snapshot`` — a full copy of the
+    order, including its state-machine audit log, every transition's
+    actor and reason, and its quote/deal ids — is a SERVER-SIDE field and
+    is absent here by construction, not by filtering.
+    """
+
+    change_request_id: str = ""
+    order_id: str = ""
+    deal_id: str = ""
+    status: str = ""
+    change_type: str = ""
+    severity: str = ""
+    requested_by: str = ""
+    requested_at: Optional[str] = None
+    reason: str = ""
+
+    diffs: list[FieldDiffModel] = []
+    proposed_values: dict = {}
+
+    validation_errors: list[str] = []
+    pricing_impact: Optional[dict] = None
+    availability_check: Optional[dict] = None
+
+    approved_by: str = ""
+    approved_at: Optional[str] = None
+    rejection_reason: str = ""
+
+    applied_at: Optional[str] = None
+    applied_by: str = ""
+
+
+class ChangeRequestListResponse(BaseModel):
+    """Wire shape of ``GET /api/v1/change-requests``."""
+
+    change_requests: list[ChangeRequestResponse] = []
+    count: int = 0
+
+
+class ChangeRequestApplyResponse(BaseModel):
+    """Wire shape of ``POST /api/v1/change-requests/{cr_id}/apply``."""
+
+    change_request_id: str = ""
+    status: str = ""
+    order_id: str = ""
 
 
 class DealFromTemplateRequest(BaseModel):
