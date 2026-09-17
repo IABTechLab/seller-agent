@@ -37,6 +37,24 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   helper (mirrors `interfaces.api.deps`, matching how `_registry_service`
   and `_api_key_service` already do this) instead of each re-instantiating
   the service independently.
+- **Information disclosure:** `GET /proposals/{proposal_id}/negotiation`
+  no longer returns the seller's internal negotiation guardrails, and no
+  longer answers unauthenticated callers. The route previously had no auth
+  dependency and no response model, so any caller who knew or guessed a
+  proposal id received `strategy`, `base_price`, `floor_price` and
+  `max_rounds` — the seller's floor price and its remaining concession
+  budget. Operators running an earlier build should assume those values
+  were readable for every negotiation that existed on that build. The four
+  fields are now dropped from the service projection (so no consumer can
+  re-expose them), the response shape is pinned by
+  `NegotiationStatusResponse`, and the route resolves a verified buyer
+  context like its sibling negotiation routes, rejecting anonymous callers
+  with 401. The shared `Negotiation` primitive excludes the same four
+  fields deliberately. Note that the response is now authentication-scoped
+  but not yet buyer-scoped: an authenticated buyer can still read any
+  proposal's negotiation, because the stored history records no buyer
+  identity to scope against.
+
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal
