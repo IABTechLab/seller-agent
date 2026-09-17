@@ -7,6 +7,21 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 
 
+def negotiation_by_quote_key(quote_id: str) -> str:
+    """Key of the pointer from a quote to the negotiation about it.
+
+    The value stored under this key is the id the negotiation record is keyed
+    by (see :meth:`StorageBackend.get_negotiation`), so booking can resolve a
+    quote to the price agreed for it. A pointer rather than a second copy of
+    the record: the record is mutable because rounds are appended to it, so
+    two copies would drift on the first append.
+
+    Written only when a negotiation concludes ``accepted``, so presence in
+    this index means exactly "this quote has an agreed price".
+    """
+    return f"negotiation_by_quote:{quote_id}"
+
+
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
 

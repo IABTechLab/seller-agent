@@ -135,8 +135,17 @@ async def post_negotiation_message(
 
     # The seller keys negotiations by proposal_id; negotiation_id doubles as
     # that key for continuation, and quote-led opens key off the quote_id
-    # (the service resolves the stored quote to its product).
-    proposal_id = message.proposal_id or message.negotiation_id or message.quote_id
+    # (the service resolves the stored quote to its product). Which of those
+    # is the key is resolved against the STORE rather than read off this
+    # message: taking `proposal_id or negotiation_id or quote_id` made the key
+    # depend on the ids a given message happened to carry, so a continuation
+    # leading with a different id resolved to a different record and silently
+    # restarted the negotiation.
+    proposal_id = await negotiation_service.resolve_negotiation_key(
+        proposal_id=message.proposal_id,
+        negotiation_id=message.negotiation_id,
+        quote_id=message.quote_id,
+    )
     if proposal_id is None:  # unreachable: the shared model requires one key
         raise HTTPException(
             status_code=400,
@@ -185,15 +194,17 @@ async def post_negotiation_message(
             proposal_id=proposal_id,
             buyer_price=buyer_price,
             buyer_context=buyer_context,
+            quote_id=message.quote_id,
         )
         response = cm.negotiation_round_to_response(result)
     else:
         # accept / reject — terminal moves off the recorded history; the
         # price engine is not run (it stays untouched). The move is
         # PERSISTED onto the stored negotiation so downstream booking sees
-        # the agreed state.
+        # the agreed state, and an accept indexes the negotiation by its
+        # quote so booking that quote can find the agreed price.
         status_data = await negotiation_service.apply_terminal_action(
-            proposal_id, message.action.value, buyer_price
+            proposal_id, message.action.value, buyer_price, quote_id=message.quote_id
         )
         response = cm.terminal_round_response(status_data, message.action, buyer_price)
 

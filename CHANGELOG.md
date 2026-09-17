@@ -12,6 +12,26 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 - The operator rate card now drives pricing: matching entries override
   catalog base CPM for quotes, bookings, and negotiation anchors (floors
   still apply); previously it was stored but never read (issue #69).
+- **A negotiated price now actually books.** Booking looked for an accepted
+  negotiation with `get_negotiation(quote_id)`, which only ever hit for a
+  quote-led negotiation, since that one happens to be stored under the quote
+  id. A proposal-led negotiation is stored under its `prop-` id, so the
+  lookup missed and the deal was booked at the seller's standard price with
+  the negotiation reported as successful. `NegotiationHistory` now retains
+  the `quote_id` that already arrived on `NegotiationMessage` and was being
+  dropped, an accepted negotiation indexes itself as
+  `negotiation_by_quote:{quote_id}`, and booking resolves through that index
+  (falling back to the direct read, so quote-led negotiations recorded before
+  the index existed are still honored). **Behavior change:** bookings that
+  silently ignored an accepted negotiation now honor it, so a booked
+  `final_cpm` can differ from the quoted one — it carries the agreed price
+  and says so in its rationale. An accepted negotiation carrying no agreed
+  price is now refused (`negotiation_price_unresolved`) rather than quietly
+  booked at the un-negotiated quoted price. Relatedly, the negotiation
+  storage key is now resolved against the store instead of being read off
+  whichever ids a given message happened to carry, so a continuation leading
+  with a different id continues the same negotiation rather than silently
+  restarting it at round one.
 
 ### Fixed
 
