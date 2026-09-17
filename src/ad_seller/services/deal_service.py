@@ -631,14 +631,14 @@ def _quote_deal_type_map():
 
 def _build_seller_schain() -> dict[str, Any]:
     """Build the seller-side schain object (sellers.json-backed or default)."""
-    from ..config import get_settings
+    from ..config import get_settings, seller_id_or_default
     from ..models.supply_chain import build_schain_from_sellers_json, load_sellers_json
 
     _settings = get_settings()
     _sellers_json_path = getattr(_settings, "sellers_json_path", None)
     _sellers_json = load_sellers_json(_sellers_json_path) if _sellers_json_path else None
     if _sellers_json:
-        _seller_id = getattr(_settings, "seller_organization_id", "default")
+        _seller_id = seller_id_or_default(_settings)
         schain_obj = build_schain_from_sellers_json(_sellers_json, _seller_id)
         return schain_obj.model_dump()
 

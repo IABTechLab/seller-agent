@@ -981,12 +981,13 @@ async def set_approval_gates(
 @mcp.tool()
 async def get_supply_chain() -> str:
     """Get the seller's supply chain transparency info (sellers.json format)."""
+    from ..config import seller_id_or_default
     from ..models.supply_chain import build_schain_from_sellers_json, load_sellers_json
 
     settings = _get_settings()
     seller_domain = getattr(settings, "seller_domain", "demo-publisher.example.com")
     seller_name = getattr(settings, "seller_name", "Demo Publisher")
-    seller_id = getattr(settings, "seller_organization_id", "default")
+    seller_id = seller_id_or_default(settings)
     sellers_json_path = getattr(settings, "sellers_json_path", None)
     deal_types = ["programmatic_guaranteed", "preferred_deal", "private_auction"]
 
