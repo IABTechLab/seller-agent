@@ -2,6 +2,19 @@
 
 Change requests handle post-deal modifications to orders. Each request is validated against the current order state, assigned a severity level, and routed through the appropriate approval path.
 
+## Authentication and scoping
+
+**Every route on this surface requires a credential.** Anonymous callers get `401`.
+
+- **Submission and reads** (`POST /api/v1/change-requests`, `GET /api/v1/change-requests`, `GET /api/v1/change-requests/{cr_id}`) accept a **buyer** key.
+- **Review and apply** require an **operator** key (buyer key → `403`).
+
+Reads are additionally **scoped to the caller**. A buyer credential sees only the change requests it filed; another actor's record reads `404` (not `403`, so the by-id route cannot be walked as an existence oracle). An operator credential sees the whole queue — that is who reviews it.
+
+The requesting actor is **stamped by the seller** from the presented credential and is stable across key rotation for a buyer with a seat/agency/advertiser identity. It is never taken from the request body: `requested_by` is the field a reviewer trusts when approving, so a requester must not be able to name itself.
+
+Change request records embed a server-side `rollback_snapshot` (a full copy of the order, audit log included). It is not part of any response on this surface and never crosses the wire.
+
 ## Severity Levels
 
 Severity is auto-classified based on change type and magnitude:
@@ -38,12 +51,14 @@ Severity is auto-classified based on change type and magnitude:
 | `diffs` | array | No | List of field-level changes: `{field, old_value, new_value}` |
 | `proposed_values` | object | No | Key-value pairs of proposed new values |
 | `reason` | string | No | Explanation for the change |
-| `requested_by` | string | No | Who requested (default: `system`) |
+
+`requested_by` is **not** a request field. It is derived from the presented credential. A body that still sends it is accepted and the value ignored.
 
 ### Example: Shift Flight Dates (Minor --- Auto-Approved)
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/change-requests \
+  -H "Authorization: Bearer <api_key>" \
   -H "Content-Type: application/json" \
   -d '{
     "idempotency_key": "<idempotency_key>",
@@ -53,8 +68,7 @@ curl -X POST http://localhost:8000/api/v1/change-requests \
       {"field": "flight_start", "old_value": "2026-04-01", "new_value": "2026-04-03"},
       {"field": "flight_end", "old_value": "2026-04-30", "new_value": "2026-05-02"}
     ],
-    "reason": "Campaign launch delayed by 2 days",
-    "requested_by": "agent:buyer-001"
+    "reason": "Campaign launch delayed by 2 days"
   }'
 ```
 
@@ -64,6 +78,7 @@ Because the date shift is 2 days (within the 3-day threshold), this is classifie
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/change-requests \
+  -H "Authorization: Bearer <api_key>" \
   -H "Content-Type: application/json" \
   -d '{
     "idempotency_key": "<idempotency_key>",
@@ -73,8 +88,7 @@ curl -X POST http://localhost:8000/api/v1/change-requests \
       {"field": "final_cpm", "old_value": 10.00, "new_value": 8.50}
     ],
     "proposed_values": {"final_cpm": 8.50},
-    "reason": "Buyer requested discount after volume commitment",
-    "requested_by": "human:ops-jane"
+    "reason": "Buyer requested discount after volume commitment"
   }'
 ```
 
@@ -100,16 +114,22 @@ Failed validation returns HTTP 422 with the change request ID and error list.
 | `status` | string | Filter by status |
 
 ```bash
-curl "http://localhost:8000/api/v1/change-requests?order_id=ORD-A1B2C3D4E5F6&status=pending_approval"
+curl -H "Authorization: Bearer <api_key>" \
+  "http://localhost:8000/api/v1/change-requests?order_id=ORD-A1B2C3D4E5F6&status=pending_approval"
 ```
+
+A buyer credential sees only its own change requests; an operator credential sees all of them.
 
 ## Get Change Request
 
 **GET** `/api/v1/change-requests/{cr_id}`
 
 ```bash
-curl http://localhost:8000/api/v1/change-requests/CR-A1B2C3D4E5F6
+curl -H "Authorization: Bearer <api_key>" \
+  http://localhost:8000/api/v1/change-requests/CR-A1B2C3D4E5F6
 ```
+
+Returns **404** for a change request filed by a different actor.
 
 ## Review a Change Request
 

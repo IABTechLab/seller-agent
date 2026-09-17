@@ -21,7 +21,11 @@ Covers:
 (f) The remaining mutation surface is gated: inventory-type override
     write/delete, change-request review/apply, and order transitions
     (REST endpoint and its MCP twin) — while the corresponding
-    buyer-facing reads and CR submission stay on the optional-key path.
+    buyer-facing reads stay on the optional-key path. Change-request
+    submission and reads are the exception: they are buyer-facing (a
+    BUYER key suffices) but no longer anonymous, because the records
+    embed the order's audit trail (seller-928 — scoping covered in
+    test_change_request_disclosure.py).
 """
 
 import sys
@@ -893,18 +897,25 @@ class TestChangeRequestDecisionsRequireOperator:
         assert resp.status_code == 200
         assert resp.json()["status"] == "applied"
 
-    async def test_create_and_read_change_requests_stay_buyer_facing(self, client, mock_storage):
-        """POST /change-requests and the reads remain on the optional-key
-        surface — anonymous callers are not rejected by auth."""
+    async def test_create_and_read_change_requests_are_buyer_facing_but_credentialed(
+        self, client, mock_storage
+    ):
+        """Submission and the reads stay buyer-facing — a BUYER key is
+        enough, no operator credential needed — but they are no longer
+        anonymous: the listing used to return every order's audit trail to
+        anyone who asked (seller-928)."""
+        buyer_key = _seed_key(mock_storage._store, role=ApiKeyRole.BUYER)
         with (
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
             patch(
                 "ad_seller.services.order_service.list_change_requests",
-                new=AsyncMock(return_value=[]),
+                new=AsyncMock(return_value={"change_requests": [], "count": 0}),
             ),
         ):
-            resp = await client.get("/api/v1/change-requests")
-        assert resp.status_code == 200
+            anonymous = await client.get("/api/v1/change-requests")
+            credentialed = await client.get("/api/v1/change-requests", headers=_auth(buyer_key))
+        assert anonymous.status_code == 401
+        assert credentialed.status_code == 200
 
 
 class TestOrderTransitionRequiresOperator:
