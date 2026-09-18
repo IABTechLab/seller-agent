@@ -293,11 +293,18 @@ def product_from_inventory_item(item: Any) -> Any:
 
     ``product_id`` is the ad server item id verbatim (for CSV, the ``id``
     column of ``inventory.csv``) — deterministic across process restarts.
+
+    When the ad server item carries no ``floor_price_cpm`` (AI-8: the
+    common case for GAM/FreeWheel items), the fallback is the operator's
+    configured ``default_price_floor_cpm`` rather than a hardcoded
+    literal, so a publisher who raises their floor sees synced products
+    respect it instead of silently undercutting it at a fixed $10.
     """
+    from ..config import get_settings
     from ..models.flow_state import ProductDefinition
 
     raw = getattr(item, "raw", {}) or {}
-    floor = raw.get("floor_price_cpm", 10.0)
+    floor = raw.get("floor_price_cpm", get_settings().default_price_floor_cpm)
     inv_type = classify_inventory_type(item)
     return ProductDefinition(
         product_id=item.id,
