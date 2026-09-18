@@ -15,6 +15,16 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- MCP `list_packages` no longer crashes (AI-12). It constructed
+  `MediaKitService()` with no arguments, but the class requires
+  `storage`/`pricing_engine`, so every call raised `TypeError`
+  unconditionally. `get_setup_status` had the identical bug at its own
+  media-kit check, silently swallowed by a `try/except`, so setup status
+  always reported `media_kit.configured: false` regardless of the actual
+  package count. Both call sites now go through one `_media_kit_service()`
+  helper (mirrors `interfaces.api.deps`, matching how `_registry_service`
+  and `_api_key_service` already do this) instead of each re-instantiating
+  the service independently.
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal
