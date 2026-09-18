@@ -390,9 +390,15 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             "linear_tv": [3, 7],
         }.get(inv_type, [2])
 
-    @staticmethod
-    def _estimate_base_cpm(inv_type: str) -> float:
-        """Estimate base CPM for an inventory type."""
+    def _estimate_base_cpm(self, inv_type: str) -> float:
+        """Estimate base CPM for an inventory type.
+
+        The per-type values are deliberate estimates; the fallback for an
+        unrecognized type is the operator's configured
+        ``default_price_floor_cpm`` (AI-8), not a hardcoded literal, so an
+        operator-raised floor is respected for synced packages of a type
+        this mapping doesn't recognize.
+        """
         return {
             "display": 12.0,
             "video": 25.0,
@@ -400,7 +406,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             "mobile_app": 18.0,
             "native": 10.0,
             "linear_tv": 40.0,
-        }.get(inv_type, 10.0)
+        }.get(inv_type, self._settings.default_price_floor_cpm)
 
     @listen(sync_from_ad_server)
     async def create_default_products(self) -> None:
