@@ -104,6 +104,41 @@ async def test_mcp_tools_list_over_jwt(mcp_url, token):
     assert "get_pricing" in names, f"get_pricing not advertised; got {names}"
 
 
+async def test_mcp_list_products_returns_catalog(mcp_url, token):
+    """list_products returns the real inv-* catalog over JWT (seller-only proof).
+
+    Drives the seller MCP runtime directly — no buyer, no client-side filter —
+    so it isolates "does the deployed seller serve its catalog" from the buyer's
+    OpenDirect discovery path. list_products takes only a limit (no query), so
+    it returns the full catalog; the assertion is that real seller catalog
+    product_ids (``inv-*``) come back with a positive count.
+    """
+    import json as _json
+    import re as _re
+
+    result = await _call_tool(mcp_url, token, "list_products", {"limit": 50})
+    text = _result_text(result)
+    assert not result.isError, f"list_products errored: {text}"
+
+    # Parse the JSON body the tool returns (shared ProductListResponse:
+    # {"products": [...], "total_count": N, "limit": ..., "offset": ...}).
+    payload = _json.loads(text)
+    assert payload.get("total_count", 0) > 0, f"empty catalog: {text[:400]}"
+    inv_ids = sorted(
+        p["product_id"]
+        for p in payload["products"]
+        if _re.match(r"inv-", str(p.get("product_id", "")))
+    )
+    assert inv_ids, f"no inv-* product_ids in catalog: {text[:400]}"
+    # Each product must carry seller_organization_id: the MCP catalog now
+    # serializes through the shared boundary mapper, so cross-org buyers can
+    # validate the records against the shared WireProduct (which requires it).
+    assert all(
+        p.get("seller_organization_id") for p in payload["products"]
+    ), f"product missing seller_organization_id: {text[:400]}"
+    logger.info("seller catalog served %d inv-* products: %s", len(inv_ids), inv_ids[:5])
+
+
 async def test_mcp_get_pricing_public_passes_through(mcp_url, token):
     """PUBLIC tier: wrapper passes through, tool returns a real price."""
     result = await _call_tool(
