@@ -6,7 +6,7 @@
 Tools exposed by the seller MCP server (`ad_seller.interfaces.mcp_server`),
 enumerated from the live FastMCP registry.
 
-**Total: 46 tools**
+**Total: 47 tools**
 
 | Tool | Description |
 | --- | --- |
@@ -15,6 +15,7 @@ enumerated from the live FastMCP registry.
 | `create_api_key` | Create a buyer API key (operator auth required over HTTP). |
 | `create_curated_deal` | Create a deal with curator overlay. The curator's fee is added on top. |
 | `create_deal_from_template` | Create a deal directly from parameters (one-step, no quote needed). |
+| `create_order` | Create a new order and persist its state machine. |
 | `create_package` | Create a new curated package in the media kit. |
 | `deprecate_deal` | Mark a deal as deprecated with reason and optional replacement. |
 | `distribute_deal_via_ssp` | Distribute a deal through configured SSP(s). |
