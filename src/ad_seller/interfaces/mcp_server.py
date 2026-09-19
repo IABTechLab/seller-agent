@@ -888,6 +888,27 @@ async def bulk_deal_operations(operations: str) -> str:
 
 
 @mcp.tool()
+async def create_order(deal_id: str = "", quote_id: str = "", metadata: str = "") -> str:
+    """Create a new order and persist its state machine.
+
+    Mirrors ``POST /api/v1/orders`` — an MCP-only flow previously had no
+    way to turn a booked deal into an order, dead-ending at "distributed".
+    ``metadata`` is optional, passed as a JSON object string
+    (e.g. '{"campaign": "spring-2026"}').
+    """
+    from ..services import order_service
+
+    parsed_metadata = json.loads(metadata) if metadata else None
+    return await _service_json(
+        order_service.create_order(
+            deal_id=deal_id or None,
+            quote_id=quote_id or None,
+            metadata=parsed_metadata,
+        )
+    )
+
+
+@mcp.tool()
 async def list_orders(limit: int | None = 50) -> str:
     """List orders and their current states."""
     limit = limit or 50

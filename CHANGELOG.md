@@ -4,6 +4,12 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- MCP `create_order` tool (AI-11), mirroring `POST /api/v1/orders`. An
+  MCP-only flow could previously book and distribute a deal but had no
+  tool to turn it into an order, dead-ending at "distributed."
+
 ### Changed
 
 - Booking (POST /api/v1/deals) now requires a verified buyer key matching
