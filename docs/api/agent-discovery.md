@@ -2,6 +2,32 @@
 
 Agent discovery enables buyer agents to find seller agents and understand their capabilities before initiating transactions. The seller agent implements the A2A protocol standard for discovery via the `/.well-known/agent.json` endpoint.
 
+## Discovery on AgentCore (Registry-Based)
+
+The `/.well-known/agent.json` card above describes the **ECS/FastAPI** deployment,
+where the seller has a stable HTTPS origin. On **Amazon Bedrock AgentCore**,
+discovery works differently and the card endpoint is not the discovery surface:
+
+- **Discovery is registry-based.** Each deployed runtime (http/mcp/a2a) is
+  registered in the **AAMP registry** with its OAuth HTTPS invocations URL
+  (`https://bedrock-agentcore.<region>.amazonaws.com/runtimes/<ENCODED_ARN>/invocations?qualifier=DEFAULT`),
+  its `protocol_type`, `auth_required=true`, and an `authentication` block
+  advertising the shared token endpoint + scope. Buyers resolve the seller by
+  querying the registry (`AAMP_REGISTRY_URL`), not by fetching a `.well-known`
+  file. There is no fronting gateway in v1.
+- **The A2A runtime serves its OWN card.** AgentCore natively serves
+  `/.well-known/agent-card.json` for the A2A runtime, whose `url` is the direct
+  `InvokeAgentRuntime` endpoint. This is distinct from the ECS
+  `/.well-known/agent.json` above and is served by the platform, not the app.
+- **The in-container `/registry/*` REST endpoints are the OPERATOR surface,
+  NOT the external registration surface.** They let a seller operator inspect
+  and set trust on locally-known agents (see below); they are not how a runtime
+  publishes itself for cross-org discovery — that is the AAMP registry record
+  created at deploy time.
+
+See [AgentCore Deployment → Register + Authenticate](../guides/agentcore-deployment.md#register--authenticate-cross-org)
+for how each runtime is registered and authenticated.
+
 ## The Agent Card Endpoint
 
 ```
