@@ -95,3 +95,55 @@ class TestValidationAndNormalization:
         auth = cfg["customJWTAuthorizer"]
         assert auth["allowedClients"] == ["a", "b"]
         assert auth["allowedScopes"] == ["x", "y"]
+
+
+class TestPerTierScopesAndClaims:
+    """Req 13: per-tier scopes in allowedScopes + optional requiredCustomClaims."""
+
+    def test_tier_scopes_flow_through_allowed_scopes(self):
+        # A tier-restricted runtime hard-gates at the edge by listing the tier
+        # scope in allowedScopes — no builder change needed beyond passing them.
+        cfg = build_authorizer_config(
+            COGNITO_DISCOVERY,
+            "advertiserclient",
+            "seller-agent/invoke,seller-agent/advertiser",
+        )
+        assert cfg["customJWTAuthorizer"]["allowedScopes"] == [
+            "seller-agent/invoke",
+            "seller-agent/advertiser",
+        ]
+
+    def test_required_custom_claims_omitted_by_default(self):
+        cfg = build_authorizer_config(COGNITO_DISCOVERY, "c1", "seller-agent/invoke")
+        assert "requiredCustomClaims" not in cfg["customJWTAuthorizer"]
+
+    def test_required_custom_claims_emitted(self):
+        cfg = build_authorizer_config(
+            COGNITO_DISCOVERY,
+            "c1",
+            "seller-agent/invoke",
+            required_custom_claims=[{"name": "tier", "value": "advertiser"}],
+        )
+        rules = cfg["customJWTAuthorizer"]["requiredCustomClaims"]
+        assert rules == [{"name": "tier", "value": "advertiser", "match": "EQUALS"}]
+
+    def test_required_custom_claims_custom_match_and_alias(self):
+        cfg = build_authorizer_config(
+            COGNITO_DISCOVERY,
+            "c1",
+            "seller-agent/invoke",
+            required_custom_claims=[
+                {"name": "groups", "value": "agency", "matchType": "CONTAINS"}
+            ],
+        )
+        rules = cfg["customJWTAuthorizer"]["requiredCustomClaims"]
+        assert rules == [{"name": "groups", "value": "agency", "match": "CONTAINS"}]
+
+    def test_required_custom_claim_missing_value_raises(self):
+        with pytest.raises(ValueError):
+            build_authorizer_config(
+                COGNITO_DISCOVERY,
+                "c1",
+                "seller-agent/invoke",
+                required_custom_claims=[{"name": "tier"}],
+            )

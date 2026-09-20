@@ -62,9 +62,19 @@ PROMPT='{"prompt": "list products"}'
 # up" ergonomics. Use --mode <single> or --protocols <list> to narrow it.
 DEPLOY_MODE="all"
 STORAGE_TYPE="sqlite"
+# Req 13: the custom header AgentCore forwards to the runtime carrying the
+# Cognito-verified buyer tier. A live probe (2026-09-19) proved the CUSTOM_JWT
+# authorizer strips the inbound bearer, so the tier reaches the container ONLY
+# when this header is allowlisted at `agentcore configure` time. The claim→tier
+# seam (interfaces/agentcore/claims.py) reads it and maps scope → AccessTier.
+TIER_HEADER="X-Amzn-Bedrock-AgentCore-Runtime-Custom-Tier"
 # Per-runtime CUSTOM_JWT auth is applied BY DEFAULT (cross-org is the primary
 # target). --no-auth reverts to the legacy SigV4/PUBLIC deploy (Req 5.4).
 DEPLOY_AUTH=true
+# Req 13: --auth-update forces the auth CFN template to be re-applied even when
+# the stack already exists (default reuse path skips it). Needed to roll out the
+# per-tier app clients/scopes onto an already-deployed stack.
+AUTH_UPDATE=false
 IDP_DISCOVERY_URL="${IDP_DISCOVERY_URL:-}"
 IDP_ALLOWED_CLIENTS="${IDP_ALLOWED_CLIENTS:-}"
 IDP_ALLOWED_SCOPES="${IDP_ALLOWED_SCOPES:-}"
@@ -86,6 +96,7 @@ while [[ $# -gt 0 ]]; do
     --inventory)  INVENTORY_TYPE="$2"; shift 2 ;;
     --auth)               DEPLOY_AUTH=true; shift ;;
     --no-auth)            DEPLOY_AUTH=false; shift ;;
+    --auth-update)        DEPLOY_AUTH=true; AUTH_UPDATE=true; shift ;;
     --idp-discovery-url)  IDP_DISCOVERY_URL="$2"; shift 2 ;;
     --idp-allowed-clients) IDP_ALLOWED_CLIENTS="$2"; shift 2 ;;
     --idp-allowed-scopes)  IDP_ALLOWED_SCOPES="$2"; shift 2 ;;
@@ -108,6 +119,8 @@ Options:
   --storage BACKEND     Deal/order persistence: sqlite|postgres (default: sqlite)
   --no-auth             Opt OUT of per-runtime CUSTOM_JWT auth (legacy SigV4/PUBLIC,
                         same-account/dev). Auth is applied BY DEFAULT (cross-org).
+  --auth-update         Force re-apply of the auth CFN template even if the stack
+                        exists (rolls out per-tier scopes/clients, Req 13).
   --auth                Explicitly enable Cognito CUSTOM_JWT auth (this is the default;
                         kept for clarity / to override an env-set opt-out)
   --idp-discovery-url URL   BYO-IdP: use this OIDC discovery URL instead of the
@@ -252,13 +265,22 @@ deploy_auth_stack() {
   echo "============================================="
 
   # If the stack already exists and is healthy, REUSE it (read outputs only) —
-  # no redundant CloudFormation mutation. Only deploy when absent or unhealthy.
+  # no redundant CloudFormation mutation — UNLESS --auth-update was passed. The
+  # reuse path avoids re-triggering the CFN safety floor on every deploy, but a
+  # genuine template change (e.g. adding the Req-13 per-tier app clients/scopes)
+  # must be applied: --auth-update forces the deploy. `aws cloudformation deploy`
+  # with --no-fail-on-empty-changeset is a no-op when the template is unchanged.
   local existing_status
   existing_status=$(aws cloudformation describe-stacks --stack-name "${stack_name}" \
     --region "${REGION}" --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "MISSING")
-  if [[ "${existing_status}" == "CREATE_COMPLETE" || "${existing_status}" == "UPDATE_COMPLETE" ]]; then
+  if [[ ( "${existing_status}" == "CREATE_COMPLETE" || "${existing_status}" == "UPDATE_COMPLETE" ) \
+        && "${AUTH_UPDATE}" != "true" ]]; then
     echo "  Reusing existing stack (${existing_status}) — reading outputs, no redeploy."
+    echo "  (pass --auth-update to APPLY a changed auth template, e.g. Req-13 tier scopes)"
   else
+    if [[ "${AUTH_UPDATE}" == "true" ]]; then
+      echo "  --auth-update: applying auth template (status was ${existing_status})…"
+    fi
     aws cloudformation deploy \
       --template-file "${SCRIPT_DIR}/auth-agentcore.yaml" \
       --stack-name "${stack_name}" \
@@ -675,6 +697,11 @@ deploy_mcp_runtime() {
   if [[ -n "${AUTHZ_JSON}" ]]; then
     configure_args+=(--authorizer-config "${AUTHZ_JSON}")
     echo "  CUSTOM_JWT authorizer attached (mcp)"
+    # Req 13: forward the Cognito-verified tier header to the container (bash-3.2
+    # safe). Without this the authorizer strips it at the edge and the seam is
+    # inert — the live-probe finding this task exists to fix.
+    configure_args+=(--request-header-allowlist "${TIER_HEADER}")
+    echo "  Tier header allowlisted (mcp): ${TIER_HEADER}"
   fi
 
   agentcore configure "${configure_args[@]}"
@@ -725,6 +752,9 @@ deploy_mcp_runtime() {
 
   # Deploy
   echo ">>> Deploying MCP runtime..."
+  # Claim→tier seam (spec 5.2): forward the mapping only when set in .env.
+  [[ -n "${CLAIM_TIER_MAP:-}" ]] && env_args+=(--env "CLAIM_TIER_MAP=${CLAIM_TIER_MAP}")
+  [[ -n "${SCOPE_TIER_MAP:-}" ]] && env_args+=(--env "SCOPE_TIER_MAP=${SCOPE_TIER_MAP}")
   agentcore deploy "${env_args[@]}" --auto-update-on-conflict
 
   # Req 11: on a Bedrock base URL the runtime mints its own token from its
@@ -781,6 +811,9 @@ deploy_http_runtime() {
   if [[ -n "${AUTHZ_JSON}" ]]; then
     configure_args+=(--authorizer-config "${AUTHZ_JSON}")
     echo "  CUSTOM_JWT authorizer attached (http)"
+    # Req 13: forward the Cognito-verified tier header to the container.
+    configure_args+=(--request-header-allowlist "${TIER_HEADER}")
+    echo "  Tier header allowlisted (http): ${TIER_HEADER}"
   fi
 
   agentcore configure "${configure_args[@]}"
@@ -830,6 +863,9 @@ deploy_http_runtime() {
 
   # Deploy
   echo ">>> Deploying HTTP runtime..."
+  # Claim→tier seam (spec 5.2): forward the mapping only when set in .env.
+  [[ -n "${CLAIM_TIER_MAP:-}" ]] && env_args+=(--env "CLAIM_TIER_MAP=${CLAIM_TIER_MAP}")
+  [[ -n "${SCOPE_TIER_MAP:-}" ]] && env_args+=(--env "SCOPE_TIER_MAP=${SCOPE_TIER_MAP}")
   agentcore deploy "${env_args[@]}" --auto-update-on-conflict
 
   # Req 11: on a Bedrock base URL the runtime mints its own token — grant the role.
@@ -882,6 +918,9 @@ deploy_a2a_runtime() {
   if [[ -n "${AUTHZ_JSON}" ]]; then
     configure_args+=(--authorizer-config "${AUTHZ_JSON}")
     echo "  CUSTOM_JWT authorizer attached (a2a)"
+    # Req 13: forward the Cognito-verified tier header to the container.
+    configure_args+=(--request-header-allowlist "${TIER_HEADER}")
+    echo "  Tier header allowlisted (a2a): ${TIER_HEADER}"
   fi
 
   agentcore configure "${configure_args[@]}"
@@ -920,6 +959,9 @@ deploy_a2a_runtime() {
   fi
 
   echo ">>> Deploying A2A runtime..."
+  # Claim→tier seam (spec 5.2): forward the mapping only when set in .env.
+  [[ -n "${CLAIM_TIER_MAP:-}" ]] && env_args+=(--env "CLAIM_TIER_MAP=${CLAIM_TIER_MAP}")
+  [[ -n "${SCOPE_TIER_MAP:-}" ]] && env_args+=(--env "SCOPE_TIER_MAP=${SCOPE_TIER_MAP}")
   agentcore deploy "${env_args[@]}" --auto-update-on-conflict
 
   # Req 11: on a Bedrock base URL the runtime mints its own token — grant the role.

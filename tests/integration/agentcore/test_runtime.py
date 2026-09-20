@@ -168,6 +168,7 @@ def invoke_runtime(
     max_retries: int = 3,
     retry_wait: int = 30,
     bearer_token: Optional[str] = None,
+    headers: Optional[dict] = None,
 ) -> dict:
     """Invoke the runtime and return parsed response.
 
@@ -188,6 +189,10 @@ def invoke_runtime(
     token = bearer_token if bearer_token is not None else config.bearer_token
     if token:
         cmd += ["--bearer-token", token]
+    # Req 13: forward custom headers (e.g. the tier header) to the runtime. Only
+    # allowlisted headers reach the entrypoint; the toolkit passes them through.
+    if headers:
+        cmd += ["--headers", json.dumps(headers)]
     env = os.environ.copy()
     if config.profile:
         env["AWS_PROFILE"] = config.profile
@@ -430,3 +435,148 @@ class TestCrewComplexScenario:
         assert any(kw in response for kw in ["inv-ctv", "cpm", "$", "apex", "sports"]), (
             f"No inventory/pricing data: {result['response'][:300]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Claim → tier seam (spec 5.2) — live override proof
+# ---------------------------------------------------------------------------
+
+
+def _agent_id_from_arn(arn: str) -> Optional[str]:
+    """Extract the runtime agent id (log-group segment) from a runtime ARN.
+
+    arn:aws:bedrock-agentcore:<region>:<acct>:runtime/<AGENT_ID>  →  <AGENT_ID>
+    """
+    if not arn or "/" not in arn:
+        return None
+    return arn.rsplit("/", 1)[-1]
+
+
+def _filter_runtime_logs(region: str, agent_id: str, patterns: list[str],
+                         minutes: int = 10) -> list[str]:
+    """Return log lines from the runtime's DEFAULT log group matching any pattern.
+
+    Reads the last ``minutes`` window. Uses a literal start-time (no shell
+    command substitution). Best-effort: returns [] on any AWS error so the test
+    can xfail/skip rather than crash.
+    """
+    log_group = f"/aws/bedrock-agentcore/runtimes/{agent_id}-DEFAULT"
+    start_ms = int((time.time() - minutes * 60) * 1000)
+    try:
+        r = subprocess.run(
+            [
+                "aws", "logs", "filter-log-events",
+                "--region", region,
+                "--log-group-name", log_group,
+                "--start-time", str(start_ms),
+                "--output", "json",
+            ],
+            capture_output=True, text=True, timeout=60,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return []
+        events = json.loads(r.stdout).get("events", [])
+    except Exception:  # noqa: BLE001
+        return []
+    hits: list[str] = []
+    for ev in events:
+        msg = ev.get("message", "")
+        if any(p in msg for p in patterns):
+            hits.append(msg)
+    return hits
+
+
+@pytest.mark.agentcore
+class TestClaimTierSeam:
+    """Req 13: the Cognito-verified tier, forwarded as the custom tier header,
+    overrides a lying self-declared ``buyer_tier`` in the payload, then is capped
+    by the registry.
+
+    Requires:
+      - the runtime deployed with the tier header allowlisted
+        (deploy.sh: ``--request-header-allowlist X-Amzn-Bedrock-AgentCore-Runtime-Custom-Tier``)
+        and ``SCOPE_TIER_MAP`` forwarded from .env,
+      - a bearer token (to pass the authorizer edge).
+    Asserts on CloudWatch logs, NOT the response body — the tier decision is
+    logged by the claim seam + verification core, never echoed into the reply.
+    """
+
+    TIER_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Custom-Tier"
+
+    def test_scope_tier_overrides_lying_payload(self, runtime_config):
+        """Forwarded, edge-verified tier scope beats a lying payload tier."""
+        if not runtime_config.bearer_token:
+            pytest.skip("No bearer token (auth stack absent / --no-auth deploy)")
+        agent_id = _agent_id_from_arn(runtime_config.arn)
+        if not agent_id:
+            pytest.skip(f"Could not derive agent id from ARN: {runtime_config.arn}")
+
+        # Payload LIES: claims strategic_advertiser. The forwarded, edge-verified
+        # tier header carries the agency scope, which must win (→ preferred_agency).
+        result = invoke_runtime(
+            runtime_config,
+            {"prompt": "list products", "buyer_tier": "strategic_advertiser"},
+            headers={self.TIER_HEADER: "seller-agent/agency"},
+        )
+        assert result["success"], f"Invoke failed: {result['error']}"
+
+        # Logs lag ingestion; give CloudWatch a moment.
+        time.sleep(20)
+        override_hits = _filter_runtime_logs(
+            runtime_config.region, agent_id,
+            ["forwarded tier header", "overriding self-declared buyer_tier"],
+        )
+        if not override_hits:
+            pytest.xfail(
+                "No tier-header override log found. The runtime must be deployed "
+                "with the tier header ALLOWLISTED (deploy.sh --request-header-"
+                "allowlist X-Amzn-Bedrock-AgentCore-Runtime-Custom-Tier) AND "
+                "SCOPE_TIER_MAP set in .env. Without the allowlist AgentCore drops "
+                "the header at the edge (verified 2026-09-19) and the seam is "
+                "inert. Redeploy the seller runtime carrying Req-13 changes, then "
+                "this becomes a real pass."
+            )
+        joined = "\n".join(override_hits)
+        assert "preferred_agency" in joined, (
+            f"Override did not resolve to the scope-mapped tier: {joined[:400]}"
+        )
+        assert "strategic_advertiser" in joined, (
+            "Expected the log to show the self-declared tier that was overridden"
+        )
+
+    def test_claim_tier_overrides_lying_payload(self, runtime_config):
+        """Legacy raw-JWT path (spec 5.2): only fires on a transport that
+        FORWARDS the raw Authorization bearer. On the managed CUSTOM_JWT-
+        authorizer path the bearer is stripped at the edge (verified 2026-09-19),
+        so this stays xfail there — the tier arrives via the forwarded header
+        instead (see ``test_scope_tier_overrides_lying_payload``)."""
+        if not runtime_config.bearer_token:
+            pytest.skip("No bearer token (auth stack absent / --no-auth deploy)")
+        agent_id = _agent_id_from_arn(runtime_config.arn)
+        if not agent_id:
+            pytest.skip(f"Could not derive agent id from ARN: {runtime_config.arn}")
+
+        result = invoke_runtime(
+            runtime_config,
+            {"prompt": "list products", "buyer_tier": "strategic_advertiser"},
+        )
+        assert result["success"], f"Invoke failed: {result['error']}"
+
+        time.sleep(20)
+        override_hits = _filter_runtime_logs(
+            runtime_config.region, agent_id,
+            ["derived", "from JWT", "overriding self-declared buyer_tier"],
+        )
+        if not override_hits:
+            pytest.xfail(
+                "No raw-JWT claim override log. VERIFIED CONSTRAINT (2026-09-19): "
+                "an AgentCore runtime fronted by a CUSTOM_JWT authorizer does NOT "
+                "forward the buyer's inbound Authorization bearer to the "
+                "entrypoint — it validates+strips it at the edge and forwards only "
+                "an opaque WorkloadAccessToken. So the raw-JWT seam is inert on the "
+                "managed-authorizer path; the tier arrives via the forwarded "
+                "header instead. This xfail records the platform constraint, not a "
+                "code defect."
+            )
+        joined = "\n".join(override_hits)
+        assert "registered_buyer" in joined

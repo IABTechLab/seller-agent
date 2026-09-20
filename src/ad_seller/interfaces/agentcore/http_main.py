@@ -331,7 +331,7 @@ def _build_buyer_context(payload: dict):
     )
 
 
-async def _verified_buyer_context_from_payload(payload: dict):
+async def _verified_buyer_context_from_payload(payload: dict, context=None):
     """AgentCore entrypoint adapter over the shared verification core (Req 8).
 
     Extracts the buyer identity from the payload and delegates to
@@ -340,8 +340,36 @@ async def _verified_buyer_context_from_payload(payload: dict):
     ``_handle_invocation``; the mcp tools call the core directly. Re-raises the
     transport-neutral ``BlockedAgentError`` so the caller returns a 403-equivalent.
     Returns None for an unmapped/public tier (unchanged behavior).
+
+    Task 5.2 (defense-in-depth): when ``context`` carries a verified JWT whose
+    ``client_id``/``scope`` maps to a tier (via CLAIM_TIER_MAP/SCOPE_TIER_MAP),
+    that CLAIM-derived tier takes precedence over the self-declared
+    ``buyer_tier`` payload field. The claimed tier is still fed through the same
+    registry-verified ceiling cap below, so this only ever LOWERS or confirms
+    trust — it can never raise the effective tier above the registry ceiling.
+    When no mapping is configured or no token is present, the seam is inert and
+    the payload tier is used exactly as before.
     """
     tier = payload.get("buyer_tier", "public")
+
+    # Prefer the tier derived from verified JWT claims when the seam is active.
+    if context is not None:
+        try:
+            from ad_seller.interfaces.agentcore.claims import tier_from_context
+
+            claim_tier = tier_from_context(context)
+            if claim_tier:
+                if claim_tier != tier:
+                    logger.info(
+                        "claim→tier: overriding self-declared buyer_tier %r with "
+                        "claim-derived %r",
+                        tier,
+                        claim_tier,
+                    )
+                tier = claim_tier
+        except Exception as exc:  # never let the seam break an invoke
+            logger.warning("claim→tier seam error (%s) — using payload tier.", exc)
+
     fields = _TIER_MAP.get(tier)
     # Unmapped tier, or the public tier (empty identity fields) → no context,
     # matching the prior _build_buyer_context behavior.
@@ -701,7 +729,7 @@ Format as markdown with headers and tables where appropriate."""
 # ---------------------------------------------------------------------------
 
 
-async def _handle_invocation(payload: dict):
+async def _handle_invocation(payload: dict, context=None):
     """Async handler — routes to ChatInterface or CrewAI based on routing mode."""
     routing_mode = _get_routing_mode(payload)
 
@@ -735,7 +763,7 @@ async def _handle_invocation(payload: dict):
 
     session_id = _extract_session_id(payload)
     try:
-        buyer_context = await _verified_buyer_context_from_payload(payload)
+        buyer_context = await _verified_buyer_context_from_payload(payload, context)
     except Exception as exc:
         from ad_seller.interfaces.agentcore.verification import BlockedAgentError
 
@@ -789,14 +817,14 @@ def invoke(payload, context):
     product catalog, and session-scoped negotiation state.
     """
     try:
-        return asyncio.run(_handle_invocation(payload))
+        return asyncio.run(_handle_invocation(payload, context))
     except RuntimeError:
         # If an event loop is already running (e.g. nested async),
         # create a new loop in a thread.
         import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            future = pool.submit(asyncio.run, _handle_invocation(payload))
+            future = pool.submit(asyncio.run, _handle_invocation(payload, context))
             return future.result(timeout=120)
     except Exception as exc:
         logger.exception("Invocation failed: %s", exc)
