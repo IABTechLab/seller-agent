@@ -27,7 +27,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY . .
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -e ".[redis]"
+    && pip install --no-cache-dir -e ".[redis,gam]"
 
 # ---------------------------------------------------------------------------
 # Stage 2 — Runtime

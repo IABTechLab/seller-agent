@@ -28,6 +28,30 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   already writes for an unrelated reason (a narrower proposal-time
   snapshot), and are pruned when no longer returned by the ad server.
   CSV-mode and no-ad-server-configured behavior is unchanged.
+- `GAMRestClient` can now actually connect to Google Ad Manager (AI-6).
+  It called `googleapiclient.discovery.build("admanager", "v1", ...)`
+  with no `discoveryServiceUrl`; Ad Manager self-hosts its own discovery
+  document rather than registering with the generic, centrally-indexed
+  discovery service `build()` queries by default (and it isn't in the
+  locally bundled discovery docs either), so every real connection
+  attempt raised `UnknownApiNameOrVersion` and `sync_from_ad_server()`'s
+  broad exception handler silently degraded to mock synced packages —
+  real GAM inventory sync had never actually succeeded. Fixed by pointing
+  `build()` at `admanager.googleapis.com/$discovery/rest?version=v1`
+  directly (with `static_discovery=False`). Verified against a live GAM
+  network: `list_inventory()` returned 100 real ad units, a real
+  `POST /packages/sync` completed with zero warnings (previously always
+  warned and fell back to mocks), and `GET /products` served 50 real
+  synced products end to end.
+- `infra/docker/Dockerfile` now installs the `gam` extra alongside
+  `redis` (AI-6): the production image only ever installed
+  `".[redis]"`, so `googleads`/`google-api-python-client`/`google-auth`
+  were never present, and a real GAM deployment would `ImportError`
+  before ever reaching `GAMRestClient.connect()` — even with the
+  discovery-URL fix above in place. Rebuilt the real Dockerfile from
+  scratch with no manual installs and re-ran the full live-GAM
+  verification (100 real ad units, clean sync, 50 real products served)
+  to confirm the production image now works end to end unmodified.
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal
