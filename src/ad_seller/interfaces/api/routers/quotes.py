@@ -59,7 +59,7 @@ async def create_quote(
     # Read product from cached static catalog rather than running
     # ProductSetupFlow per request (hangs in OpenDirect MCP
     # session.initialize() — see catalog_service).
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
 
     # Resolve buyer identity — API key takes priority over body. EP-5.2:
     # the claimed tier is verified against the agent registry (agent_url)

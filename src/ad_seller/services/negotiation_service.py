@@ -232,7 +232,7 @@ async def counter_proposal(
             # before giving up.
             from .catalog_service import get_static_product_catalog, serialize_product
 
-            product = get_static_product_catalog()["products"].get(product_id)
+            product = (await get_static_product_catalog())["products"].get(product_id)
             if product is None:
                 raise HTTPException(status_code=404, detail="Product not found")
             product_data = serialize_product(product)

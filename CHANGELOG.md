@@ -15,6 +15,19 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- `GET /products` (and everything reading the catalog — avails, pricing,
+  package resolution, quotes) now reflects real ad-server inventory
+  (GAM/FreeWheel/S3) once synced, read fresh from storage on every call
+  (AI-6). Previously a synced product only ever lived in the flow's
+  per-request state and one worker process's in-memory cache
+  (`infra/docker/Dockerfile` runs uvicorn with `--workers 2`), so the
+  catalog kept serving the 13-product static default indefinitely after
+  a real sync — matching how synced packages already worked. Synced
+  products persist under a dedicated `synced_product:{id}` storage key,
+  separate from the generic `product:{id}` key `negotiation_service`
+  already writes for an unrelated reason (a narrower proposal-time
+  snapshot), and are pruned when no longer returned by the ad server.
+  CSV-mode and no-ad-server-configured behavior is unchanged.
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal

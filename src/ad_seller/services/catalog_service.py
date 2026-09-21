@@ -408,21 +408,126 @@ def build_static_product_catalog() -> dict[str, Any]:
     }
 
 
-def get_static_product_catalog() -> dict[str, Any]:
+def _real_ad_server_configured(settings: Any) -> bool:
+    """True when a real (non-CSV) ad server is configured (AI-6).
+
+    Mirrors ``ProductSetupFlow.sync_from_ad_server``'s own "is this a real
+    ad server, not the mock/dev fallback" condition, minus the CSV case
+    (``_csv_mode_active`` handles that separately).
+    """
+    return bool(
+        settings.gam_network_code
+        or settings.freewheel_sh_mcp_url
+        or settings.ad_server_type == "s3"
+    )
+
+
+async def persist_synced_product(product: Any) -> None:
+    """Persist a product built from a real ad-server sync (AI-6).
+
+    Stored under a dedicated ``synced_product:{id}`` key, deliberately
+    NOT the generic ``product:{id}`` key ``negotiation_service`` and
+    ``media_kit_service`` already write/read for an unrelated reason (a
+    per-product snapshot at proposal time, in a narrower shape via
+    ``serialize_product``, so a later cold lookup doesn't 404). Reusing
+    that key would make :func:`build_synced_product_catalog` treat an
+    incidental negotiation snapshot of a STATIC-catalog product as
+    evidence a real ad-server sync had happened, and ``ProductDefinition
+    (**data)`` would likely fail to reconstruct from the narrower
+    snapshot shape anyway.
+    """
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    await storage.set(f"synced_product:{product.product_id}", product.model_dump(mode="json"))
+
+
+async def prune_stale_synced_products(seen_product_ids: set[str]) -> None:
+    """Delete synced products not re-seeded by the current sync run (AI-6).
+
+    Mirrors ``ProductSetupFlow._prune_stale_synced_packages`` (issue #34):
+    only products actually returned by the ad server on this run survive,
+    so a product removed from the ad server stops being served instead of
+    lingering forever as phantom inventory.
+    """
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    for key in await storage.keys("synced_product:*"):
+        product_id = key.removeprefix("synced_product:")
+        if product_id not in seen_product_ids:
+            await storage.delete(key)
+            logger.info("Pruned stale synced product: %s", product_id)
+
+
+async def build_synced_product_catalog() -> Optional[dict[str, Any]]:
+    """Build the catalog from persisted ad-server-synced products (AI-6).
+
+    Returns ``None`` when nothing has been synced yet (no ad-server sync
+    has ever run), so the caller falls back to the static default catalog
+    — the same "honest, never fabricated" fallback CSV mode already uses
+    on a read failure.
+    """
+    from ..models.flow_state import ProductDefinition
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    keys = await storage.keys("synced_product:*")
+    if not keys:
+        return None
+
+    products: dict[str, Any] = {}
+    for key in keys:
+        data = await storage.get(key)
+        if not data:
+            continue
+        product_def = ProductDefinition(**data)
+        products[product_def.product_id] = product_def
+
+    if not products:
+        return None
+
+    return {
+        "products": products,
+        "inventory_types": sorted({p.inventory_type for p in products.values()}),
+    }
+
+
+async def get_static_product_catalog() -> dict[str, Any]:
     """Return the seller's product catalog without running the flow.
 
     In CSV mode (``AD_SERVER_TYPE=csv``) the catalog is built from the CSV
-    inventory; in every other mode it is the static default catalog
-    (byte-identical to the pre-CSV-wiring behavior).
+    inventory, cached once per process (issue #34).
 
-    Cached — repeated reads return stable product_ids (issue #34).
+    When a real ad server (GAM/FreeWheel/S3) is configured AND has been
+    synced at least once, the catalog reflects those real, persisted
+    products (AI-6) — read fresh from storage on EVERY call, never
+    cached, so every worker process agrees immediately after a sync
+    (matching how packages already work) instead of only whichever
+    worker happened to run the sync seeing it. Storage reads are cheap
+    local I/O, not a live ad-server call, so this doesn't reintroduce the
+    per-request hang risk that CSV-only caching was built to avoid.
+
+    Otherwise (no ad server configured, or configured but never yet
+    synced) the static default catalog is served, cached once, exactly
+    as before.
     """
     global _CATALOG_CACHE
-    if _CATALOG_CACHE is None:
-        if _csv_mode_active():
+
+    if _csv_mode_active():
+        if _CATALOG_CACHE is None:
             _CATALOG_CACHE = build_csv_product_catalog()
-        else:
-            _CATALOG_CACHE = build_static_product_catalog()
+        return _CATALOG_CACHE
+
+    from ..config import get_settings
+
+    if _real_ad_server_configured(get_settings()):
+        synced = await build_synced_product_catalog()
+        if synced is not None:
+            return synced
+
+    if _CATALOG_CACHE is None:
+        _CATALOG_CACHE = build_static_product_catalog()
     return _CATALOG_CACHE
 
 

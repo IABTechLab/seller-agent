@@ -184,7 +184,7 @@ async def _resolve_package_products(product_ids: list[str], storage):
     """
     from ....models.flow_state import ProductDefinition
 
-    catalog_products = deps.get_product_catalog()["products"]
+    catalog_products = (await deps.get_product_catalog())["products"]
     resolved = []
     unresolved: list[str] = []
     for pid in product_ids:

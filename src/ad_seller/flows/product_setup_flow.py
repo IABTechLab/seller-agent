@@ -160,11 +160,18 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             # Canonical item→product mapping lives in catalog_service
             # (shared with the CSV-mode catalog build) so flow-seeded
             # products and API catalog products cannot diverge.
-            from ..services.catalog_service import product_from_inventory_item
+            from ..services.catalog_service import (
+                persist_synced_product,
+                product_from_inventory_item,
+            )
 
             for item in items:
                 product_def = product_from_inventory_item(item)
                 self.state.products[product_def.product_id] = product_def
+                # Persist so GET /products reflects real ad-server inventory
+                # for non-CSV ad servers too (AI-6) -- state.products alone
+                # is per-flow-instance and never outlives this request.
+                await persist_synced_product(product_def)
 
             logger.info("Created %d products from ad server inventory", len(self.state.products))
 
@@ -209,11 +216,22 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         await self._finish_sync()
 
     async def _finish_sync(self) -> None:
-        """Terminal step of every sync path: prune the stale synced layer."""
+        """Terminal step of every sync path: prune the stale synced layer.
+
+        Runs unconditionally, including on the mock/fallback path (no ad
+        server configured, or the real sync raised) -- mirroring
+        ``_prune_stale_synced_packages``'s own convergence guarantee
+        (issue #34): a transient ad-server failure reverts the catalog to
+        the honest static-default fallback rather than serving
+        increasingly stale synced products forever, and the next
+        successful sync immediately re-populates it.
+        """
+        from ..services.catalog_service import prune_stale_synced_products
         from ..storage.factory import get_storage
 
         storage = await get_storage()
         await self._prune_stale_synced_packages(storage)
+        await prune_stale_synced_products(set(self.state.products.keys()))
 
     async def _create_mock_synced_packages(self) -> None:
         """Create mock Layer 1 packages for development without ad server creds."""
