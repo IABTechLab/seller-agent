@@ -599,6 +599,43 @@ async def get_inventory_type_override(product_id: str) -> Optional[dict[str, Any
     return await storage.get(f"inventory_override:{product_id}")
 
 
+async def apply_inventory_type_override(product: Any) -> Any:
+    """Apply a stored inventory-type override to a product, if one exists (AI-14).
+
+    ``override_inventory_type``/``get_inventory_type_override`` have always
+    round-tripped correctly through storage, but nothing on the read side
+    ever consulted them: ``GET /products`` and ``GET /products/{id}`` serve
+    exclusively from the cached static catalog (deliberately, to avoid a
+    live per-request rebuild), so an applied override was invisible on
+    every read path — the exact "write-only" shape reported.
+
+    This is the ONE place that consults a stored override, mirroring
+    ``rate_card_service``'s "one resolver, no per-call-site duplication"
+    shape (issue #69): every read path calls this instead of each
+    re-deriving its own lookup.
+
+    Returns a COPY with ``inventory_type`` swapped and
+    ``supported_deal_types`` recomputed via the same canonical
+    :func:`infer_deal_types` used when products are first built from an ad
+    server/CSV item -- swapping only the type label would leave
+    ``ext.deal_types`` on the wire reflecting the pre-override type,
+    self-contradicting ``ext.inventory_type``. The cached catalog itself is
+    never mutated, so a later override removal doesn't need cache
+    invalidation to take effect.
+    """
+    override = await get_inventory_type_override(product.product_id)
+    if not override:
+        return product
+
+    new_type = override["inventory_type"]
+    return product.model_copy(
+        update={
+            "inventory_type": new_type,
+            "supported_deal_types": infer_deal_types(new_type),
+        }
+    )
+
+
 async def delete_inventory_type_override(product_id: str) -> bool:
     """Remove an inventory type override. Returns False if none exists."""
     from ..storage.factory import get_storage

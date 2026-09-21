@@ -47,6 +47,17 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   helper (mirrors `interfaces.api.deps`, matching how `_registry_service`
   and `_api_key_service` already do this) instead of each re-instantiating
   the service independently.
+- `GET /products` and `GET /products/{id}` now apply a stored
+  inventory-type override (AI-14). `POST /products/{id}/inventory-type`
+  always round-tripped correctly through storage, but nothing on the
+  read side ever consulted it — both routes served exclusively from the
+  cached static catalog, so an applied override was invisible
+  everywhere. `catalog_service.apply_inventory_type_override` is the one
+  place that now resolves it (mirroring the rate-card resolver's
+  single-source shape, issue #69), recomputing `supported_deal_types`
+  via the same `infer_deal_types` used when products are first built, so
+  the wire's `ext.inventory_type` and `ext.deal_types` can't
+  self-contradict.
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal

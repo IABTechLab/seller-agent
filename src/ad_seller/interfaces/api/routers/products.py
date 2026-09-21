@@ -11,6 +11,8 @@ directly. Internal ``ProductDefinition`` is mapped at the boundary via
 :mod:`..contract_mappers`; the catalog service is untouched.
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from iab_agentic_primitives.primitives import Product
 from iab_agentic_primitives.protocol import (
@@ -48,11 +50,15 @@ async def list_products(
     spins up an OpenDirect MCP session that hangs in `session.initialize()`.
     Buyers filter client-side over the returned Product records (there is
     deliberately no POST /products/search on the shared catalog surface).
+
+    Any stored inventory-type override (AI-14) is applied per product
+    before serving, so the list and the single-product read never disagree.
     """
     catalog = deps.get_product_catalog()
-    return cm.products_to_list_response(
-        list(catalog["products"].values()), limit=limit, offset=offset
+    products = await asyncio.gather(
+        *(catalog_service.apply_inventory_type_override(p) for p in catalog["products"].values())
     )
+    return cm.products_to_list_response(list(products), limit=limit, offset=offset)
 
 
 def _spec_avails_collection(search: ProductAvailsSearch, catalog: dict) -> AvailsCollection:
@@ -158,12 +164,14 @@ async def get_product(product_id: str) -> Product:
     """Get a specific product (shared Product primitive, no wrapper).
 
     Reads from the cached static catalog instead of running ProductSetupFlow
-    per request (see `list_products` for rationale).
+    per request (see `list_products` for rationale). Any stored
+    inventory-type override (AI-14) is applied before serving.
     """
     catalog = deps.get_product_catalog()
     product = catalog["products"].get(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+    product = await catalog_service.apply_inventory_type_override(product)
     return cm.internal_product_to_shared(product)
 
 
