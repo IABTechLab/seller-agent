@@ -29,7 +29,7 @@ Policy (pinned here; approved spec change that removed the former
 
 import os
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -385,6 +385,13 @@ def _run_flow(crew_behavior, price=25.0):
             patch(
                 "ad_seller.flows.proposal_handling_flow.create_proposal_review_crew",
                 return_value=crew,
+            ),
+            # budget 0 = unlimited: these tests pin BOTH evaluator paths, so
+            # the stubbed crew must actually run (the default 20s budget is
+            # below proposal_crew_min_budget_seconds and would skip it).
+            patch(
+                "ad_seller.flows.proposal_handling_flow.get_settings",
+                return_value=SimpleNamespace(proposal_flow_time_budget_seconds=0.0),
             ),
             patch(
                 "ad_seller.flows.proposal_handling_flow.emit_event",
