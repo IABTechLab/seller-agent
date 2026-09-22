@@ -26,6 +26,8 @@ def _make_settings(**overrides):
         "seller_organization_id": "org-001",
         "gam_network_code": None,
         "freewheel_sh_mcp_url": None,
+        "csv_data_dir": "",
+        "s3_data_bucket": "",
         "ssp_connectors": "",
         "ssp_routing_rules": "",
         "ad_server_type": "google_ad_manager",
@@ -48,6 +50,33 @@ def _make_settings(**overrides):
     }
     defaults.update(overrides)
     return types.SimpleNamespace(**defaults)
+
+
+class TestAdServerConfigured:
+    """_ad_server_configured tests -- shared by get_setup_status and health_check."""
+
+    @pytest.mark.parametrize(
+        "overrides,expected",
+        [
+            ({"ad_server_type": "google_ad_manager", "gam_network_code": "12345"}, True),
+            ({"ad_server_type": "google_ad_manager", "gam_network_code": None}, False),
+            (
+                {"ad_server_type": "freewheel", "freewheel_sh_mcp_url": "https://shmcp.fw.com"},
+                True,
+            ),
+            ({"ad_server_type": "freewheel", "freewheel_sh_mcp_url": None}, False),
+            ({"ad_server_type": "csv", "csv_data_dir": "./data/csv/samples/ctv_streaming"}, True),
+            ({"ad_server_type": "csv", "csv_data_dir": ""}, False),
+            ({"ad_server_type": "s3", "s3_data_bucket": "my-bucket"}, True),
+            ({"ad_server_type": "s3", "s3_data_bucket": ""}, False),
+            ({"ad_server_type": "unknown_future_type"}, False),
+        ],
+    )
+    def test_ad_server_configured(self, overrides, expected):
+        from ad_seller.interfaces.mcp_server import _ad_server_configured
+
+        settings = _make_settings(**overrides)
+        assert _ad_server_configured(settings) is expected
 
 
 class TestGetSetupStatus:
@@ -113,6 +142,52 @@ class TestGetSetupStatus:
         assert result["media_kit"]["configured"] is True
         assert result["setup_complete"] is True
         assert "fully configured" in result["message"].lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"ad_server_type": "csv", "csv_data_dir": "./data/csv/samples/ctv_streaming"},
+            {"ad_server_type": "s3", "s3_data_bucket": "my-inventory-bucket"},
+        ],
+    )
+    async def test_ad_server_configured_for_non_gam_freewheel_adapters(self, overrides):
+        from ad_seller.interfaces.mcp_server import get_setup_status
+
+        settings = _make_settings(**overrides)
+        storage = AsyncMock()
+
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+        ):
+            result = json.loads(await get_setup_status())
+
+        assert result["ad_server"]["configured"] is True
+        assert result["ad_server"]["type"] == overrides["ad_server_type"]
+
+    @pytest.mark.asyncio
+    async def test_ad_server_not_configured_for_csv_without_data_dir(self):
+        from ad_seller.interfaces.mcp_server import get_setup_status
+
+        settings = _make_settings(ad_server_type="csv", csv_data_dir="")
+        storage = AsyncMock()
+
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+        ):
+            result = json.loads(await get_setup_status())
+
+        assert result["ad_server"]["configured"] is False
 
 
 class TestMediaKitServiceHelper:
@@ -205,6 +280,56 @@ class TestHealthCheck:
 
         assert result["status"] == "degraded"
         assert "error" in result["checks"]["storage"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"ad_server_type": "csv", "csv_data_dir": "./data/csv/samples/ctv_streaming"},
+            {"ad_server_type": "s3", "s3_data_bucket": "my-inventory-bucket"},
+        ],
+    )
+    async def test_ad_server_configured_for_non_gam_freewheel_adapters(self, overrides):
+        from ad_seller.interfaces.mcp_server import health_check
+
+        settings = _make_settings(**overrides)
+        storage = AsyncMock()
+        mock_client = MagicMock()
+
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+            patch(
+                "ad_seller.clients.ad_server_base.get_ad_server_client",
+                return_value=mock_client,
+            ),
+        ):
+            result = json.loads(await health_check())
+
+        assert result["checks"]["ad_server"] == f"configured ({overrides['ad_server_type']})"
+
+    @pytest.mark.asyncio
+    async def test_ad_server_not_configured_for_s3_without_bucket(self):
+        from ad_seller.interfaces.mcp_server import health_check
+
+        settings = _make_settings(ad_server_type="s3", s3_data_bucket="")
+        storage = AsyncMock()
+
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+        ):
+            result = json.loads(await health_check())
+
+        assert result["checks"]["ad_server"] == "not configured"
 
 
 class TestGetConfig:

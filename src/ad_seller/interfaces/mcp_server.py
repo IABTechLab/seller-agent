@@ -215,6 +215,19 @@ async def _deny_unless_operator() -> Optional[str]:
 # =============================================================================
 
 
+def _ad_server_configured(settings: Any) -> bool:
+    ad_server_type = settings.ad_server_type
+    if ad_server_type == "google_ad_manager":
+        return bool(settings.gam_network_code)
+    if ad_server_type == "freewheel":
+        return bool(settings.freewheel_sh_mcp_url)
+    if ad_server_type == "csv":
+        return bool(settings.csv_data_dir)
+    if ad_server_type == "s3":
+        return bool(settings.s3_data_bucket)
+    return False
+
+
 @mcp.tool()
 async def get_setup_status() -> str:
     """Check what's configured and what's missing. Use this on first connection
@@ -224,7 +237,7 @@ async def get_setup_status() -> str:
 
     # Check each area
     identity_configured = settings.seller_organization_name != "Default Publisher"
-    ad_server_configured = bool(settings.gam_network_code or settings.freewheel_sh_mcp_url)
+    ad_server_configured = _ad_server_configured(settings)
     ssp_configured = bool(settings.ssp_connectors)
 
     # Check if media kit has packages
@@ -283,7 +296,7 @@ async def health_check() -> str:
 
     # Ad server
     settings = _get_settings()
-    if settings.gam_network_code or settings.freewheel_sh_mcp_url:
+    if _ad_server_configured(settings):
         try:
             from ..clients.ad_server_base import get_ad_server_client
 
