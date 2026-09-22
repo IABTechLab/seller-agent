@@ -43,19 +43,15 @@ pytestmark = pytest.mark.asyncio
 
 
 def _resolve_runtime_arn(agent_name: str, env_var: str) -> str:
-    """Resolve a deployed runtime ARN from an env override or the deploy yaml."""
-    arn = os.environ.get(env_var, "")
-    if arn:
-        return arn
-    yaml_path = Path(__file__).resolve().parents[3] / ".bedrock_agentcore.yaml"
-    if not yaml_path.exists():
-        return ""
-    import yaml
+    """Resolve a deployed runtime ARN, stale-proof (live ListAgentRuntimes by name).
 
-    with open(yaml_path) as f:
-        cfg = yaml.safe_load(f) or {}
-    agent = cfg.get("agents", {}).get(agent_name, {})
-    return agent.get("bedrock_agentcore", {}).get("agent_arn", "") or ""
+    Delegates to the shared ``resolve_live_runtime_arn`` so a delete+recreate
+    (forced by the immutable-VPC / header-allowlist constraints) can't leave this
+    suite invoking a dead ARN from the yaml snapshot.
+    """
+    from tests.integration.agentcore.conftest import resolve_live_runtime_arn
+
+    return resolve_live_runtime_arn(agent_name, env_var)
 
 
 @pytest.fixture(scope="module")
