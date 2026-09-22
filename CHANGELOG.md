@@ -15,6 +15,31 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- Scheduled/manual inventory sync (`inventory_sync_scheduler._run_sync`,
+  `POST /packages/sync`) now actually persists what it fetches (AI-9,
+  AI-10) instead of discarding it after only counting items, by
+  delegating to `ProductSetupFlow.sync_from_ad_server`. Synced products
+  no longer fall back to a hardcoded `base_cpm`/`floor_cpm` of `10.0`
+  when an ad-server item carries no `floor_price_cpm` (AI-8) — both
+  fallback sites now read the operator's configured
+  `default_price_floor_cpm`, whose own default is `10.0`, matching the
+  literal it replaces (GAM/FreeWheel items never carry `raw`, so this
+  fallback fires for essentially all of their inventory; a lower
+  default would silently halve real prices and double the impressions
+  `check_avails` claims are available for a fixed budget).
+  Also fixed, found during review: a transient ad-server failure could
+  never silently delete the real synced package layer from the last
+  successful sync — `_finish_sync()`'s prune now only runs on a sync
+  that legitimately reflects the current world (nothing configured, or
+  a real fetch that actually succeeded), not on the mock-fallback path a
+  genuine outage used to take. `_run_sync`/`POST /packages/sync` report
+  `status: "error"` on such a failure instead of a false "success" that
+  left `get_sync_status` showing a healthy, up-to-date sync for a cycle
+  that changed nothing. The `status:ACTIVE` inventory filter, dropped
+  for GAM/FreeWheel when this path was rewritten to delegate to the
+  flow, is restored (archived ad units no longer sync into the live
+  media kit by default) — but not for CSV, whose `filter_str` is a
+  literal substring match against item names and would match zero rows.
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal

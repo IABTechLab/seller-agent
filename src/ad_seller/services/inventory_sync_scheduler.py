@@ -25,30 +25,60 @@ _sync_count: int = 0
 async def _run_sync(include_archived: bool = False) -> dict:
     """Execute a single inventory sync cycle.
 
+    Delegates to :class:`ProductSetupFlow.sync_from_ad_server` (AI-9,
+    AI-10). This used to call the ad server client directly and discard
+    the result -- items were fetched and counted but never turned into
+    products or packages, so a "successful" sync persisted nothing.
+    The flow already does this correctly (idempotent upsert of SYNCED
+    packages + pruning of stale ones) and is the same path
+    ``POST /packages/sync`` uses in production, so kicking it off here
+    reuses that proven path instead of re-deriving a thinner, lossy one.
+
+    ``include_archived`` is accepted for backward compatibility with
+    callers/config, but the flow does not currently filter by archived
+    status -- neither does ``POST /packages/sync``, which has the same
+    pre-existing limitation. Not fixed here; tracked separately.
+
     Returns:
         Summary dict with sync results.
     """
     global _last_sync, _sync_count
 
-    from ..clients.ad_server_base import get_ad_server_client
     from ..config import get_settings as _get_settings
+    from ..flows.product_setup_flow import ProductSetupFlow
 
     settings = _get_settings()
     logger.info("Starting scheduled inventory sync (ad_server=%s)...", settings.ad_server_type)
 
     try:
-        # Use the polymorphic ad server client for any backend (GAM, FreeWheel, etc.)
-        client = get_ad_server_client()
-        filter_str = None if include_archived else "status:ACTIVE"
-        async with client:
-            items = await client.list_inventory(filter_str=filter_str)
+        flow = ProductSetupFlow()
+        await flow.kickoff_async()
+
+        if flow.state.ad_server_sync_failed:
+            # sync_from_ad_server() caught the failure internally (so
+            # kickoff_async() completes without raising) and left the real
+            # synced layer untouched rather than pruning it -- _last_sync/
+            # _sync_count must NOT advance here either, or get_sync_status
+            # reports a healthy, up-to-date sync for a cycle that changed
+            # nothing.
+            logger.error("Scheduled inventory sync failed: %s", flow.state.warnings)
+            return {"status": "error", "error": "; ".join(flow.state.warnings)}
 
         _last_sync = datetime.now(timezone.utc).isoformat()
         _sync_count += 1
         logger.info(
-            "Scheduled inventory sync completed (count=%d, items=%d)", _sync_count, len(items)
+            "Scheduled inventory sync completed (count=%d, products=%d, packages=%d)",
+            _sync_count,
+            len(flow.state.products),
+            len(flow.state.synced_segments),
         )
-        return {"status": "success", "items_synced": len(items), "synced_at": _last_sync}
+        return {
+            "status": "success",
+            "items_synced": len(flow.state.products),
+            "packages_synced": len(flow.state.synced_segments),
+            "synced_at": _last_sync,
+            "warnings": flow.state.warnings,
+        }
     except Exception as e:
         logger.error("Scheduled inventory sync failed: %s", e)
         return {"status": "error", "error": str(e)}
