@@ -133,6 +133,24 @@ async def _api_key_service():
     return ApiKeyService(storage)
 
 
+async def _media_kit_service():
+    """Build a MediaKitService (mirrors interfaces.api.deps, no app import).
+
+    ``MediaKitService`` takes ``storage``/``pricing_engine`` positionally
+    (AI-12) — both call sites that used to construct it with no arguments
+    (``list_packages``, ``get_setup_status``) now go through this single
+    helper instead of duplicating the construction independently.
+    """
+    from ..engines.media_kit_service import MediaKitService
+    from ..engines.pricing_rules_engine import PricingRulesEngine
+    from ..models.pricing_tiers import TieredPricingConfig
+
+    storage = await _get_storage()
+    config = TieredPricingConfig(seller_organization_id="default")
+    pricing = PricingRulesEngine(config)
+    return MediaKitService(storage, pricing)
+
+
 async def _deny_unless_operator() -> Optional[str]:
     """Enforce operator-key auth on admin MCP tools over HTTP transports.
 
@@ -212,9 +230,7 @@ async def get_setup_status() -> str:
     # Check if media kit has packages
     packages = []
     try:
-        from ..engines.media_kit_service import MediaKitService
-
-        service = MediaKitService()
+        service = await _media_kit_service()
         packages = await service.list_packages_public()
     except Exception:
         pass
@@ -450,9 +466,7 @@ async def list_inventory(limit: int | None = 100) -> str:
 @mcp.tool()
 async def list_packages(featured_only: bool = False) -> str:
     """List packages in the media kit. These are what buyers browse."""
-    from ..engines.media_kit_service import MediaKitService
-
-    service = MediaKitService()
+    service = await _media_kit_service()
     packages = await service.list_packages_public(featured_only=featured_only)
     return json.dumps(
         {

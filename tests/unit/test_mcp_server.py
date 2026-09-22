@@ -8,6 +8,8 @@ Covers:
 - get_setup_status reports complete when identity + ad server + media kit configured
 - health_check returns healthy status
 - get_config returns non-secret config values
+- _media_kit_service builds a real MediaKitService (AI-12)
+- list_packages returns packages without crashing (AI-12)
 """
 
 import json
@@ -111,6 +113,55 @@ class TestGetSetupStatus:
         assert result["media_kit"]["configured"] is True
         assert result["setup_complete"] is True
         assert "fully configured" in result["message"].lower()
+
+
+class TestMediaKitServiceHelper:
+    """_media_kit_service builds a real MediaKitService (AI-12 regression).
+
+    ``MediaKitService`` takes ``storage``/``pricing_engine`` positionally;
+    both call sites used to construct it with no arguments at all
+    (``MediaKitService()``), which raises ``TypeError`` unconditionally.
+    Unlike test_complete_when_fully_configured above (which patches out
+    the whole media_kit_service module and so cannot see a constructor
+    mismatch), this exercises the real constructor.
+    """
+
+    @pytest.mark.asyncio
+    async def test_builds_a_real_media_kit_service(self):
+        from ad_seller.engines.media_kit_service import MediaKitService
+        from ad_seller.interfaces.mcp_server import _media_kit_service
+
+        storage = AsyncMock()
+
+        with patch(
+            "ad_seller.interfaces.mcp_server._get_storage",
+            new_callable=AsyncMock,
+            return_value=storage,
+        ):
+            service = await _media_kit_service()
+
+        assert isinstance(service, MediaKitService)
+        assert service._storage is storage
+
+
+class TestListPackages:
+    """list_packages tool (AI-12: crashed with MediaKitService() taking no args)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_packages_without_crashing(self):
+        from ad_seller.interfaces.mcp_server import list_packages
+
+        storage = AsyncMock()
+        storage.list_packages.return_value = []
+
+        with patch(
+            "ad_seller.interfaces.mcp_server._get_storage",
+            new_callable=AsyncMock,
+            return_value=storage,
+        ):
+            result = json.loads(await list_packages())
+
+        assert result == {"packages": [], "count": 0}
 
 
 class TestHealthCheck:
