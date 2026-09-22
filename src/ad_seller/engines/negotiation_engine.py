@@ -139,6 +139,15 @@ class NegotiationEngine:
 
         Returns:
             NegotiationRound with the action and counter price
+
+        Every round carries two rationales (information-disclosure fix):
+        the internal ``rationale`` keeps naming the floor, the strategy and
+        the round budget for logs and stored history, while the
+        ``buyer_rationale`` is authored deliberately and never states the
+        seller's price in prose (the structured ``seller_price`` carries the
+        number), never names the floor by value or by label, and never
+        discloses the strategy, the concession budget or the round limit.
+        Outbound surfaces must send only ``buyer_rationale``.
         """
         round_number = len(history.rounds) + 1
         limits = history.limits
@@ -157,6 +166,7 @@ class NegotiationEngine:
                 concession_pct=0.0,
                 cumulative_concession_pct=cumulative_concession,
                 rationale="Buyer price meets or exceeds seller target. Deal accepted.",
+                buyer_rationale=(f"We accept your offer of ${buyer_price:.2f} CPM."),
             )
 
         # 2. Reject nonpositive offers — not a valid price to negotiate.
@@ -174,6 +184,10 @@ class NegotiationEngine:
                 rationale=(
                     f"Buyer price ${buyer_price:.2f} is not a valid offer. Cannot negotiate."
                 ),
+                buyer_rationale=(
+                    f"An offer of ${buyer_price:.2f} is not a valid price, "
+                    f"so we cannot negotiate on it."
+                ),
             )
 
         # 3. Reject if max rounds exceeded (bounds BOTH the gap-split path
@@ -189,6 +203,12 @@ class NegotiationEngine:
                 rationale=(
                     f"Maximum {limits.max_rounds} rounds reached. "
                     f"Negotiation concluded without agreement."
+                ),
+                # No round count: "Maximum N rounds reached" publishes the
+                # seller's round budget to the counterparty.
+                buyer_rationale=(
+                    "We were unable to reach agreement, so we are ending "
+                    "this negotiation. Thank you for the discussion."
                 ),
             )
 
@@ -223,6 +243,19 @@ class NegotiationEngine:
                         f"Countering at the floor price ${floor_counter:.2f} CPM — "
                         f"the minimum viable price for this inventory "
                         f"(round {round_number}/{limits.max_rounds})."
+                    )
+                ),
+                # The counter here IS the floor, so the buyer-facing string
+                # must not state the seller's price in prose at all — the
+                # structured seller_price carries the number without labeling
+                # it. No "floor", no "minimum", no round budget.
+                buyer_rationale=(
+                    f"We cannot accept ${buyer_price:.2f} CPM for this inventory, "
+                    f"and we have moved as far as we can on price."
+                    if is_last_round
+                    else (
+                        f"We cannot accept ${buyer_price:.2f} CPM for this inventory. "
+                        f"We have countered at a price that reflects its value."
                     )
                 ),
             )
@@ -264,6 +297,7 @@ class NegotiationEngine:
                     concession_pct=incremental_concession,
                     cumulative_concession_pct=new_cumulative,
                     rationale="Buyer price is acceptable within concession limits.",
+                    buyer_rationale=(f"We accept your offer of ${buyer_price:.2f} CPM."),
                 )
 
             return NegotiationRound(
@@ -278,6 +312,9 @@ class NegotiationEngine:
                     f"This represents our maximum concession of "
                     f"{limits.total_concession_cap * 100:.0f}%."
                 ),
+                # No concession percentage, no price in prose: final_price can
+                # equal the floor, and the concession cap is a guardrail.
+                buyer_rationale=("We have moved as far as we can on price for this inventory."),
             )
 
         # 5. Counter with gap-split
@@ -292,6 +329,11 @@ class NegotiationEngine:
                 f"Counter at ${counter_price:.2f} CPM "
                 f"({history.strategy.value} strategy, "
                 f"round {round_number}/{limits.max_rounds})."
+            ),
+            # No strategy name, no round budget, no price in prose (the
+            # gap-split counter can land exactly on the floor).
+            buyer_rationale=(
+                "We have countered at a price that reflects the value of this inventory."
             ),
         )
 

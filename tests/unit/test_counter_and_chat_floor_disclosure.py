@@ -27,19 +27,23 @@ Complements ``test_negotiation_status_disclosure.py`` (PR #95), which covers
 response; this one pins the chat text and the counter payload, and adds the
 by-field-name sweep below.
 
-KNOWN REMAINING GAP, deliberately not closed here: the engine's
-``NegotiationRound.rationale`` strings state the floor and the strategy in
-prose -- e.g. *"Countering at the floor price $28.00 CPM ... (round 1/5)"* and
-*"Counter at $30.00 CPM (collaborative strategy, round 1/5)"*. Those strings
-are built in ``engines/negotiation_engine.py`` and reach the buyer through
-``counter_terms["reason"]``, so the floor is still derivable in prose on the
-counter path. The field-name sweep below cannot catch that, and neither can a
-value assertion without changing engine output. Fixing it means changing how
-the engine phrases its rationales, which is a separate change on a separate
-surface -- recorded here rather than half-built.
+THE PROSE LEAK IS NOW CLOSED with two rationales (section 4 below). The
+engine's ``NegotiationRound.rationale`` used to state the floor, the strategy
+and the round budget in prose -- e.g. *"Countering at the floor price $28.00
+CPM ... (round 1/5)"* -- and that sentence shipped to the buyer as
+``counter_terms["reason"]``, in the chat COUNTER/FINAL_OFFER text, and on the
+REST negotiation responses. The engine now emits BOTH an internal
+``rationale`` (unchanged wording, kept for logs, stored history and audit)
+and a deliberately constructed ``buyer_rationale`` that never states the
+seller's price in prose (the structured ``seller_price`` carries the number
+unlabeled), never says floor/minimum/strategy, and never discloses the round
+budget or the concession caps. Every outbound surface sends only
+``buyer_rationale``, so a future engine string cannot leak: the buyer-facing
+sentence is constructed, not filtered.
 """
 
 import os
+import re
 import sys
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -186,7 +190,7 @@ def _run_flow(price):
     return asyncio.run(_go())
 
 
-def _chat_text(action_wanted, buyer_price):
+def _chat_text(action_wanted, buyer_price, base_price=BASE_PRICE, floor_price=FLOOR_PRICE):
     """Produce the chat text for a real engine round of the wanted action.
 
     Drives the actual engine rather than a hand-built round, so the text is
@@ -198,8 +202,8 @@ def _chat_text(action_wanted, buyer_price):
         proposal_id="chat-1",
         product_id="ctv-premium-sports",
         buyer_context=buyer_context,
-        base_price=BASE_PRICE,
-        floor_price=FLOOR_PRICE,
+        base_price=base_price,
+        floor_price=floor_price,
     )
     for _ in range(history.limits.max_rounds + 2):
         round_result = engine.evaluate_buyer_offer(history, buyer_price, buyer_context)
@@ -351,20 +355,25 @@ class TestNoGuardrailFieldNamesOnEitherPath:
         )
 
     def test_chat_walk_away_names_no_guardrail_field(self):
-        """The rewritten REJECT walk-away, swept by name.
+        """Every chat branch's prose, swept by name.
 
-        Only the REJECT branch is swept as prose. The other three branches
-        interpolate ``round_result.rationale``, and the engine phrases its
-        rationales with the guardrails in them -- "Counter at $X CPM
-        (collaborative strategy, round 1/5)" names the strategy and states the
-        round budget, and the below-floor rationale states the floor value.
-        Those strings are built in ``engines/negotiation_engine.py``, not on
-        either path fixed here, so sweeping them would be asserting on another
-        surface's defect. See the module docstring's known-gap note.
+        The COUNTER and FINAL_OFFER branches used to interpolate the engine's
+        internal ``rationale``, which names the strategy, the round budget
+        and (below floor) the floor -- so only REJECT could be swept when
+        this file was first written. They now interpolate the deliberately
+        constructed ``buyer_rationale``, so all branches are swept.
         """
-        text = _chat_text(NegotiationAction.REJECT, buyer_price=0.0).lower()
-        for field in sorted(FORBIDDEN_FIELDS):
-            assert field not in text, f"the chat walk-away names the guardrail {field!r}: {text!r}"
+        for action, price in (
+            (NegotiationAction.REJECT, 0.0),
+            (NegotiationAction.COUNTER, 25.0),
+            (NegotiationAction.FINAL_OFFER, 25.0),
+            (NegotiationAction.ACCEPT, BASE_PRICE + 1.0),
+        ):
+            text = _chat_text(action, buyer_price=price).lower()
+            for field in sorted(FORBIDDEN_FIELDS):
+                assert field not in text, (
+                    f"the chat {action.value} text names the guardrail {field!r}: {text!r}"
+                )
 
     def test_chat_negotiation_envelope_carries_no_guardrail_field(self):
         """The structured ``negotiation`` block the chat surface returns
@@ -395,3 +404,262 @@ class TestNoGuardrailFieldNamesOnEitherPath:
             },
         }
         _assert_no_guardrail_fields(envelope, "the chat negotiation envelope")
+
+
+# =============================================================================
+# (4) Two rationales: the buyer-facing one never carries a guardrail
+# =============================================================================
+
+# "(round 1/5)"-style round-budget disclosure, anywhere in a string.
+ROUND_BUDGET_RE = re.compile(r"\b\d+\s*/\s*\d+\b")
+
+# Words that label a guardrail in prose. "minimum" covers "the minimum viable
+# price" (a floor synonym); "concession" covers the cap percentages.
+FORBIDDEN_WORDS = ("floor", "minimum", "strategy", "concession")
+
+
+# A second distinctive floor, deep enough that the concession-cap FINAL_OFFER
+# and the gap-split COUNTER land ABOVE it (the agency tier discount pulls the
+# effective base to ~$35.16, and the 15% collaborative cap bottoms out at
+# ~$29.89): with this floor those prices are not the floor, so "the floor
+# value is absent" is a real assertion rather than a coincidence.
+DEEP_FLOOR_PRICE = 21.47
+
+
+def _drive_engine_to(action_wanted, buyer_price, base_price=BASE_PRICE, floor_price=FLOOR_PRICE):
+    """Drive the real engine until it emits the wanted action.
+
+    Returns (round, history) with the round already recorded, so assertions
+    run against genuine engine output, not hand-built rounds.
+    """
+    engine = _make_engine()
+    buyer_context = _make_buyer_context()
+    history = engine.start_negotiation(
+        proposal_id="prop-two-rationales",
+        product_id="ctv-premium-sports",
+        buyer_context=buyer_context,
+        base_price=base_price,
+        floor_price=floor_price,
+    )
+    for _ in range(history.limits.max_rounds + 2):
+        round_result = engine.evaluate_buyer_offer(history, buyer_price, buyer_context)
+        history = engine.record_round(history, round_result)
+        if round_result.action == action_wanted:
+            return round_result, history
+    pytest.fail(f"engine never produced {action_wanted} for buyer_price={buyer_price}")
+
+
+def _assert_buyer_facing(text: str, surface: str) -> None:
+    """The buyer-facing rationale contract, in one place.
+
+    No floor value, no base-price value, no guardrail word, no round-budget
+    pattern -- and the string is still a usable explanation, not empty.
+    """
+    low = text.lower()
+    assert f"{FLOOR_PRICE:.2f}" not in text, f"{surface} states the floor value: {text!r}"
+    assert f"{BASE_PRICE:.2f}" not in text, f"{surface} states the base price: {text!r}"
+    for word in FORBIDDEN_WORDS:
+        assert word not in low, f"{surface} says {word!r}: {text!r}"
+    assert not ROUND_BUDGET_RE.search(text), f"{surface} discloses the round budget: {text!r}"
+    assert text.strip(), f"{surface} is empty -- the buyer gets no explanation"
+
+
+class TestEngineEmitsTwoRationales:
+    """Engine level: for every action the engine can take, the buyer-facing
+    rationale is clean while the internal one still says everything it said
+    before (the internal assertions double as proof the clean checks are
+    non-vacuous)."""
+
+    def test_below_floor_counter(self):
+        round_result, _ = _drive_engine_to(NegotiationAction.COUNTER, buyer_price=25.0)
+        assert round_result.seller_price == FLOOR_PRICE  # countering AT the floor
+        _assert_buyer_facing(round_result.buyer_rationale, "the below-floor COUNTER")
+        # Internal keeps the full story: floor value, the word, the budget.
+        assert f"{FLOOR_PRICE:.2f}" in round_result.rationale
+        assert "floor" in round_result.rationale.lower()
+        assert ROUND_BUDGET_RE.search(round_result.rationale)
+
+    def test_below_floor_final_offer(self):
+        round_result, _ = _drive_engine_to(NegotiationAction.FINAL_OFFER, buyer_price=25.0)
+        assert round_result.seller_price == FLOOR_PRICE
+        _assert_buyer_facing(round_result.buyer_rationale, "the below-floor FINAL_OFFER")
+        assert f"{FLOOR_PRICE:.2f}" in round_result.rationale
+        assert "floor" in round_result.rationale.lower()
+
+    def test_concession_cap_final_offer(self):
+        """FINAL_OFFER via the concession-cap path, where the final price sits
+        ABOVE the floor -- so the floor value is a distinct secret and its
+        absence from the buyer-facing string is a real assertion."""
+        round_result, _ = _drive_engine_to(
+            NegotiationAction.FINAL_OFFER, buyer_price=25.0, floor_price=DEEP_FLOOR_PRICE
+        )
+        assert round_result.seller_price > DEEP_FLOOR_PRICE
+        _assert_buyer_facing(round_result.buyer_rationale, "the cap-path FINAL_OFFER")
+        assert f"{DEEP_FLOOR_PRICE:.2f}" not in round_result.buyer_rationale, (
+            f"the cap-path FINAL_OFFER states the floor value: {round_result.buyer_rationale!r}"
+        )
+        assert "%" not in round_result.buyer_rationale, (
+            f"the cap-path FINAL_OFFER discloses a concession percentage: "
+            f"{round_result.buyer_rationale!r}"
+        )
+        # Internal still records the cap.
+        assert "concession" in round_result.rationale.lower()
+        assert "%" in round_result.rationale
+
+    def test_gap_split_counter(self):
+        round_result, history = _drive_engine_to(
+            NegotiationAction.COUNTER, buyer_price=25.0, floor_price=DEEP_FLOOR_PRICE
+        )
+        assert round_result.seller_price > DEEP_FLOOR_PRICE  # gap-split, not floor
+        _assert_buyer_facing(round_result.buyer_rationale, "the gap-split COUNTER")
+        assert f"{DEEP_FLOOR_PRICE:.2f}" not in round_result.buyer_rationale
+        # Internal still names the strategy and the budget.
+        assert history.strategy.value in round_result.rationale
+        assert ROUND_BUDGET_RE.search(round_result.rationale)
+
+    def test_accept(self):
+        round_result, _ = _drive_engine_to(NegotiationAction.ACCEPT, buyer_price=BASE_PRICE + 1.0)
+        _assert_buyer_facing(round_result.buyer_rationale, "the ACCEPT rationale")
+
+    def test_reject_max_rounds(self):
+        round_result, history = _drive_engine_to(NegotiationAction.REJECT, buyer_price=1.0)
+        _assert_buyer_facing(round_result.buyer_rationale, "the max-rounds REJECT")
+        max_rounds = history.limits.max_rounds
+        assert str(max_rounds) not in round_result.buyer_rationale, (
+            f"the max-rounds REJECT discloses the round budget ({max_rounds}): "
+            f"{round_result.buyer_rationale!r}"
+        )
+        assert f"Maximum {max_rounds}" in round_result.rationale
+
+    def test_reject_invalid_offer(self):
+        round_result, _ = _drive_engine_to(NegotiationAction.REJECT, buyer_price=0.0)
+        _assert_buyer_facing(round_result.buyer_rationale, "the invalid-offer REJECT")
+
+
+class TestCounterReasonIsBuyerFacing:
+    """Flow level: counter_terms["reason"] -- the widest surface, shipped on
+    every counter-offer -- carries the buyer-facing rationale, while the
+    stored history keeps the internal one untouched."""
+
+    def test_below_floor_reason_carries_no_guardrail(self):
+        result = _run_flow(price=25.0)
+        reason = result["counter_terms"]["reason"]
+        _assert_buyer_facing(reason, 'counter_terms["reason"]')
+
+    def test_stored_history_keeps_the_internal_rationale(self):
+        """The audit trail is unchanged: the persisted round still names the
+        floor, the word and the budget, and also carries the buyer-facing
+        string that actually went to the wire."""
+        result = _run_flow(price=25.0)
+        stored_round = result["_negotiation_history"]["rounds"][0]
+        assert f"{FLOOR_PRICE:.2f}" in stored_round["rationale"]
+        assert "floor" in stored_round["rationale"].lower()
+        assert ROUND_BUDGET_RE.search(stored_round["rationale"])
+        assert stored_round["buyer_rationale"] == result["counter_terms"]["reason"]
+
+
+class TestChatProseIsBuyerFacing:
+    """Chat level: the COUNTER and FINAL_OFFER texts no longer interpolate
+    the internal rationale.
+
+    The floor-value assertions use scenarios where the offered price sits
+    ABOVE the floor: on a below-floor round the counter price IS the floor,
+    so the number legitimately appears as the offer itself (unlabeled) and
+    only the word-level checks apply there.
+    """
+
+    def test_counter_text_above_floor(self):
+        text = _chat_text(NegotiationAction.COUNTER, buyer_price=34.0)
+        assert f"{FLOOR_PRICE:.2f}" not in text, (
+            f"the chat COUNTER discloses the floor ({FLOOR_PRICE}): {text!r}"
+        )
+        low = text.lower()
+        for word in FORBIDDEN_WORDS:
+            assert word not in low, f"the chat COUNTER says {word!r}: {text!r}"
+        assert not ROUND_BUDGET_RE.search(text)
+
+    def test_final_offer_text_above_floor(self):
+        text = _chat_text(
+            NegotiationAction.FINAL_OFFER, buyer_price=25.0, floor_price=DEEP_FLOOR_PRICE
+        )
+        assert f"{DEEP_FLOOR_PRICE:.2f}" not in text, (
+            f"the chat FINAL_OFFER discloses the floor ({DEEP_FLOOR_PRICE}): {text!r}"
+        )
+        low = text.lower()
+        for word in FORBIDDEN_WORDS:
+            assert word not in low, f"the chat FINAL_OFFER says {word!r}: {text!r}"
+        assert not ROUND_BUDGET_RE.search(text)
+
+    def test_counter_text_below_floor_labels_nothing(self):
+        """Below floor the counter price equals the floor, so the value is
+        inherently visible as the offer -- what must not appear is any label
+        telling the buyer that it IS the bottom."""
+        text = _chat_text(NegotiationAction.COUNTER, buyer_price=25.0)
+        low = text.lower()
+        for word in FORBIDDEN_WORDS:
+            assert word not in low, f"the below-floor chat COUNTER says {word!r}: {text!r}"
+        assert not ROUND_BUDGET_RE.search(text)
+
+
+class TestRestNegotiationResponseIsBuyerFacing:
+    """REST level: the counter-offer response dict (returned verbatim on the
+    legacy route and mapped into the shared NegotiationRoundResponse on the
+    canonical route) carries the buyer-facing rationale, and the terminal
+    mapper never falls back to a stored internal rationale."""
+
+    async def test_counter_proposal_response_rationale(self):
+        from ad_seller.services import negotiation_service
+
+        engine = _make_engine()
+        buyer_context = _make_buyer_context()
+        history = engine.start_negotiation(
+            proposal_id="prop-rest-rationale",
+            product_id="ctv-premium-sports",
+            buyer_context=buyer_context,
+            base_price=BASE_PRICE,
+            floor_price=FLOOR_PRICE,
+        )
+
+        mock_storage = AsyncMock()
+        mock_storage.get_negotiation.return_value = history.model_dump(mode="json")
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            response = await negotiation_service.counter_proposal(
+                proposal_id="prop-rest-rationale",
+                buyer_price=25.0,
+                buyer_context=buyer_context,
+            )
+
+        _assert_buyer_facing(response["rationale"], "the REST counter response rationale")
+        # The PERSISTED history still holds the full internal rationale.
+        persisted = mock_storage.set_negotiation.call_args.args[1]
+        assert f"{FLOOR_PRICE:.2f}" in persisted["rounds"][0]["rationale"]
+        assert "floor" in persisted["rounds"][0]["rationale"].lower()
+
+    def test_terminal_round_response_never_leaks_a_stored_internal_rationale(self):
+        """A buyer 'reject' on an already-terminal negotiation answers off the
+        LAST STORED round, which can be an engine walk-away whose internal
+        rationale reads "Maximum N rounds reached". The mapper must send the
+        stored buyer_rationale -- and fall back to empty, never to the
+        internal one, for rounds persisted before this field existed."""
+        from ad_seller.interfaces.api import contract_mappers as cm
+
+        status_data = {
+            "negotiation_id": "neg-terminal-1",
+            "rounds": [
+                {
+                    "round_number": 5,
+                    "buyer_price": 25.0,
+                    "seller_price": FLOOR_PRICE,
+                    "action": "reject",
+                    "rationale": "Maximum 5 rounds reached. Negotiation concluded without agreement.",
+                    # No buyer_rationale key: a round stored by an older build.
+                }
+            ],
+        }
+        response = cm.terminal_round_response(status_data, cm.NegotiationAction.REJECT)
+        assert response.round.rationale == "", (
+            f"the terminal mapper fell back to the internal rationale: {response.round.rationale!r}"
+        )

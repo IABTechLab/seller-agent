@@ -793,13 +793,17 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                 f"the available volume."
             )
             if round_result.action == NegotiationAction.ACCEPT:
+                # The volume note discloses nothing (availability is the
+                # truthful subject of the counter), so it goes on BOTH
+                # rationales; the agreed price is the buyer's own offer.
+                agreeable = (
+                    f"Price ${round_result.seller_price:.2f} CPM is agreeable. {volume_note}"
+                )
                 round_result = round_result.model_copy(
                     update={
                         "action": NegotiationAction.COUNTER,
-                        "rationale": (
-                            f"Price ${round_result.seller_price:.2f} CPM is "
-                            f"agreeable. {volume_note}"
-                        ),
+                        "rationale": agreeable,
+                        "buyer_rationale": agreeable,
                     }
                 )
             elif round_result.action in (
@@ -807,7 +811,10 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                 NegotiationAction.FINAL_OFFER,
             ):
                 round_result = round_result.model_copy(
-                    update={"rationale": f"{round_result.rationale} {volume_note}"}
+                    update={
+                        "rationale": f"{round_result.rationale} {volume_note}",
+                        "buyer_rationale": f"{round_result.buyer_rationale} {volume_note}",
+                    }
                 )
 
         history = neg_engine.record_round(history, round_result)
@@ -828,7 +835,12 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         self.state.counter_terms = {
             "proposed_price": round_result.seller_price,
             "max_impressions": self.state.evaluation.available_impressions,
-            "reason": round_result.rationale,
+            # buyer_rationale, never rationale: the internal rationale names
+            # the floor, the strategy and the round budget in prose, which is
+            # the same disclosure as the removed floor_price key, moved into
+            # a sentence. The buyer-facing rationale is authored in the
+            # engine to explain the action without any of the four.
+            "reason": round_result.buyer_rationale,
             "negotiation_id": history.negotiation_id,
             "round_number": round_result.round_number,
             "action": round_result.action.value,

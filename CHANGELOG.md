@@ -49,12 +49,21 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   in chat. A regression test asserts that neither path carries
   `floor_price`, `base_price`, `strategy` or `max_rounds` as a field
   name at any nesting depth, so a future addition of a guardrail to
-  either payload fails rather than shipping. Known remaining gap on this
-  class: the negotiation engine's `rationale` strings still state the
-  floor and the strategy in prose (for example "Countering at the floor
-  price $X CPM ... (round 1/5)"), and reach the buyer through
-  `counter_terms["reason"]`, so the floor is still derivable there; that
-  is a change to the engine's wording and is not made here.
+  either payload fails rather than shipping. (3) The prose leak on the
+  same class is closed with **two rationales**: the negotiation engine's
+  `rationale` used to state the floor, the strategy and the round budget
+  in a sentence (for example "Countering at the floor price $X CPM ...
+  (round 1/5)") which shipped to the buyer as `counter_terms["reason"]`,
+  in the chat counter/final-offer text, and on the REST negotiation
+  responses. The engine now also emits a deliberately constructed
+  `buyer_rationale` that explains the action without stating the
+  seller's price in prose (the structured `seller_price` carries the
+  number unlabeled) and without naming the floor, the strategy, the
+  concession budget or the round limit — and every outbound surface
+  sends only that one. The internal `rationale` is unchanged and stays
+  in logs and the stored negotiation history for audit. Engine pricing
+  arithmetic (concession math, floor clamping, gap-split, acceptance
+  conditions) is untouched.
 
 ### Docs
 

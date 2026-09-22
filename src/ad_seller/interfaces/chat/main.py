@@ -560,18 +560,22 @@ class ChatInterface:
                 "Would you like to explore other packages that might fit your budget?"
             )
         elif action == NegotiationAction.FINAL_OFFER:
+            # buyer_rationale, never rationale: the internal rationale labels
+            # the price as the floor and states the concession cap.
             return (
                 f"Here's our **best and final offer**: **${round_result.seller_price:.2f} CPM**.\n\n"
-                f"{round_result.rationale}\n\n"
+                f"{round_result.buyer_rationale}\n\n"
                 f"This is the lowest we can go. Would you like to accept?"
             )
         else:
             # COUNTER
+            # buyer_rationale, never rationale: the internal rationale names
+            # the strategy, the round budget and (below floor) the floor.
             rounds_left = history.limits.max_rounds - round_result.round_number
             return (
                 f"We appreciate your offer of ${round_result.buyer_price:.2f} CPM. "
                 f"How about **${round_result.seller_price:.2f} CPM**?\n\n"
-                f"{round_result.rationale}\n\n"
+                f"{round_result.buyer_rationale}\n\n"
                 f"{'We have room for further discussion.' if rounds_left > 1 else 'This is close to our limit.'}"
             )
 
