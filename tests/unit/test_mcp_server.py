@@ -562,3 +562,85 @@ class TestListConfigurableFlows:
         for section in ["approval_gates", "guard_conditions", "event_flows"]:
             assert section in result, f"Missing section: {section}"
             assert "configurable" in result[section], f"No configurable hint in {section}"
+
+
+# =============================================================================
+# AI-11: create_order MCP tool
+# =============================================================================
+
+
+class TestCreateOrder:
+    """create_order tool tests (AI-11: no MCP equivalent of POST /api/v1/orders
+    previously existed, so an MCP-only flow could book a deal but had no way
+    to turn it into an order)."""
+
+    @pytest.mark.asyncio
+    async def test_creates_and_persists_an_order(self):
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(deal_id="DEMO-ABC123", quote_id="qt-xyz789"))
+
+        assert result["order_id"].startswith("ORD-")
+        assert result["deal_id"] == "DEMO-ABC123"
+        assert result["quote_id"] == "qt-xyz789"
+        storage.set_order.assert_awaited_once()
+        persisted_id, persisted_data = storage.set_order.await_args.args
+        assert persisted_id == result["order_id"]
+        assert persisted_data["deal_id"] == "DEMO-ABC123"
+
+    @pytest.mark.asyncio
+    async def test_metadata_json_string_is_parsed(self):
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(metadata='{"campaign": "spring-2026"}'))
+
+        assert result["metadata"] == {"campaign": "spring-2026"}
+
+    @pytest.mark.asyncio
+    async def test_non_dict_metadata_is_rejected_not_stored(self):
+        """A bare JSON string/array parses fine but isn't a dict. REST types
+        metadata as Optional[dict]; left unchecked here, this would be
+        stored as-is and only surface later as an uncaught AttributeError
+        in apply_change_request's order_meta.update(proposed) — a 500 with
+        no repair path. Must be rejected here instead, never reach storage."""
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(metadata='"spring"'))
+
+        assert result["detail"]["error"] == "invalid_metadata"
+        storage.set_order.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_dict_metadata_array_is_also_rejected(self):
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(metadata="[1, 2, 3]"))
+
+        assert result["detail"]["error"] == "invalid_metadata"
+        storage.set_order.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_works_with_no_arguments(self):
+        """deal_id/quote_id are optional -- an order can be created bare."""
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order())
+
+        assert result["order_id"].startswith("ORD-")
+        assert result["deal_id"] == ""
+        assert result["quote_id"] is None

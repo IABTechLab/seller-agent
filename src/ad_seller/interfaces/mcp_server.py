@@ -902,6 +902,48 @@ async def bulk_deal_operations(operations: str) -> str:
 
 
 @mcp.tool()
+async def create_order(deal_id: str = "", quote_id: str = "", metadata: str = "") -> str:
+    """Create a new order and persist its state machine.
+
+    Mirrors ``POST /api/v1/orders`` — an MCP-only flow previously had no
+    way to turn a booked deal into an order, dead-ending at "distributed".
+    ``metadata`` is optional, passed as a JSON object string
+    (e.g. '{"campaign": "spring-2026"}').
+    """
+    from ..services import order_service
+
+    parsed_metadata = json.loads(metadata) if metadata else None
+    # REST types metadata as Optional[dict] (Pydantic-enforced); this MCP
+    # tool accepts a raw JSON string, so a bare '"spring"' or '[1, 2]' parses
+    # fine but isn't a dict. Left unchecked, that non-dict value would be
+    # stored as-is and only surface as an uncaught AttributeError later, on
+    # `order_meta.update(proposed)` inside apply_change_request — a 500 with
+    # no way to repair the order. Reject it here instead, matching REST's
+    # 422 shape (full schema validation isn't needed, just the type gate).
+    if parsed_metadata is not None and not isinstance(parsed_metadata, dict):
+        return _dumps(
+            {
+                "detail": {
+                    "error": "invalid_metadata",
+                    "message": (
+                        "metadata must be a JSON object, e.g. "
+                        '\'{"campaign": "spring-2026"}\'. '
+                        f"Got: {type(parsed_metadata).__name__}"
+                    ),
+                }
+            }
+        )
+
+    return await _service_json(
+        order_service.create_order(
+            deal_id=deal_id or None,
+            quote_id=quote_id or None,
+            metadata=parsed_metadata,
+        )
+    )
+
+
+@mcp.tool()
 async def list_orders(limit: int | None = 50) -> str:
     """List orders and their current states."""
     limit = limit or 50
