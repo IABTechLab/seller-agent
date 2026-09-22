@@ -38,6 +38,133 @@ def build_negotiation_engine():
     return NegotiationEngine(pricing_engine, yield_opt)
 
 
+async def _persist_negotiation(storage: Any, proposal_id: str, data: dict[str, Any]) -> None:
+    """Store a negotiation, and index it by the quote it concerns.
+
+    Single write path for every stored negotiation so the quote index cannot
+    be forgotten at one of the three call sites. The index entry is written
+    only once the negotiation has concluded ``accepted`` and carries a
+    ``quote_id``: only an accepted negotiation changes a booking price, so
+    presence in the index means exactly "this quote has an agreed price"
+    (resolved at booking by ``deal_service.book_deal``).
+
+    A pointer, not a duplicated record — the record is mutable because rounds
+    are appended, so two copies of it would drift on the first append.
+    """
+    from ..storage.base import negotiation_by_quote_key
+
+    await storage.set_negotiation(proposal_id, data)
+
+    quote_id = data.get("quote_id")
+    if data.get("status") == "accepted" and quote_id:
+        await storage.set(negotiation_by_quote_key(quote_id), proposal_id)
+
+
+async def resolve_negotiation_key(
+    proposal_id: Optional[str] = None,
+    negotiation_id: Optional[str] = None,
+    quote_id: Optional[str] = None,
+) -> Optional[str]:
+    """Resolve a negotiation message's ids to the key its history is stored under.
+
+    The seller keys negotiations by ``proposal_id``, and a quote-led open keys
+    off the ``quote_id``. Deriving that key as ``proposal_id or negotiation_id
+    or quote_id`` made it depend on which ids a given MESSAGE happened to
+    carry rather than on the negotiation: a round-one open keyed on one id
+    followed by a continuation carrying a different id resolved to two
+    different records, and the continuation silently restarted the
+    negotiation from round one.
+
+    So every supplied id is tried against the store first and an existing
+    negotiation wins, whichever id the continuation leads with. A new
+    negotiation is minted under the first supplied id — the previous
+    or-chain order, unchanged — only when none of them resolves. Which id a
+    negotiation is stored under is deliberately NOT changed here; re-keying
+    storage on ``negotiation_id`` is the structural fix.
+
+    Returns ``None`` only when no id was supplied at all.
+    """
+    from ..storage.factory import get_storage
+
+    candidates = [candidate for candidate in (proposal_id, negotiation_id, quote_id) if candidate]
+    if not candidates:
+        return None
+
+    storage = await get_storage()
+    for candidate in candidates:
+        if await storage.get_negotiation(candidate):
+            return candidate
+
+    return candidates[0]
+
+
+def _quote_not_found_detail(quote_id: str) -> dict[str, str]:
+    """The exact detail shape ``quote_service.get_quote`` emits for a missing
+    quote — reused verbatim so an unowned quote is indistinguishable from a
+    nonexistent one (no existence oracle; house pattern, PR #98)."""
+    return {"error": "quote_not_found", "message": f"Quote '{quote_id}' not found."}
+
+
+async def _verify_quote_binding(storage: Any, quote_id: str, buyer_context: Any) -> None:
+    """Gate binding a ``quote_id`` onto a negotiation on quote ownership.
+
+    A negotiation message may name the quote its agreed price will apply to;
+    an accepted negotiation is then indexed by that quote and REWRITES the
+    booked ``final_cpm`` when the quote is booked. Without this check, buyer A
+    could accept its own negotiation while naming buyer B's quote id, and B's
+    booking would silently carry A's price. The caller must own the quote it
+    binds — the same ownership the booking route enforces before honouring a
+    quote (``routers/deals.py``).
+
+    Rules, mirroring the booking route's, fail-closed on identity:
+
+    - The quote must resolve at all (the live quote record or its history
+      entry). Binding an unresolvable id is refused loudly — it could never
+      be booked, so the binding is either a buyer bug or an attack, and
+      silently dropping it would hide both.
+    - Ownership comes from the quote-history record's ``buyer_id`` (written
+      at quote issue time from the verified pricing key). No record, or no
+      recorded buyer: legacy data, nothing to enforce — allowed, as at
+      booking. A ``"public"`` buyer asserted no identity at quote time, so
+      there is no ownership to enforce.
+    - The caller's pricing key counts only when it is key-derived
+      (``authentication_method == "api_key"``). This route's auth is
+      OPTIONAL, and an anonymous caller's identity fields are self-asserted
+      wire data — EP-5.2 floors the TIER but the pricing key would still
+      echo whatever ids the body claimed, so trusting it here would let an
+      anonymous caller impersonate the victim's identity and pass the very
+      check aimed at it. Every other caller is treated as public.
+    - A mismatch reads as 404 ``quote_not_found``, byte-identical to the
+      nonexistent case: a distinguishable "exists but not yours" would turn
+      this route into an existence oracle over every tenant's quote ids.
+    """
+    from ..storage.quote_history import QuoteHistoryStore
+
+    quote = await storage.get_quote(quote_id)
+    try:
+        history_record = await QuoteHistoryStore(storage).get_quote(quote_id)
+    except Exception:
+        history_record = None
+    if not isinstance(history_record, dict):
+        history_record = None
+
+    if quote is None and history_record is None:
+        raise HTTPException(status_code=404, detail=_quote_not_found_detail(quote_id))
+
+    quoted_buyer_id = history_record.get("buyer_id") if history_record else None
+    if not quoted_buyer_id or quoted_buyer_id == "public":
+        return
+
+    caller_key = (
+        buyer_context.get_pricing_key()
+        if buyer_context is not None
+        and getattr(buyer_context, "authentication_method", None) == "api_key"
+        else "public"
+    )
+    if quoted_buyer_id != caller_key:
+        raise HTTPException(status_code=404, detail=_quote_not_found_detail(quote_id))
+
+
 async def submit_proposal(
     request: Any, buyer_context: Any, catalog: dict[str, Any]
 ) -> dict[str, Any]:
@@ -119,7 +246,7 @@ async def submit_proposal(
     # round numbering) instead of silently starting over.
     flow_history = result.pop("_negotiation_history", None)
     if flow_history:
-        await storage.set_negotiation(proposal_id, flow_history)
+        await _persist_negotiation(storage, proposal_id, flow_history)
     quote_history = QuoteHistoryStore(storage)
     verification = await quote_history.verify_pricing(
         buyer_id=buyer_context.get_pricing_key(),
@@ -190,11 +317,18 @@ async def counter_proposal(
     proposal_id: str,
     buyer_price: float,
     buyer_context: Any,
+    quote_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Submit a counter-offer in an ongoing negotiation.
 
     Loads or creates a NegotiationHistory, evaluates the buyer's offer,
     persists the updated history, and emits a NEGOTIATION_ROUND event.
+
+    ``quote_id`` is the quote the buyer is negotiating, as supplied on the
+    inbound message. It is recorded on the history so an accepted negotiation
+    can be found again from the quote that gets booked. The first one seen
+    wins: a later round naming a different quote must not silently move which
+    quote the agreed price applies to.
     """
     from ..events.helpers import emit_event
     from ..events.models import EventType
@@ -224,6 +358,9 @@ async def counter_proposal(
             if not quote_data:
                 raise HTTPException(status_code=404, detail="Proposal not found")
             product_id = (quote_data.get("product") or {}).get("product_id", "")
+            # Quote-led: the key IS the quote, so the quote id has arrived
+            # even when the message did not spell it out in its own field.
+            quote_id = quote_id or proposal_id
 
         product_data = await storage.get_product(product_id)
         if not product_data:
@@ -262,12 +399,21 @@ async def counter_proposal(
             },
         )
 
+    # Retain the quote this negotiation concerns. Backfills a negotiation
+    # opened before the quote was named; first one seen wins. Binding is
+    # gated on ownership: this id is what routes an agreed price onto a
+    # booked deal, so a caller may only bind a quote issued to it — whether
+    # the id arrived in the message's quote_id field or as a quote-led key.
+    if quote_id and not history.quote_id:
+        await _verify_quote_binding(storage, quote_id, buyer_context)
+        history.quote_id = quote_id
+
     # Evaluate buyer's offer
     round_result = neg_engine.evaluate_buyer_offer(history, buyer_price, buyer_context)
     history = neg_engine.record_round(history, round_result)
 
-    # Persist
-    await storage.set_negotiation(proposal_id, history.model_dump(mode="json"))
+    # Persist (and index by quote, if this round concluded accepted)
+    await _persist_negotiation(storage, proposal_id, history.model_dump(mode="json"))
 
     # Emit round event
     await emit_event(
@@ -313,6 +459,8 @@ async def apply_terminal_action(
     proposal_id: str,
     action: str,
     buyer_price: Optional[float] = None,
+    quote_id: Optional[str] = None,
+    buyer_context: Optional[Any] = None,
 ) -> dict[str, Any]:
     """Record a buyer's terminal accept/reject on the stored negotiation.
 
@@ -320,6 +468,14 @@ async def apply_terminal_action(
     while the STORED history stayed active — so booking could never see
     the agreed state. The price engine is not run: accept
     strikes at the seller's last stated price; reject is a walk-away.
+
+    ``quote_id`` backfills the quote this negotiation concerns when the
+    accept is the first message to name it. On accept, this is the point the
+    quote index is written, which is what lets booking find the agreed price.
+    Binding a NEW quote id is gated on quote ownership against
+    ``buyer_context`` (see ``_verify_quote_binding``); a ``None`` context is
+    treated as an anonymous (public) caller, so it fails closed against
+    buyer-specific quotes rather than skipping the check.
 
     No-ops (returning current status) when no stored negotiation exists or
     it is already terminal, preserving the read-only legacy behavior.
@@ -332,6 +488,9 @@ async def apply_terminal_action(
     if data:
         history = NegotiationHistory(**data)
         if history.status == "active" and action in ("accept", "reject"):
+            if quote_id and not history.quote_id:
+                await _verify_quote_binding(storage, quote_id, buyer_context)
+                history.quote_id = quote_id
             last = history.rounds[-1] if history.rounds else None
             seller_price = last.seller_price if last else history.base_price
             history.rounds.append(
@@ -349,7 +508,7 @@ async def apply_terminal_action(
             )
             history.status = "accepted" if action == "accept" else "rejected"
             history.completed_at = datetime.utcnow()
-            await storage.set_negotiation(proposal_id, history.model_dump(mode="json"))
+            await _persist_negotiation(storage, proposal_id, history.model_dump(mode="json"))
 
     return await get_negotiation_status(proposal_id)
 
@@ -368,6 +527,7 @@ async def get_negotiation_status(proposal_id: str) -> dict[str, Any]:
     return {
         "negotiation_id": history.negotiation_id,
         "proposal_id": history.proposal_id,
+        "quote_id": history.quote_id,
         "product_id": history.product_id,
         "buyer_tier": history.buyer_tier.value,
         "strategy": history.strategy.value,
