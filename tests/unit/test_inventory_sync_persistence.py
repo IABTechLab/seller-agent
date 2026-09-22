@@ -223,3 +223,161 @@ class TestDefaultFloorFallback:
         assert flow._estimate_base_cpm("some_unrecognized_type") != 10.0
         # Recognized types are untouched by this change.
         assert flow._estimate_base_cpm("display") == 12.0
+
+    def test_settings_default_matches_the_old_hardcoded_fallback(self):
+        """The Settings class default (used whenever nothing overrides it,
+        e.g. a fresh deployment with no explicit DEFAULT_PRICE_FLOOR_CPM env
+        var) must equal the 10.0 this replaced -- otherwise GAM/FreeWheel
+        inventory (which never carries floor_price_cpm in raw, unlike CSV's
+        35 sample rows) gets a silently halved real floor/base price and
+        check_avails claims roughly double the available impressions for a
+        fixed budget."""
+        from ad_seller.config.settings import Settings
+
+        assert Settings.model_fields["default_price_floor_cpm"].default == 10.0
+
+
+class _RecordingAdServerClient:
+    """Like _FakeAdServerClient, but records the filter_str it was called with."""
+
+    ad_server_type = SimpleNamespace(value="gam")
+
+    def __init__(self, items):
+        self._items = items
+        self.received_filter_str: Any = "UNSET"
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def list_inventory(self, filter_str=None):
+        self.received_filter_str = filter_str
+        return self._items
+
+
+class _RecordingCsvAdServerClient(_RecordingAdServerClient):
+    ad_server_type = SimpleNamespace(value="csv")
+
+
+class _FailingAdServerClient:
+    """Raises from list_inventory(), simulating a transient ad-server outage."""
+
+    ad_server_type = SimpleNamespace(value="gam")
+
+    def __init__(self, error: Exception):
+        self._error = error
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def list_inventory(self, filter_str=None):
+        raise self._error
+
+
+class TestStatusActiveFilterRestored:
+    """sync_from_ad_server() must exclude archived inventory by default for
+    real ad servers, but never pass a filter CSV's naive substring match
+    would zero out (a maintainer review caught both the drop and, on the
+    CSV side, that restoring it unconditionally would regress CSV back to
+    matching zero rows)."""
+
+    async def test_gam_receives_the_status_active_filter(self, storage):
+        from ad_seller.flows.product_setup_flow import ProductSetupFlow
+
+        client = _RecordingAdServerClient(
+            [_FakeInventoryItem("gam-001", "Homepage Display Banner")]
+        )
+        settings = _flow_settings()
+
+        with (
+            patch("ad_seller.flows.product_setup_flow.get_settings", return_value=settings),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.clients.ad_server_base.get_ad_server_client", lambda: client),
+        ):
+            flow = ProductSetupFlow()
+            await flow.sync_from_ad_server()
+
+        assert client.received_filter_str == "status:ACTIVE"
+
+    async def test_csv_receives_no_filter(self, storage):
+        """CSV's filter_str is a literal substring match against item names
+        -- passing "status:ACTIVE" there matches zero rows."""
+        from ad_seller.flows.product_setup_flow import ProductSetupFlow
+
+        client = _RecordingCsvAdServerClient(
+            [_FakeInventoryItem("csv-001", "Homepage Display Banner")]
+        )
+        settings = _flow_settings(ad_server_type="csv")
+
+        with (
+            patch("ad_seller.flows.product_setup_flow.get_settings", return_value=settings),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.clients.ad_server_base.get_ad_server_client", lambda: client),
+        ):
+            flow = ProductSetupFlow()
+            await flow.sync_from_ad_server()
+
+        assert client.received_filter_str is None
+
+
+class TestAdServerFailureNeverDestroysRealPackages:
+    """A transient ad-server failure must never silently prune the real
+    synced layer from the last successful sync, nor report success (a
+    maintainer review found sync_from_ad_server's _finish_sync() ran even
+    on the mock-fallback-after-failure path, and _run_sync always
+    returned "success" whenever kickoff_async() didn't raise -- which it
+    never did, since the failure was caught and swallowed internally)."""
+
+    async def test_failure_leaves_previously_synced_packages_untouched(self, storage):
+        from ad_seller.flows.product_setup_flow import ProductSetupFlow
+
+        # Simulate a prior successful sync: a real SYNCED package already
+        # in storage, not re-seeded by this (failing) run.
+        await storage.set_package(
+            "pkg-synced-gam-display",
+            {
+                "package_id": "pkg-synced-gam-display",
+                "name": "Display - Synced",
+                "layer": "synced",
+                "status": "active",
+            },
+        )
+        client = _FailingAdServerClient(ConnectionError("GAM API unreachable"))
+        settings = _flow_settings()
+
+        with (
+            patch("ad_seller.flows.product_setup_flow.get_settings", return_value=settings),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.clients.ad_server_base.get_ad_server_client", lambda: client),
+        ):
+            flow = ProductSetupFlow()
+            await flow.sync_from_ad_server()
+
+        assert flow.state.ad_server_sync_failed is True
+        remaining = {p["package_id"] for p in await storage.list_packages()}
+        assert "pkg-synced-gam-display" in remaining, (
+            "a transient failure must never delete the real synced layer"
+        )
+        # No mock fallback either -- mixing fake demo packages into a real
+        # seller's live catalog on an outage is exactly as wrong as deleting it.
+        assert not any("mock" in pid for pid in remaining)
+
+    async def test_run_sync_reports_error_not_success(self, storage):
+        from ad_seller.services import inventory_sync_scheduler
+
+        client = _FailingAdServerClient(ConnectionError("GAM API unreachable"))
+        settings = _flow_settings()
+
+        with (
+            patch("ad_seller.flows.product_setup_flow.get_settings", return_value=settings),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.clients.ad_server_base.get_ad_server_client", lambda: client),
+        ):
+            result = await inventory_sync_scheduler._run_sync()
+
+        assert result["status"] == "error"

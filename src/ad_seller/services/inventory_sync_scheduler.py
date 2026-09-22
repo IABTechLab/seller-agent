@@ -54,6 +54,16 @@ async def _run_sync(include_archived: bool = False) -> dict:
         flow = ProductSetupFlow()
         await flow.kickoff_async()
 
+        if flow.state.ad_server_sync_failed:
+            # sync_from_ad_server() caught the failure internally (so
+            # kickoff_async() completes without raising) and left the real
+            # synced layer untouched rather than pruning it -- _last_sync/
+            # _sync_count must NOT advance here either, or get_sync_status
+            # reports a healthy, up-to-date sync for a cycle that changed
+            # nothing.
+            logger.error("Scheduled inventory sync failed: %s", flow.state.warnings)
+            return {"status": "error", "error": "; ".join(flow.state.warnings)}
+
         _last_sync = datetime.now(timezone.utc).isoformat()
         _sync_count += 1
         logger.info(

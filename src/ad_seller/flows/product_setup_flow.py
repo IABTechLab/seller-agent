@@ -40,6 +40,7 @@ class ProductSetupState(SellerFlowState):
     # Ad server sync state
     ad_server_config_id: Optional[str] = None
     synced_segments: list[str] = []
+    ad_server_sync_failed: bool = False
 
     # Product creation state
     products_to_create: list[dict[str, Any]] = []
@@ -129,6 +130,16 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         upsert semantics, and SYNCED-layer packages that are not re-seeded
         by the current run are pruned, so repeated syncs converge to the
         same package set instead of duplicating the layer.
+
+        The prune only ever runs on a path that legitimately reflects the
+        current state of the world: either nothing is configured (mocks
+        are the honest steady state) or a real fetch actually succeeded. A
+        transient ad-server failure sets ``state.ad_server_sync_failed``
+        and returns without touching storage at all — no mock fallback, no
+        prune — so an outage can never silently replace or delete the real
+        synced layer from the last successful sync. ``_run_sync`` (the
+        scheduler) checks this flag to report ``status: "error"`` instead
+        of a false "success".
         """
         if (
             not self._settings.gam_network_code
@@ -146,8 +157,14 @@ class ProductSetupFlow(Flow[ProductSetupState]):
 
             storage = await get_storage()
             client = get_ad_server_client()
+            # CSV's filter_str is a literal substring match against item
+            # names, not a real query language -- passing "status:ACTIVE"
+            # there matches zero rows, so this only applies to real ad
+            # servers (GAM/FreeWheel), which is also where excluding
+            # archived inventory by default actually matters.
+            filter_str = "status:ACTIVE" if client.ad_server_type.value != "csv" else None
             async with client:
-                items = await client.list_inventory()
+                items = await client.list_inventory(filter_str=filter_str)
 
             # Group items by inferred type and create packages
             grouped: dict[str, list] = {}
@@ -203,8 +220,15 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             logger.info("Synced %d packages from ad server", len(grouped))
 
         except Exception as e:
-            self.state.warnings.append(f"Ad server sync failed, using mocks: {e}")
-            await self._create_mock_synced_packages()
+            # A transient failure must never silently replace or delete the
+            # real synced layer from the last successful sync: no mock
+            # fallback (that would mix fake demo packages into a real
+            # seller's live catalog) and no _finish_sync() (its prune would
+            # delete every real package this run didn't re-seed, since a
+            # failure here means self.state.synced_segments is empty).
+            self.state.warnings.append(f"Ad server sync failed: {e}")
+            self.state.ad_server_sync_failed = True
+            return
 
         await self._finish_sync()
 

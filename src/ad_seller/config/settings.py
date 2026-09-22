@@ -191,7 +191,7 @@ class Settings(BaseSettings):
     # Pricing Configuration
     default_currency: str = "USD"
     min_deal_value: float = 1000.0
-    default_price_floor_cpm: float = 5.0
+    default_price_floor_cpm: float = 10.0
 
     # Yield Optimization
     yield_optimization_enabled: bool = True
