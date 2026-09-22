@@ -443,7 +443,12 @@ def terminal_round_response(
             buyer_price=float_to_money(buyer_p) or Money(amount_micros=0),
             seller_price=float_to_money(seller_p) or Money(amount_micros=0),
             action=action,
-            rationale=last.get("rationale", ""),
+            # buyer_rationale, never rationale: this response is built from
+            # STORED rounds, whose internal rationale names the seller's
+            # guardrails (e.g. "Maximum N rounds reached" when the last round
+            # was an engine walk-away). Older stored rounds without a
+            # buyer_rationale fall back to empty, never to the internal one.
+            rationale=last.get("buyer_rationale", ""),
         ),
         rounds_remaining=0,
     )
