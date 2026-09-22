@@ -552,6 +552,35 @@ class TestCreateOrder:
         assert result["metadata"] == {"campaign": "spring-2026"}
 
     @pytest.mark.asyncio
+    async def test_non_dict_metadata_is_rejected_not_stored(self):
+        """A bare JSON string/array parses fine but isn't a dict. REST types
+        metadata as Optional[dict]; left unchecked here, this would be
+        stored as-is and only surface later as an uncaught AttributeError
+        in apply_change_request's order_meta.update(proposed) — a 500 with
+        no repair path. Must be rejected here instead, never reach storage."""
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(metadata='"spring"'))
+
+        assert result["detail"]["error"] == "invalid_metadata"
+        storage.set_order.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_dict_metadata_array_is_also_rejected(self):
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(metadata="[1, 2, 3]"))
+
+        assert result["detail"]["error"] == "invalid_metadata"
+        storage.set_order.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_works_with_no_arguments(self):
         """deal_id/quote_id are optional -- an order can be created bare."""
         from ad_seller.interfaces.mcp_server import create_order

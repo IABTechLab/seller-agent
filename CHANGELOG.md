@@ -8,7 +8,13 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 - MCP `create_order` tool (AI-11), mirroring `POST /api/v1/orders`. An
   MCP-only flow could previously book and distribute a deal but had no
-  tool to turn it into an order, dead-ending at "distributed."
+  tool to turn it into an order, dead-ending at "distributed." `metadata`
+  is now rejected with `invalid_metadata` when the parsed JSON isn't an
+  object (matching REST, which types it `Optional[dict]`) — a bare
+  string or array previously parsed fine and was stored as-is, only
+  surfacing later as an uncaught `AttributeError` in
+  `apply_change_request`'s `order_meta.update(proposed)`, a 500 with no
+  way to repair the order.
 
 ### Changed
 
