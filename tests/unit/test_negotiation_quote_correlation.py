@@ -616,6 +616,297 @@ class TestNegotiationKeyResolution:
 
 
 # =============================================================================
+# Step 2c: only the quote's own buyer may bind it to a negotiation
+# =============================================================================
+
+
+VICTIM_PRICING_KEY = "advertiser:adv-victim-9"
+
+
+def _quote_history_record(quote_id=QUOTE_ID, buyer_id=VICTIM_PRICING_KEY):
+    """The record the quotes route writes at issue time (QuoteHistoryStore)."""
+    return {
+        "quote_id": quote_id,
+        "buyer_id": buyer_id,
+        "product_id": PRODUCT_ID,
+        "quoted_cpm": QUOTED_CPM,
+        "quoted_at": datetime.utcnow().isoformat(),
+        "expires_at": (datetime.utcnow() + timedelta(hours=23)).isoformat(),
+    }
+
+
+def _api_key_buyer_context(seat="seat-test-1", agency="agency-test-1", adv="adv-test-1"):
+    """A KEY-derived context — the only identity quote ownership trusts."""
+    from ad_seller.interfaces.api.deps import _build_buyer_context
+
+    record = MagicMock()
+    record.identity = BuyerIdentity(seat_id=seat, agency_id=agency, advertiser_id=adv)
+    return _build_buyer_context(api_key_record=record)
+
+
+class TestQuoteBindingOwnership:
+    """The quote a negotiation binds is the quote whose booked price it will
+    REWRITE, so binding is gated on ownership. An unowned quote reads as 404
+    ``quote_not_found``, byte-identical to a nonexistent one (no existence
+    oracle — house pattern, PR #98)."""
+
+    async def test_cross_tenant_accept_cannot_rewrite_the_victims_booked_price(
+        self, client, mock_storage
+    ):
+        """THE attack, end to end: buyer A negotiates its own proposal down,
+        accepts while naming buyer B's quote id, then B books its quote. The
+        accept must be refused, no quote pointer written, and B's deal must
+        book at B's quoted price -- not A's negotiated one."""
+        _seed_negotiable(mock_storage)
+        # The quote belongs to the VICTIM, not to the caller the client
+        # fixture authenticates (advertiser:adv-test-1).
+        mock_storage._store[f"quote_history:{QUOTE_ID}"] = _quote_history_record()
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            async with client as c:
+                # A negotiates its OWN proposal -- no quote named, this is fine.
+                counter = await c.post(
+                    "/api/v1/negotiations/messages",
+                    json={
+                        "idempotency_key": "idem-xt-counter",
+                        "action": "counter",
+                        "proposal_id": PROPOSAL_ID,
+                        "buyer_price": {"amount_micros": 22_000_000, "currency": "USD"},
+                    },
+                )
+                assert counter.status_code == 200, counter.text
+
+                # The accept names B's quote: refused, and as NOT-FOUND, so a
+                # probe cannot distinguish "exists but not yours" from
+                # "does not exist" (no existence oracle).
+                accept = await c.post(
+                    "/api/v1/negotiations/messages",
+                    json={
+                        "idempotency_key": "idem-xt-accept",
+                        "action": "accept",
+                        "proposal_id": PROPOSAL_ID,
+                        "quote_id": QUOTE_ID,
+                    },
+                )
+                assert accept.status_code == 404, accept.text
+                assert accept.json()["detail"]["error"] == "quote_not_found"
+
+            # Nothing bound, nothing indexed, negotiation NOT concluded.
+            assert mock_storage._store[f"negotiation:{PROPOSAL_ID}"]["quote_id"] is None
+            assert mock_storage._store[f"negotiation:{PROPOSAL_ID}"]["status"] == "active"
+            assert f"negotiation_by_quote:{QUOTE_ID}" not in mock_storage._store
+
+            # B books its quote: full price, no negotiation suffix.
+            app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
+                identity=BuyerIdentity(
+                    seat_id="seat-victim-9",
+                    agency_id="agency-victim-9",
+                    advertiser_id="adv-victim-9",
+                )
+            )
+            victim = httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+            async with victim as v:
+                booked = await v.post(
+                    "/api/v1/deals",
+                    json={
+                        "idempotency_key": "idem-xt-book",
+                        "quote_id": QUOTE_ID,
+                        "buyer_identity": {
+                            "seat_id": "seat-victim-9",
+                            "agency_id": "agency-victim-9",
+                            "advertiser_id": "adv-victim-9",
+                        },
+                    },
+                )
+
+        assert booked.status_code == 200, booked.text
+        pricing = booked.json()["deal"]["pricing"]
+        assert pricing["final_cpm"]["amount_micros"] == round(QUOTED_CPM * 1_000_000)
+        assert "Negotiated to" not in pricing["rationale"]
+
+    async def test_own_quote_still_binds_and_books_the_negotiated_price(self, client, mock_storage):
+        """The legitimate flow with an ownership record present: the caller
+        negotiates naming ITS OWN quote, accepts, books -- the deal carries
+        the agreed price."""
+        _seed_negotiable(mock_storage)
+        # The quote was issued to the very buyer the client authenticates.
+        mock_storage._store[f"quote_history:{QUOTE_ID}"] = _quote_history_record(
+            buyer_id="advertiser:adv-test-1"
+        )
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            async with client as c:
+                counter = await c.post(
+                    "/api/v1/negotiations/messages",
+                    json={
+                        "idempotency_key": "idem-own-counter",
+                        "action": "counter",
+                        "proposal_id": PROPOSAL_ID,
+                        "quote_id": QUOTE_ID,
+                        "buyer_price": {"amount_micros": 22_000_000, "currency": "USD"},
+                    },
+                )
+                assert counter.status_code == 200, counter.text
+
+                accept = await c.post(
+                    "/api/v1/negotiations/messages",
+                    json={
+                        "idempotency_key": "idem-own-accept",
+                        "action": "accept",
+                        "proposal_id": PROPOSAL_ID,
+                        "quote_id": QUOTE_ID,
+                    },
+                )
+                assert accept.status_code == 200, accept.text
+                assert accept.json()["status"] == "accepted"
+
+                booked = await c.post(
+                    "/api/v1/deals",
+                    json={
+                        "idempotency_key": "idem-own-book",
+                        "quote_id": QUOTE_ID,
+                        "buyer_identity": {
+                            "seat_id": "seat-test-1",
+                            "agency_id": "agency-test-1",
+                            "advertiser_id": "adv-test-1",
+                        },
+                    },
+                )
+
+        assert booked.status_code == 200, booked.text
+        agreed = mock_storage._store[f"negotiation:{PROPOSAL_ID}"]["rounds"][-1]["seller_price"]
+        assert agreed != QUOTED_CPM
+        pricing = booked.json()["deal"]["pricing"]
+        assert pricing["final_cpm"]["amount_micros"] == round(agreed * 1_000_000)
+        assert f"Negotiated to ${agreed:.2f} CPM" in pricing["rationale"]
+
+    async def test_binding_an_unresolvable_quote_id_is_refused(self, client, mock_storage):
+        """A quote_id resolving to neither a quote nor a history record could
+        never be booked, so binding it is a buyer bug or an attack -- refused
+        loudly rather than silently dropped."""
+        _seed_negotiable(mock_storage)
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            async with client as c:
+                counter = await c.post(
+                    "/api/v1/negotiations/messages",
+                    json={
+                        "idempotency_key": "idem-ghost-counter",
+                        "action": "counter",
+                        "proposal_id": PROPOSAL_ID,
+                        "quote_id": "qt-nosuchquote",
+                        "buyer_price": {"amount_micros": 22_000_000, "currency": "USD"},
+                    },
+                )
+
+        assert counter.status_code == 404, counter.text
+        assert counter.json()["detail"]["error"] == "quote_not_found"
+        # The refused round left nothing behind.
+        assert f"negotiation:{PROPOSAL_ID}" not in mock_storage._store
+
+    async def test_quote_led_open_of_a_foreign_quote_is_refused(self, mock_storage):
+        """The sibling vector: the same foreign quote id sent as the
+        negotiation KEY (quote-led open) rather than in the quote_id field
+        binds through the same site and is refused the same way."""
+        mock_storage._store[f"quote:{QUOTE_ID}"] = _available_quote()
+        mock_storage._store[f"product:{PRODUCT_ID}"] = _stored_product()
+        mock_storage._store[f"quote_history:{QUOTE_ID}"] = _quote_history_record()
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await negotiation_service.counter_proposal(
+                    QUOTE_ID, buyer_price=22.0, buyer_context=_api_key_buyer_context()
+                )
+
+        assert exc.value.status_code == 404
+        assert exc.value.detail["error"] == "quote_not_found"
+        assert f"negotiation:{QUOTE_ID}" not in mock_storage._store
+
+    async def test_anonymous_self_asserted_identity_cannot_bind_a_buyer_quote(self, mock_storage):
+        """This route's auth is OPTIONAL and an anonymous caller's identity
+        fields are self-asserted wire data. Asserting the victim's ids must
+        not pass the ownership check aimed at exactly that caller: only a
+        KEY-derived identity counts, everyone else is public."""
+        _seed_negotiable(mock_storage)
+        mock_storage._store[f"quote_history:{QUOTE_ID}"] = _quote_history_record()
+
+        from ad_seller.interfaces.api.deps import _build_buyer_context
+
+        impostor = _build_buyer_context(
+            buyer_tier="advertiser", agency_id="agency-victim-9", advertiser_id="adv-victim-9"
+        )
+        assert impostor.get_pricing_key() == VICTIM_PRICING_KEY  # the claim...
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            with pytest.raises(HTTPException) as exc:  # ...does not bind.
+                await negotiation_service.counter_proposal(
+                    PROPOSAL_ID, buyer_price=22.0, buyer_context=impostor, quote_id=QUOTE_ID
+                )
+
+        assert exc.value.status_code == 404
+        assert exc.value.detail["error"] == "quote_not_found"
+
+    async def test_a_public_quote_stays_negotiable_without_ownership(self, mock_storage):
+        """A quote issued to ``buyer_id="public"`` asserted no identity at
+        quote time -- nothing buyer-specific was priced, so there is no
+        ownership to enforce (same rule as booking)."""
+        _seed_negotiable(mock_storage)
+        mock_storage._store[f"quote_history:{QUOTE_ID}"] = _quote_history_record(buyer_id="public")
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            result = await negotiation_service.counter_proposal(
+                PROPOSAL_ID,
+                buyer_price=22.0,
+                buyer_context=_buyer_context(),
+                quote_id=QUOTE_ID,
+            )
+
+        assert result["round_number"] == 1
+        assert mock_storage._store[f"negotiation:{PROPOSAL_ID}"]["quote_id"] == QUOTE_ID
+
+    async def test_terminal_bind_without_a_context_fails_closed(self, mock_storage):
+        """``apply_terminal_action`` called with a quote to bind but no buyer
+        context treats the caller as public: a buyer-specific quote does not
+        bind, rather than the check being skipped."""
+        _seed_negotiable(mock_storage)
+        mock_storage._store[f"quote_history:{QUOTE_ID}"] = _quote_history_record()
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            await negotiation_service.counter_proposal(
+                PROPOSAL_ID, buyer_price=22.0, buyer_context=_buyer_context()
+            )
+            with pytest.raises(HTTPException) as exc:
+                await negotiation_service.apply_terminal_action(
+                    PROPOSAL_ID, "accept", quote_id=QUOTE_ID
+                )
+
+        assert exc.value.status_code == 404
+        assert mock_storage._store[f"negotiation:{PROPOSAL_ID}"]["status"] == "active"
+        assert f"negotiation_by_quote:{QUOTE_ID}" not in mock_storage._store
+
+
+# =============================================================================
 # Step 3: an accepted negotiation with no price must not book at list price
 # =============================================================================
 
