@@ -216,6 +216,33 @@ class CounterOfferRequest(BaseModel):
     agent_url: Optional[str] = None
 
 
+class NegotiationRoundView(BaseModel):
+    """A single negotiation round as the counterparty is allowed to see it.
+
+    A whitelist, NOT a dump of the internal ``NegotiationRound``. Two of the
+    internal round fields undo the very redaction ``NegotiationStatusResponse``
+    exists to enforce, so they are excluded here:
+
+    - ``concession_pct`` / ``cumulative_concession_pct``: the engine computes
+      the cumulative figure as ``(base_price - counter) / base_price``, so
+      ``seller_price / (1 - cumulative_concession_pct)`` reconstructs the
+      seller's ``base_price`` EXACTLY. Serializing it hands back the anchor
+      the top level just dropped.
+    - ``rationale``: on a below-floor offer the engine's rationale states the
+      floor price in prose ("Countering at the floor price $X CPM ...").
+
+    Excluding ``rationale`` here is boundary filtering on this read endpoint
+    only; whether the engine should put the floor in rationale text at all is
+    a separate, still-open decision.
+    """
+
+    round_number: int
+    buyer_price: float
+    seller_price: float
+    action: str
+    timestamp: Optional[str] = None
+
+
 class NegotiationStatusResponse(BaseModel):
     """Buyer-facing negotiation status for ``GET /proposals/{id}/negotiation``.
 
@@ -226,15 +253,26 @@ class NegotiationStatusResponse(BaseModel):
     four for exactly that reason. Pinning the wire shape here also keeps a
     later addition to the service's history dict from silently re-leaking
     them.
+
+    ``rounds`` is typed (``NegotiationRoundView``) rather than passed through
+    as raw dicts: the internal round dumps carry ``cumulative_concession_pct``
+    (which reconstructs ``base_price`` exactly) and ``rationale`` (which can
+    state the floor in prose). The service keeps projecting full rounds — its
+    internal consumer (``terminal_round_response``) needs them — and this
+    model drops the unsafe fields at the wire.
     """
 
     negotiation_id: str
     proposal_id: str
+    # Projected by the service once quote-led negotiations record their
+    # quote id on the history; None until then. Declared here so the
+    # response model passes it through instead of silently stripping it.
+    quote_id: Optional[str] = None
     product_id: str
     buyer_tier: str
     status: str
     total_rounds: int
-    rounds: list[dict[str, Any]] = []
+    rounds: list[NegotiationRoundView] = []
     started_at: str
     completed_at: Optional[str] = None
     package_id: Optional[str] = None

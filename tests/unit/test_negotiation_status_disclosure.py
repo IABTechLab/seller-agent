@@ -13,6 +13,7 @@ the seller's floor and its remaining concession budget. The shared
 they are the seller's internal guardrails and must never cross the wire.
 """
 
+import json
 import sys
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -177,3 +178,139 @@ class TestNegotiationStatusRequiresAuth:
                 resp = await c.get(f"/proposals/{PROPOSAL_ID}/negotiation")
 
         assert resp.status_code == 200, resp.text
+
+
+# ---------------------------------------------------------------------------
+# Typed rounds: engine-produced leaks must be filtered at the wire
+# ---------------------------------------------------------------------------
+
+ENGINE_PROPOSAL_ID = "prop-engine-leak-1"
+BELOW_FLOOR_OFFER = 19.0
+
+
+def _engine_negotiation():
+    """A negotiation whose round the REAL engine produced.
+
+    A hand-written round with the default ``cumulative_concession_pct=0.0``
+    and a bland rationale cannot exhibit the round-level leaks. The engine's
+    below-floor branch produces both of them for real:
+
+    - ``cumulative_concession_pct = (base_price - counter) / base_price``,
+      nonzero here, so ``seller_price / (1 - cumulative_concession_pct)``
+      reconstructs ``base_price`` EXACTLY;
+    - a rationale that states the floor in prose ("Countering at the floor
+      price $X CPM ...").
+
+    Returns the stored history dump and the engine's round object.
+    """
+    from ad_seller.services.negotiation_service import build_negotiation_engine
+
+    engine = build_negotiation_engine()
+    history = engine.start_negotiation(
+        proposal_id=ENGINE_PROPOSAL_ID,
+        product_id="prod-ctv-1",
+        buyer_context=None,
+        base_price=SELLER_BASE_PRICE,
+        floor_price=SELLER_FLOOR_PRICE,
+    )
+    engine_round = engine.evaluate_buyer_offer(history, BELOW_FLOOR_OFFER)
+    history = engine.record_round(history, engine_round)
+    return history.model_dump(mode="json"), engine_round
+
+
+@pytest.fixture
+def engine_mock_storage():
+    stored, _ = _engine_negotiation()
+    store = {f"negotiation:{ENGINE_PROPOSAL_ID}": stored}
+    storage = AsyncMock()
+    storage.get = AsyncMock(side_effect=lambda k: store.get(k))
+    storage.get_negotiation = AsyncMock(side_effect=lambda pid: store.get(f"negotiation:{pid}"))
+    return storage
+
+
+class TestTypedRoundsBlockReconstruction:
+    """The rounds themselves must not undo the top-level redaction.
+
+    ``NegotiationStatusResponse.rounds`` is typed (``NegotiationRoundView``)
+    precisely because raw round dumps carried ``cumulative_concession_pct``
+    (an exact ``base_price`` reconstruction) and ``rationale`` (the floor in
+    prose).
+    """
+
+    #: The only round fields the counterparty may see.
+    ALLOWED_ROUND_FIELDS = {"round_number", "buyer_price", "seller_price", "action", "timestamp"}
+
+    async def test_engine_round_leaks_do_not_reach_the_wire(
+        self, authenticated_client, engine_mock_storage
+    ):
+        # Sanity: the engine round really carries both leaks. Without these,
+        # the wire assertions below would pass vacuously (the original
+        # fixture's default 0.0 concession missed exactly this).
+        _, engine_round = _engine_negotiation()
+        assert engine_round.cumulative_concession_pct > 0
+        reconstructed_base = engine_round.seller_price / (
+            1 - engine_round.cumulative_concession_pct
+        )
+        assert reconstructed_base == pytest.approx(SELLER_BASE_PRICE, abs=0.01)
+        assert f"{SELLER_FLOOR_PRICE:.2f}" in engine_round.rationale
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=engine_mock_storage):
+            async with authenticated_client as c:
+                resp = await c.get(f"/proposals/{ENGINE_PROPOSAL_ID}/negotiation")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total_rounds"] == 1
+
+        # Only the whitelisted round fields cross the wire.
+        for r in body["rounds"]:
+            assert set(r) == self.ALLOWED_ROUND_FIELDS, f"unexpected round fields: {sorted(r)}"
+
+        # The forbidden field names are absent from the entire payload.
+        for forbidden in ("concession_pct", "cumulative_concession_pct", "rationale"):
+            assert forbidden not in resp.text, f"{forbidden} reached the wire: {resp.text}"
+
+        # base_price is NOT reconstructible from the serialized payload:
+        # the formula needs cumulative_concession_pct alongside seller_price,
+        # and that input is absent (asserted just above). Nor does the base
+        # value itself appear anywhere.
+        assert str(SELLER_BASE_PRICE) not in resp.text
+
+        # No round field names or narrates the floor. The one place the
+        # floor VALUE legitimately appears is seller_price: the engine
+        # counters every below-floor offer AT the floor, so the counter
+        # price numerically equals it. That is a price on the wire, not a
+        # disclosure — the leak was the rationale labeling it as the floor,
+        # and rationale is gone.
+        assert "floor" not in resp.text.lower()
+        floor_str = f"{SELLER_FLOOR_PRICE:.2f}"
+        for r in body["rounds"]:
+            assert r["seller_price"] == pytest.approx(SELLER_FLOOR_PRICE)
+            for key, value in r.items():
+                if key == "seller_price":
+                    continue
+                assert floor_str not in json.dumps(value), (
+                    f"floor value leaked via round field {key!r}: {value!r}"
+                )
+
+
+class TestQuoteIdPassesThrough:
+    def test_response_model_carries_quote_id(self):
+        """The service will project ``quote_id`` for quote-led negotiations;
+        the response model must pass it through, not silently strip it."""
+        from ad_seller.interfaces.api.schemas import NegotiationStatusResponse
+
+        status = NegotiationStatusResponse.model_validate(
+            {
+                "negotiation_id": "neg-q-1",
+                "proposal_id": "prop-q-1",
+                "quote_id": "quote-abc-1",
+                "product_id": "prod-ctv-1",
+                "buyer_tier": "agency",
+                "status": "active",
+                "total_rounds": 0,
+                "started_at": "2026-01-01T00:00:00",
+            }
+        )
+        assert status.quote_id == "quote-abc-1"
+        assert status.model_dump()["quote_id"] == "quote-abc-1"

@@ -50,10 +50,15 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   `NegotiationStatusResponse`, and the route resolves a verified buyer
   context like its sibling negotiation routes, rejecting anonymous callers
   with 401. The shared `Negotiation` primitive excludes the same four
-  fields deliberately. Note that the response is now authentication-scoped
-  but not yet buyer-scoped: an authenticated buyer can still read any
-  proposal's negotiation, because the stored history records no buyer
-  identity to scope against.
+  fields deliberately. The `rounds` array is likewise typed
+  (`NegotiationRoundView`) rather than passed through as raw round dumps:
+  each internal round carries `cumulative_concession_pct`, from which
+  `seller_price / (1 - cumulative_concession_pct)` reconstructs
+  `base_price` exactly, and a `rationale` that can state the floor in
+  prose — both are excluded at the wire. Note that the response is now
+  authentication-scoped but not yet buyer-scoped: an authenticated buyer
+  can still read any proposal's negotiation, because the stored history
+  records no buyer identity to scope against.
 
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
