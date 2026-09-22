@@ -11,8 +11,6 @@ directly. Internal ``ProductDefinition`` is mapped at the boundary via
 :mod:`..contract_mappers`; the catalog service is untouched.
 """
 
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from iab_agentic_primitives.primitives import Product
 from iab_agentic_primitives.protocol import (
@@ -55,10 +53,8 @@ async def list_products(
     before serving, so the list and the single-product read never disagree.
     """
     catalog = deps.get_product_catalog()
-    products = await asyncio.gather(
-        *(catalog_service.apply_inventory_type_override(p) for p in catalog["products"].values())
-    )
-    return cm.products_to_list_response(list(products), limit=limit, offset=offset)
+    products = await catalog_service.apply_inventory_type_overrides_batch(catalog["products"])
+    return cm.products_to_list_response(list(products.values()), limit=limit, offset=offset)
 
 
 def _spec_avails_collection(search: ProductAvailsSearch, catalog: dict) -> AvailsCollection:

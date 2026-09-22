@@ -52,12 +52,21 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   always round-tripped correctly through storage, but nothing on the
   read side ever consulted it — both routes served exclusively from the
   cached static catalog, so an applied override was invisible
-  everywhere. `catalog_service.apply_inventory_type_override` is the one
-  place that now resolves it (mirroring the rate-card resolver's
-  single-source shape, issue #69), recomputing `supported_deal_types`
-  via the same `infer_deal_types` used when products are first built, so
-  the wire's `ext.inventory_type` and `ext.deal_types` can't
-  self-contradict.
+  everywhere. `catalog_service.apply_inventory_type_override` now
+  resolves it, swapping only `inventory_type` — every other declared
+  field (`supported_deal_types`, pricing, targeting) is left exactly as
+  the catalog declares it. An earlier version of this fix recomputed
+  `supported_deal_types` via `infer_deal_types(new_type)`; a maintainer
+  review caught that this mapping is the canonical default for products
+  built from an ad-server/CSV item, not this catalog's independently
+  hand-curated ones, so it could silently grant a deal type the seller
+  never offered. `GET /products` applies overrides via a new
+  batch-efficient helper (one storage probe, not one read per product).
+  Scope: covers `GET /products`/`GET /products/{id}` only — MCP's
+  `list_products` tool, avails, quotes, and `create_deal_from_template`
+  still read the un-overridden type; extending this everywhere needs the
+  catalog accessor to be the one place every consumer calls through,
+  landing separately alongside AI-6.
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal

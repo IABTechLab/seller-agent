@@ -9,14 +9,29 @@ storage, but nothing on the read side ever consulted it: GET /products
 and GET /products/{id} serve exclusively from the cached static
 catalog, so an applied override was invisible on every read path.
 
-Fix under test: catalog_service.apply_inventory_type_override() is the
-ONE place that consults a stored override (mirroring rate_card_service's
-single-resolver shape from issue #69), called by both GET /products and
-GET /products/{id} so the list and the single-product read never
-disagree. supported_deal_types is recomputed via the same
-infer_deal_types() used when products are first built, so the override
-doesn't leave ext.inventory_type and ext.deal_types self-contradicting
-on the wire.
+Fix under test: catalog_service.apply_inventory_type_override() applies a
+stored override on read, called by both GET /products (via the
+batch-efficient apply_inventory_type_overrides_batch, one storage probe
+instead of one read per product) and GET /products/{id}, so the list and
+the single-product read never disagree.
+
+Only ``inventory_type`` is swapped. A maintainer review of an earlier
+version of this fix caught that recomputing ``supported_deal_types`` via
+``infer_deal_types(new_type)`` is wrong for this catalog's hand-curated
+products: that mapping is the canonical default for products BUILT from
+an ad-server/CSV item, a different set of products with independently
+declared values -- e.g. "Premium Display - Homepage" declares
+``[PROGRAMMATIC_GUARANTEED, PREFERRED_DEAL]``, while
+``infer_deal_types("display")`` (or "ctv", the type used below) returns a
+different set entirely. Recomputing would silently grant a deal type the
+seller never offered and withdraw one they did, so every other declared
+field (deal types, pricing, targeting) is now left exactly as the catalog
+declares it.
+
+Scope: this only covers GET /products and GET /products/{id}. Extending
+it to MCP's list_products tool, avails, quotes, and
+create_deal_from_template needs the catalog accessor to be the one place
+every consumer calls through, which lands separately alongside AI-6.
 """
 
 from typing import Any, Optional
@@ -100,13 +115,27 @@ class TestApplyInventoryTypeOverrideHelper:
         assert result.inventory_type == original_type
         assert result.supported_deal_types == product.supported_deal_types
 
-    async def test_override_swaps_type_and_recomputes_deal_types(self, storage):
+    async def test_override_swaps_type_only_declared_fields_survive(self, storage):
+        """Deal types, pricing, and every other declared field must survive
+        an override unchanged -- only inventory_type may differ. Uses the
+        catalog's actual first product ("Premium Display - Homepage",
+        declaring [PROGRAMMATIC_GUARANTEED, PREFERRED_DEAL]) overridden to
+        "ctv", whose infer_deal_types() output ([PROGRAMMATIC_GUARANTEED]
+        only) differs from the declared set -- so this fails if deal types
+        are ever recomputed again instead of preserved."""
         from ad_seller.interfaces.api import deps
         from ad_seller.services import catalog_service
 
         with patch("ad_seller.storage.factory.get_storage", return_value=storage):
             catalog = deps.get_product_catalog()
             product = next(iter(catalog["products"].values()))
+            original_deal_types = product.supported_deal_types
+            original_base_cpm = product.base_cpm
+            original_floor_cpm = product.floor_cpm
+            assert original_deal_types != catalog_service.infer_deal_types("ctv"), (
+                "test product must declare deal types that differ from infer_deal_types "
+                "output for this assertion to be meaningful"
+            )
 
             await catalog_service.override_inventory_type(
                 product_id=product.product_id, inventory_type="ctv", reason="test"
@@ -114,9 +143,43 @@ class TestApplyInventoryTypeOverrideHelper:
             result = await catalog_service.apply_inventory_type_override(product)
 
         assert result.inventory_type == "ctv"
-        assert result.supported_deal_types == catalog_service.infer_deal_types("ctv")
+        assert result.supported_deal_types == original_deal_types
+        assert result.base_cpm == original_base_cpm
+        assert result.floor_cpm == original_floor_cpm
         # The cached catalog product itself must never be mutated in place.
         assert product.inventory_type != "ctv"
+
+    async def test_no_override_returns_the_exact_same_dict_no_wasted_reads(self, storage):
+        """apply_inventory_type_overrides_batch must short-circuit to the
+        SAME dict (identity, not just equality) when nothing has ever been
+        overridden -- one keys() probe, zero per-product storage reads."""
+        from ad_seller.interfaces.api import deps
+        from ad_seller.services import catalog_service
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            catalog = deps.get_product_catalog()
+            result = await catalog_service.apply_inventory_type_overrides_batch(catalog["products"])
+
+        assert result is catalog["products"]
+
+    async def test_batch_applies_only_to_overridden_products(self, storage):
+        from ad_seller.interfaces.api import deps
+        from ad_seller.services import catalog_service
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            catalog = deps.get_product_catalog()
+            product_ids = list(catalog["products"].keys())
+            overridden_id, untouched_id = product_ids[0], product_ids[1]
+            untouched_original_type = catalog["products"][untouched_id].inventory_type
+
+            await catalog_service.override_inventory_type(
+                product_id=overridden_id, inventory_type="ctv", reason="test"
+            )
+            result = await catalog_service.apply_inventory_type_overrides_batch(catalog["products"])
+
+        assert result[overridden_id].inventory_type == "ctv"
+        assert result[untouched_id].inventory_type == untouched_original_type
+        assert result[untouched_id] is catalog["products"][untouched_id]
 
 
 class TestGetProductAppliesOverride:

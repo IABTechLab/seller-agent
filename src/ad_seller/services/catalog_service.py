@@ -609,31 +609,63 @@ async def apply_inventory_type_override(product: Any) -> Any:
     live per-request rebuild), so an applied override was invisible on
     every read path — the exact "write-only" shape reported.
 
-    This is the ONE place that consults a stored override, mirroring
-    ``rate_card_service``'s "one resolver, no per-call-site duplication"
-    shape (issue #69): every read path calls this instead of each
-    re-deriving its own lookup.
+    Returns a COPY with ONLY ``inventory_type`` swapped. Every other
+    declared field — ``supported_deal_types``, ``base_cpm``, ``floor_cpm``,
+    targeting — is left exactly as this catalog hand-declares it.
+    ``infer_deal_types()`` is NOT used to recompute deal types here: that
+    mapping is the canonical default for products BUILT from an ad-server/
+    CSV item, a different set of products with independently-declared
+    values that don't line up with this catalog's own hand-curated entries
+    — e.g. "Premium Display - Homepage" declares
+    ``[PROGRAMMATIC_GUARANTEED, PREFERRED_DEAL]``, while
+    ``infer_deal_types("display")`` returns
+    ``[PREFERRED_DEAL, PRIVATE_AUCTION]``. Recomputing off the new type
+    label would silently grant a deal type the seller never offered and
+    withdraw one they did. The cached catalog itself is never mutated, so a
+    later override removal doesn't need cache invalidation to take effect.
 
-    Returns a COPY with ``inventory_type`` swapped and
-    ``supported_deal_types`` recomputed via the same canonical
-    :func:`infer_deal_types` used when products are first built from an ad
-    server/CSV item -- swapping only the type label would leave
-    ``ext.deal_types`` on the wire reflecting the pre-override type,
-    self-contradicting ``ext.inventory_type``. The cached catalog itself is
-    never mutated, so a later override removal doesn't need cache
-    invalidation to take effect.
+    Scope: wired into ``GET /products`` and ``GET /products/{id}`` only.
+    MCP's ``list_products`` tool, avails, quotes, and
+    ``create_deal_from_template`` still read the un-overridden type
+    directly from the catalog — extending this to every read surface needs
+    the catalog accessor itself to be the one place every consumer calls
+    through, which lands separately alongside AI-6's async catalog-accessor
+    consolidation (moving this call inside ``get_static_product_catalog()``
+    at that point is a natural, tracked follow-up, not done here to avoid
+    duplicating that in-flight conversion).
     """
     override = await get_inventory_type_override(product.product_id)
     if not override:
         return product
 
-    new_type = override["inventory_type"]
-    return product.model_copy(
-        update={
-            "inventory_type": new_type,
-            "supported_deal_types": infer_deal_types(new_type),
-        }
-    )
+    return product.model_copy(update={"inventory_type": override["inventory_type"]})
+
+
+async def apply_inventory_type_overrides_batch(products: dict[str, Any]) -> dict[str, Any]:
+    """Apply stored inventory-type overrides across a whole catalog dict.
+
+    A single ``keys("inventory_override:*")`` probe short-circuits to the
+    catalog unchanged when nothing has ever been overridden (the common
+    case), instead of one storage read per product regardless — this is
+    what ``list_products`` uses instead of gathering
+    :func:`apply_inventory_type_override` over every product unconditionally.
+    """
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    override_keys = await storage.keys("inventory_override:*")
+    if not override_keys:
+        return products
+
+    overridden_ids = {key.removeprefix("inventory_override:") for key in override_keys}
+    relevant_ids = overridden_ids & products.keys()
+    if not relevant_ids:
+        return products
+
+    result = dict(products)
+    for product_id in relevant_ids:
+        result[product_id] = await apply_inventory_type_override(result[product_id])
+    return result
 
 
 async def delete_inventory_type_override(product_id: str) -> bool:
