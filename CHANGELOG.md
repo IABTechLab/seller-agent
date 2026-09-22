@@ -24,6 +24,16 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 - The operator rate card now drives pricing: matching entries override
   catalog base CPM for quotes, bookings, and negotiation anchors (floors
   still apply); previously it was stored but never read (issue #69).
+- The proposal flow no longer kicks off the proposal-review crew when its
+  result could never be used: with a positive time budget below the new
+  `proposal_crew_min_budget_seconds` (default 120, env
+  `PROPOSAL_CREW_MIN_BUDGET`; 0 restores the previous always-run behavior),
+  the flow goes straight to the deterministic evaluation and logs one INFO
+  line. The crew was measured at ~646s against a 20s default budget, so
+  every default-config proposal burned 16-40 discarded LLM calls in an
+  orphaned worker thread (CrewAI has no cancellation API). Budget <= 0
+  still means "no bound" and always runs the crew; wire answers on the
+  timeout path are unchanged.
 
 ### Fixed
 

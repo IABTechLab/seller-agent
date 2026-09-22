@@ -489,6 +489,10 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         """Configured crew time budget in seconds; <= 0 disables the bound."""
         return float(getattr(self._settings, "proposal_flow_time_budget_seconds", 0.0) or 0.0)
 
+    def _crew_min_budget(self) -> float:
+        """Minimum budget worth starting the crew for; <= 0 disables the skip."""
+        return float(getattr(self._settings, "proposal_crew_min_budget_seconds", 0.0) or 0.0)
+
     async def _run_crew_within_budget(self, crew: Any) -> Any:
         """Run the review crew bounded by the configured time budget.
 
@@ -577,8 +581,46 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         ~10m46s, so past the budget the flow falls back to the SAME
         deterministic rule-based evaluation already used when the crew
         fails, and the request answers within wire timeouts.
+
+        When the budget is positive but below
+        ``proposal_crew_min_budget_seconds``, the crew is not started at
+        all — the timeout outcome is already certain, so the flow goes
+        straight to the deterministic evaluation instead of paying for a
+        crew whose result would be discarded.
         """
         if self.state.status == ExecutionStatus.FAILED:
+            return
+
+        # Skip the crew entirely when its result could never be used: a
+        # positive budget below proposal_crew_min_budget_seconds guarantees
+        # the timeout path (the crew was measured at ~646s), which answers
+        # with the deterministic fallback and leaves the abandoned crew
+        # burning 16-40 discarded LLM calls in a worker thread (see
+        # _abandon_crew_task). Going straight to the deterministic
+        # evaluation yields the same decision with zero discarded calls.
+        # budget <= 0 means "no bound" — the crew always runs there — and
+        # min budget <= 0 disables the skip (the previous always-run
+        # behavior).
+        budget = self._crew_time_budget()
+        min_budget = self._crew_min_budget()
+        if 0 < budget < min_budget:
+            logger.info(
+                "Skipping proposal-review crew for %s (flow %s): the %.1fs "
+                "time budget is below proposal_crew_min_budget_seconds="
+                "%.1fs, so the crew (measured at ~646s) could never answer "
+                "in time and its result would be discarded; using the "
+                "deterministic evaluation directly.",
+                self.state.proposal_id,
+                self.state.flow_id,
+                budget,
+                min_budget,
+            )
+            reason = (
+                f"{budget:g}s time budget is below the {min_budget:g}s "
+                f"minimum for the proposal-review crew"
+            )
+            self.state.warnings.append(f"Crew evaluation skipped: {reason}")
+            self._fallback_evaluation_or_fail(reason)
             return
 
         # Create the proposal review crew in its own try so the two failure
