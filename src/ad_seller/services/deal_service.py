@@ -516,8 +516,8 @@ async def create_deal_from_template(
     from ..storage.factory import get_storage
 
     deal_type_map = _quote_deal_type_map()
-    deal_type_str = request.deal_type.upper()
-    if deal_type_str not in deal_type_map:
+    deal_type_str = _normalize_deal_type_code(request.deal_type)
+    if deal_type_str is None:
         raise HTTPException(
             status_code=400,
             detail={
@@ -627,6 +627,27 @@ def _quote_deal_type_map():
         "PD": DealType.PREFERRED_DEAL,
         "PA": DealType.PRIVATE_AUCTION,
     }
+
+
+_DEAL_TYPE_ALIASES: dict[str, str] = {
+    "PG": "PG",
+    "PROGRAMMATICGUARANTEED": "PG",
+    "PROGRAMMATIC_GUARANTEED": "PG",
+    "PD": "PD",
+    "PREFERREDDEAL": "PD",
+    "PREFERRED_DEAL": "PD",
+    "PA": "PA",
+    "PRIVATEAUCTION": "PA",
+    "PRIVATE_AUCTION": "PA",
+}
+
+
+def _normalize_deal_type_code(raw: str) -> Optional[str]:
+    """Map any accepted deal-type spelling to its canonical short code.
+
+    Returns ``None`` when ``raw`` matches none of the accepted spellings.
+    """
+    return _DEAL_TYPE_ALIASES.get(raw.upper())
 
 
 def _build_seller_schain() -> dict[str, Any]:
