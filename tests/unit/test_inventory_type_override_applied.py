@@ -28,10 +28,20 @@ seller never offered and withdraw one they did, so every other declared
 field (deal types, pricing, targeting) is now left exactly as the catalog
 declares it.
 
-Scope: this only covers GET /products and GET /products/{id}. Extending
-it to MCP's list_products tool, avails, quotes, and
-create_deal_from_template needs the catalog accessor to be the one place
-every consumer calls through, which lands separately alongside AI-6.
+Follow-up (same day): a broader review found the override reached only
+2 of ~15 consumers of the catalog -- critically, quote_service.create_quote
+still read the un-overridden product and priced it off the ORIGINAL type
+via rate_card_service.resolve_base_cpm's exact-match lookup. A buyer could
+see "ctv" on GET /products and be quoted the "display" rate: a real
+mispricing, not just a display inconsistency. Fixed by moving the override
+application inside catalog_service.get_static_product_catalog() itself --
+the true lowest-common-ancestor every consumer (REST, MCP, CLI, chat,
+negotiation, quote/pricing) already calls through, directly or via
+deps.get_product_catalog() -- so every one of them now sees the override
+with no further per-call-site wiring needed. This required converting
+get_static_product_catalog()/deps.get_product_catalog() to async (to
+consult storage); see catalog_service.py's docstring for the identity
+guarantee this preserves for the zero-override case.
 """
 
 from typing import Any, Optional
@@ -91,10 +101,11 @@ def client(storage):
         yield httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
-def _first_product_id() -> str:
+async def _first_product_id(storage) -> str:
     from ad_seller.interfaces.api import deps
 
-    catalog = deps.get_product_catalog()
+    with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+        catalog = await deps.get_product_catalog()
     return next(iter(catalog["products"]))
 
 
@@ -106,7 +117,7 @@ class TestApplyInventoryTypeOverrideHelper:
         from ad_seller.services import catalog_service
 
         with patch("ad_seller.storage.factory.get_storage", return_value=storage):
-            catalog = deps.get_product_catalog()
+            catalog = await deps.get_product_catalog()
             product = next(iter(catalog["products"].values()))
             original_type = product.inventory_type
 
@@ -127,7 +138,7 @@ class TestApplyInventoryTypeOverrideHelper:
         from ad_seller.services import catalog_service
 
         with patch("ad_seller.storage.factory.get_storage", return_value=storage):
-            catalog = deps.get_product_catalog()
+            catalog = await deps.get_product_catalog()
             product = next(iter(catalog["products"].values()))
             original_deal_types = product.supported_deal_types
             original_base_cpm = product.base_cpm
@@ -157,7 +168,7 @@ class TestApplyInventoryTypeOverrideHelper:
         from ad_seller.services import catalog_service
 
         with patch("ad_seller.storage.factory.get_storage", return_value=storage):
-            catalog = deps.get_product_catalog()
+            catalog = await deps.get_product_catalog()
             result = await catalog_service.apply_inventory_type_overrides_batch(catalog["products"])
 
         assert result is catalog["products"]
@@ -167,7 +178,7 @@ class TestApplyInventoryTypeOverrideHelper:
         from ad_seller.services import catalog_service
 
         with patch("ad_seller.storage.factory.get_storage", return_value=storage):
-            catalog = deps.get_product_catalog()
+            catalog = await deps.get_product_catalog()
             product_ids = list(catalog["products"].keys())
             overridden_id, untouched_id = product_ids[0], product_ids[1]
             untouched_original_type = catalog["products"][untouched_id].inventory_type
@@ -184,7 +195,7 @@ class TestApplyInventoryTypeOverrideHelper:
 
 class TestGetProductAppliesOverride:
     async def test_get_product_reflects_the_override(self, client, storage):
-        product_id = _first_product_id()
+        product_id = await _first_product_id(storage)
 
         async with client as c:
             with patch("ad_seller.storage.factory.get_storage", return_value=storage):
@@ -207,7 +218,8 @@ class TestListProductsAppliesOverride:
     ):
         from ad_seller.interfaces.api import deps
 
-        catalog = deps.get_product_catalog()
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            catalog = await deps.get_product_catalog()
         product_ids = list(catalog["products"].keys())
         assert len(product_ids) >= 2, "static catalog unexpectedly small"
         overridden_id, untouched_id = product_ids[0], product_ids[1]
@@ -226,3 +238,53 @@ class TestListProductsAppliesOverride:
         by_id = {p["product_id"]: p for p in resp.json()["products"]}
         assert by_id[overridden_id]["ext"]["inventory_type"] == "ctv"
         assert by_id[untouched_id]["ext"]["inventory_type"] == untouched_original_type
+
+
+class TestQuotePricingReflectsOverride:
+    """The defect that escalated this from a display inconsistency to a
+    real mispricing bug: quote_service.create_quote takes whatever catalog
+    it's handed and reads product.inventory_type straight into both the
+    QuoteProductInfo it returns AND the rate_card_service.resolve_base_cpm
+    lookup that prices the quote. Proves the SAME catalog
+    (deps.get_product_catalog(), now override-aware) reaching create_quote
+    means a quote for an overridden product reports -- and is priced as --
+    the new type, not the one declared in the static catalog."""
+
+    async def test_quote_reports_the_overridden_type_not_the_original(self, storage):
+        from unittest.mock import AsyncMock
+
+        from ad_seller.interfaces.api import deps
+        from ad_seller.services import catalog_service, quote_service
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            catalog = await deps.get_product_catalog()
+            product = next(iter(catalog["products"].values()))
+            original_type = product.inventory_type
+            assert original_type != "ctv"
+
+            await catalog_service.override_inventory_type(
+                product_id=product.product_id, inventory_type="ctv", reason="test"
+            )
+
+            # Re-fetch exactly as the real POST /quotes route does -- one
+            # fresh deps.get_product_catalog() call, not the stale local
+            # `catalog` variable from before the override was applied.
+            catalog = await deps.get_product_catalog()
+
+            request = AsyncMock()
+            request.product_id = product.product_id
+            request.deal_type = "PD"
+            request.impressions = 1_000_000
+            request.flight_start = None
+            request.flight_end = None
+            request.target_cpm = None
+
+            context = deps._build_buyer_context(buyer_tier="agency", agency_id="agency-1")
+            quote = await quote_service.create_quote(request, context, catalog)
+
+        assert quote["product"]["inventory_type"] == "ctv", (
+            "a buyer must be quoted against the overridden type, not the "
+            f"original catalog type ({original_type!r}) -- otherwise GET "
+            "/products can say ctv while POST /quotes prices it as the "
+            "original type"
+        )

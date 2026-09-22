@@ -167,29 +167,37 @@ from .deps import (  # noqa: E402,F401
 # backward compatibility with external importers.
 from .schemas import *  # noqa: E402,F401,F403
 
-# Cached static product catalog compat surface. The single catalog source
-# lives in services.catalog_service, but tests patch
+# Patchable delegator surface. The single catalog source lives in
+# services.catalog_service, but tests patch
 # `ad_seller.interfaces.api.main._get_static_product_catalog` and reset
 # `_STATIC_PRODUCT_CATALOG` between tests — so this module keeps the
-# patchable delegator, and endpoint code resolves the catalog through it
-# at call time (see deps.get_product_catalog).
+# patchable name, and endpoint code resolves the catalog through it at
+# call time (see deps.get_product_catalog).
+#
+# This no longer CACHES the catalog itself — an inventory-type override
+# must be reflected live on every call (AI-14 follow-up), and caching the
+# dict here would silently pin it to whatever the first call returned.
+# `_STATIC_PRODUCT_CATALOG` is kept only as the legacy test-reset signal:
+# setting it to None forces one `catalog_service.reset_catalog_cache()`
+# call, which existing test fixtures rely on for a deterministic rebuild
+# between tests.
 _STATIC_PRODUCT_CATALOG: Optional[dict[str, Any]] = None
 
 
-def _get_static_product_catalog() -> dict[str, Any]:
-    """Return the seller's default product catalog without running the flow.
+async def _get_static_product_catalog() -> dict[str, Any]:
+    """Return the seller's product catalog without running the flow.
 
-    Delegates to ``services.catalog_service`` (the single catalog source).
+    Delegates to ``services.catalog_service`` (the single catalog source)
+    on every call. See the module comment above ``_STATIC_PRODUCT_CATALOG``
+    for why this function doesn't cache the result itself.
     """
     global _STATIC_PRODUCT_CATALOG
-    if _STATIC_PRODUCT_CATALOG is None:
-        from ...services import catalog_service
+    from ...services import catalog_service
 
-        # Honor legacy reset semantics: clearing _STATIC_PRODUCT_CATALOG
-        # means "give me a fresh catalog", so drop the service cache too.
+    if _STATIC_PRODUCT_CATALOG is None:
         catalog_service.reset_catalog_cache()
-        _STATIC_PRODUCT_CATALOG = catalog_service.get_static_product_catalog()
-    return _STATIC_PRODUCT_CATALOG
+        _STATIC_PRODUCT_CATALOG = {"_reset_consumed": True}
+    return await catalog_service.get_static_product_catalog()
 
 
 def _serialize_product(product: Any) -> dict[str, Any]:

@@ -408,14 +408,25 @@ def build_static_product_catalog() -> dict[str, Any]:
     }
 
 
-def get_static_product_catalog() -> dict[str, Any]:
+async def get_static_product_catalog() -> dict[str, Any]:
     """Return the seller's product catalog without running the flow.
 
     In CSV mode (``AD_SERVER_TYPE=csv``) the catalog is built from the CSV
     inventory; in every other mode it is the static default catalog
     (byte-identical to the pre-CSV-wiring behavior).
 
-    Cached — repeated reads return stable product_ids (issue #34).
+    The underlying product list is cached — repeated reads return stable
+    product_ids (issue #34) — but any stored inventory-type override is
+    applied fresh on every call via :func:`apply_inventory_type_overrides_batch`.
+    This is now the ONE place every consumer (REST, MCP, CLI, chat,
+    negotiation, quote/pricing) sees an override applied. Previously only
+    two REST routes applied it themselves, so `GET /products` could show
+    an overridden type while `POST /quotes` priced off the original one —
+    a real mispricing, not just a display inconsistency (AI-14 follow-up).
+    The cache itself is never mutated: when nothing is overridden, the
+    identical cached dict is returned (no allocation, and `is` identity
+    across calls is preserved); when something is, a shallow copy with
+    the overridden products substituted is returned instead.
     """
     global _CATALOG_CACHE
     if _CATALOG_CACHE is None:
@@ -423,7 +434,11 @@ def get_static_product_catalog() -> dict[str, Any]:
             _CATALOG_CACHE = build_csv_product_catalog()
         else:
             _CATALOG_CACHE = build_static_product_catalog()
-    return _CATALOG_CACHE
+
+    products = await apply_inventory_type_overrides_batch(_CATALOG_CACHE["products"])
+    if products is _CATALOG_CACHE["products"]:
+        return _CATALOG_CACHE
+    return {**_CATALOG_CACHE, "products": products}
 
 
 def reset_catalog_cache() -> None:

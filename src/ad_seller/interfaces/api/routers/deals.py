@@ -348,7 +348,7 @@ async def create_deal_from_template(
         )
 
     # Product data from the single cached catalog source (EP-3.3)
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
 
     # Resolve buyer context from API key + body. EP-5.2: the tier is capped
     # at the registry-verified ceiling when an agent_url is presented (the
@@ -518,7 +518,7 @@ async def create_curated_deal(request: CuratedDealRequest):
     enriched with curator identity, fee, and targeting overlay.
     """
     # Product base price from the single cached catalog source (EP-3.3)
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
     return await deal_service.create_curated_deal(request, catalog)
 
 

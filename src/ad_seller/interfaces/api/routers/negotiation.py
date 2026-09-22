@@ -35,7 +35,7 @@ async def submit_proposal(
 ):
     """Submit a proposal for review."""
     # Product data from the single cached catalog source (EP-3.3)
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
 
     # EP-5.2: verify the claimed tier against the agent registry and cap at
     # the verified ceiling (blocked agents 403; unverifiable claims floor).

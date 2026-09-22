@@ -128,9 +128,9 @@ def client(storage):
             yield httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
-def _catalog_product_ids(n: int = 2) -> list[str]:
+async def _catalog_product_ids(n: int = 2) -> list[str]:
     """Return the first n product ids from the static catalog (as served by GET /products)."""
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
     ids = list(catalog["products"].keys())
     assert len(ids) >= n, "static catalog unexpectedly small"
     return ids[:n]
@@ -198,7 +198,7 @@ class TestCreatePackageResolution:
         assert "prod-nope-2" in detail["message"]
 
     async def test_partial_resolution_returns_warning_and_unresolved_ids(self, client):
-        good_id = _catalog_product_ids(1)[0]
+        good_id = (await _catalog_product_ids(1))[0]
         async with client as c:
             resp = await c.post(
                 "/packages",
@@ -278,7 +278,7 @@ class TestAssemblePackageResolution:
         assert "prod-nope-1" in detail["message"]
 
     async def test_partial_resolution_reports_unresolved_ids(self, client):
-        good_id = _catalog_product_ids(1)[0]
+        good_id = (await _catalog_product_ids(1))[0]
         async with client as c:
             resp = await c.post(
                 "/packages/assemble",

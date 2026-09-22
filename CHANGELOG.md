@@ -62,11 +62,20 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   hand-curated ones, so it could silently grant a deal type the seller
   never offered. `GET /products` applies overrides via a new
   batch-efficient helper (one storage probe, not one read per product).
-  Scope: covers `GET /products`/`GET /products/{id}` only — MCP's
-  `list_products` tool, avails, quotes, and `create_deal_from_template`
-  still read the un-overridden type; extending this everywhere needs the
-  catalog accessor to be the one place every consumer calls through,
-  landing separately alongside AI-6.
+  Follow-up the same day: a broader review found the override reached
+  only 2 of roughly 15 catalog consumers — critically,
+  `quote_service.create_quote` still priced off the un-overridden type
+  via `rate_card_service.resolve_base_cpm`'s exact-match lookup, so a
+  buyer could see `ctv` on `GET /products` and be quoted the `display`
+  rate: a real mispricing, not just a display inconsistency. Fixed by
+  moving the override application inside
+  `catalog_service.get_static_product_catalog()` itself — the actual
+  lowest-common-ancestor every consumer (REST, MCP, CLI, chat,
+  negotiation, quote/pricing) already calls through — so every one of
+  them now sees the override with no further per-call-site wiring. The
+  catalog accessor is async now (needs storage to check for overrides);
+  the two genuinely-synchronous callers (3 CLI commands, the CrewAI
+  avails tool) bridge via the existing `_run_blocking()` helper.
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal
