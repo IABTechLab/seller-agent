@@ -98,6 +98,73 @@ async def resolve_negotiation_key(
     return candidates[0]
 
 
+def _quote_not_found_detail(quote_id: str) -> dict[str, str]:
+    """The exact detail shape ``quote_service.get_quote`` emits for a missing
+    quote — reused verbatim so an unowned quote is indistinguishable from a
+    nonexistent one (no existence oracle; house pattern, PR #98)."""
+    return {"error": "quote_not_found", "message": f"Quote '{quote_id}' not found."}
+
+
+async def _verify_quote_binding(storage: Any, quote_id: str, buyer_context: Any) -> None:
+    """Gate binding a ``quote_id`` onto a negotiation on quote ownership.
+
+    A negotiation message may name the quote its agreed price will apply to;
+    an accepted negotiation is then indexed by that quote and REWRITES the
+    booked ``final_cpm`` when the quote is booked. Without this check, buyer A
+    could accept its own negotiation while naming buyer B's quote id, and B's
+    booking would silently carry A's price. The caller must own the quote it
+    binds — the same ownership the booking route enforces before honouring a
+    quote (``routers/deals.py``).
+
+    Rules, mirroring the booking route's, fail-closed on identity:
+
+    - The quote must resolve at all (the live quote record or its history
+      entry). Binding an unresolvable id is refused loudly — it could never
+      be booked, so the binding is either a buyer bug or an attack, and
+      silently dropping it would hide both.
+    - Ownership comes from the quote-history record's ``buyer_id`` (written
+      at quote issue time from the verified pricing key). No record, or no
+      recorded buyer: legacy data, nothing to enforce — allowed, as at
+      booking. A ``"public"`` buyer asserted no identity at quote time, so
+      there is no ownership to enforce.
+    - The caller's pricing key counts only when it is key-derived
+      (``authentication_method == "api_key"``). This route's auth is
+      OPTIONAL, and an anonymous caller's identity fields are self-asserted
+      wire data — EP-5.2 floors the TIER but the pricing key would still
+      echo whatever ids the body claimed, so trusting it here would let an
+      anonymous caller impersonate the victim's identity and pass the very
+      check aimed at it. Every other caller is treated as public.
+    - A mismatch reads as 404 ``quote_not_found``, byte-identical to the
+      nonexistent case: a distinguishable "exists but not yours" would turn
+      this route into an existence oracle over every tenant's quote ids.
+    """
+    from ..storage.quote_history import QuoteHistoryStore
+
+    quote = await storage.get_quote(quote_id)
+    try:
+        history_record = await QuoteHistoryStore(storage).get_quote(quote_id)
+    except Exception:
+        history_record = None
+    if not isinstance(history_record, dict):
+        history_record = None
+
+    if quote is None and history_record is None:
+        raise HTTPException(status_code=404, detail=_quote_not_found_detail(quote_id))
+
+    quoted_buyer_id = history_record.get("buyer_id") if history_record else None
+    if not quoted_buyer_id or quoted_buyer_id == "public":
+        return
+
+    caller_key = (
+        buyer_context.get_pricing_key()
+        if buyer_context is not None
+        and getattr(buyer_context, "authentication_method", None) == "api_key"
+        else "public"
+    )
+    if quoted_buyer_id != caller_key:
+        raise HTTPException(status_code=404, detail=_quote_not_found_detail(quote_id))
+
+
 async def submit_proposal(
     request: Any, buyer_context: Any, catalog: dict[str, Any]
 ) -> dict[str, Any]:
@@ -333,8 +400,12 @@ async def counter_proposal(
         )
 
     # Retain the quote this negotiation concerns. Backfills a negotiation
-    # opened before the quote was named; first one seen wins.
+    # opened before the quote was named; first one seen wins. Binding is
+    # gated on ownership: this id is what routes an agreed price onto a
+    # booked deal, so a caller may only bind a quote issued to it — whether
+    # the id arrived in the message's quote_id field or as a quote-led key.
     if quote_id and not history.quote_id:
+        await _verify_quote_binding(storage, quote_id, buyer_context)
         history.quote_id = quote_id
 
     # Evaluate buyer's offer
@@ -389,6 +460,7 @@ async def apply_terminal_action(
     action: str,
     buyer_price: Optional[float] = None,
     quote_id: Optional[str] = None,
+    buyer_context: Optional[Any] = None,
 ) -> dict[str, Any]:
     """Record a buyer's terminal accept/reject on the stored negotiation.
 
@@ -400,6 +472,10 @@ async def apply_terminal_action(
     ``quote_id`` backfills the quote this negotiation concerns when the
     accept is the first message to name it. On accept, this is the point the
     quote index is written, which is what lets booking find the agreed price.
+    Binding a NEW quote id is gated on quote ownership against
+    ``buyer_context`` (see ``_verify_quote_binding``); a ``None`` context is
+    treated as an anonymous (public) caller, so it fails closed against
+    buyer-specific quotes rather than skipping the check.
 
     No-ops (returning current status) when no stored negotiation exists or
     it is already terminal, preserving the read-only legacy behavior.
@@ -413,6 +489,7 @@ async def apply_terminal_action(
         history = NegotiationHistory(**data)
         if history.status == "active" and action in ("accept", "reject"):
             if quote_id and not history.quote_id:
+                await _verify_quote_binding(storage, quote_id, buyer_context)
                 history.quote_id = quote_id
             last = history.rounds[-1] if history.rounds else None
             seller_price = last.seller_price if last else history.base_price

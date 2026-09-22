@@ -204,7 +204,11 @@ async def post_negotiation_message(
         # the agreed state, and an accept indexes the negotiation by its
         # quote so booking that quote can find the agreed price.
         status_data = await negotiation_service.apply_terminal_action(
-            proposal_id, message.action.value, buyer_price, quote_id=message.quote_id
+            proposal_id,
+            message.action.value,
+            buyer_price,
+            quote_id=message.quote_id,
+            buyer_context=buyer_context,
         )
         response = cm.terminal_round_response(status_data, message.action, buyer_price)
 
