@@ -23,8 +23,11 @@ for _mod_name in _broken_flows:
 import httpx  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
 
+from ad_seller.auth.dependencies import require_api_key_record  # noqa: E402
 from ad_seller.interfaces.api import deps as api_deps  # noqa: E402
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # noqa: E402
+from ad_seller.models.api_key import ApiKeyRecord  # noqa: E402
+from ad_seller.models.buyer_identity import BuyerIdentity  # noqa: E402
 from ad_seller.models.change_request import (  # noqa: E402
     ChangeRequest,
     ChangeSeverity,
@@ -76,9 +79,24 @@ def mock_storage():
     return storage
 
 
+# The credential every request in this module presents. The change
+# request routes require one (seller-928) and stamp the actor from it;
+# these tests exercise the CR lifecycle, not auth, so one fixed buyer
+# stands in for the caller throughout. Auth and ownership scoping are
+# covered in test_change_request_disclosure.py and test_operator_auth.py.
+TEST_CALLER = ApiKeyRecord(
+    key_id="key-cr-tests",
+    key_hash="hash-cr-tests",
+    key_prefix_hint="ask_live_te...",
+    identity=BuyerIdentity(agency_id="agy-cr-tests"),
+)
+TEST_ACTOR = "agent:agy-cr-tests"
+
+
 @pytest.fixture
 def client(mock_storage):
     app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    app.dependency_overrides[require_api_key_record] = lambda: TEST_CALLER
     # CR review/apply are operator-gated; these tests exercise the CR
     # lifecycle, not auth (covered in test_operator_auth.py).
     app.dependency_overrides[api_deps._require_operator_api_key_record] = lambda: None
@@ -173,7 +191,7 @@ class TestCreateChangeRequest:
                     "order_id": "ORD-TEST001",
                     "change_type": "creative",
                     "reason": "Swap banner creative",
-                    "requested_by": "agent:buyer",
+                    "requested_by": "agent:someone-else",
                 },
             )
 
@@ -183,6 +201,9 @@ class TestCreateChangeRequest:
         assert data["status"] == "approved"  # auto-approved (minor)
         assert data["severity"] == "minor"
         assert data["approved_by"] == "system:auto-approve"
+        # The body's requested_by is ignored; the actor comes from the
+        # presented credential (seller-928).
+        assert data["requested_by"] == TEST_ACTOR
 
     async def test_create_material_needs_approval(self, client, mock_storage):
         _seed_order(mock_storage)
@@ -203,7 +224,9 @@ class TestCreateChangeRequest:
         assert data["status"] == "pending_approval"
         assert data["severity"] == "material"
 
-    async def test_create_with_rollback_snapshot(self, client, mock_storage):
+    async def test_rollback_snapshot_is_stored_server_side_only(self, client, mock_storage):
+        """The snapshot is recorded but never serialised to the wire — it is
+        a full copy of the order, audit log included (seller-928)."""
         _seed_order(mock_storage)
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             resp = await client.post(
@@ -222,8 +245,10 @@ class TestCreateChangeRequest:
                 },
             )
 
-        data = resp.json()
-        assert data["rollback_snapshot"]["order_id"] == "ORD-TEST001"
+        assert "rollback_snapshot" not in resp.text
+        cr_id = resp.json()["change_request_id"]
+        stored = mock_storage._store[f"change_request:{cr_id}"]
+        assert stored["rollback_snapshot"]["order_id"] == "ORD-TEST001"
 
     async def test_order_not_found(self, client, mock_storage):
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
@@ -382,13 +407,15 @@ class TestChangeRequestIdempotency:
             )
 
         assert resp.status_code == 200
+        # The key carries the caller's actor: without it, one buyer
+        # replaying another's (order_id, idempotency_key) pair would be
+        # handed back the other buyer's record (seller-928).
+        storage_key = f"idempotency:change-request:{TEST_ACTOR}:ORD-TEST001:idem-ttl-1"
         mock_storage.set.assert_any_await(
-            "idempotency:change-request:ORD-TEST001:idem-ttl-1",
+            storage_key,
             {
                 "change_request_id": resp.json()["change_request_id"],
-                "payload_hash": mock_storage._store[
-                    "idempotency:change-request:ORD-TEST001:idem-ttl-1"
-                ]["payload_hash"],
+                "payload_hash": mock_storage._store[storage_key]["payload_hash"],
             },
             ttl=86400,
         )

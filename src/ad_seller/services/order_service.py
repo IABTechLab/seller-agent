@@ -289,11 +289,17 @@ async def get_order_audit(
 # =============================================================================
 
 
-async def create_change_request(request: Any) -> dict[str, Any]:
+async def create_change_request(request: Any, requested_by: str) -> dict[str, Any]:
     """Submit a change request for an existing order.
 
     Validates the change against the current order state, classifies
     severity, and routes to approval if needed.
+
+    ``requested_by`` is the seller-stamped actor derived from the caller's
+    credential (``auth.dependencies.actor_from_api_key``). It is a required
+    argument, not a body field: it is both the audit identity a reviewer
+    trusts and the ownership key that scopes later reads, so there is no
+    safe default for it to fall back to.
     """
     from ..models.change_request import (
         ChangeRequest,
@@ -358,7 +364,7 @@ async def create_change_request(request: Any) -> dict[str, Any]:
         deal_id=deal_id,
         change_type=change_type,
         severity=severity,
-        requested_by=request.requested_by,
+        requested_by=requested_by,
         reason=request.reason,
         diffs=diffs,
         proposed_values=request.proposed_values or {},
@@ -398,8 +404,18 @@ async def create_change_request(request: Any) -> dict[str, Any]:
 async def list_change_requests(
     order_id: Optional[str] = None,
     status: Optional[str] = None,
+    requested_by: Optional[str] = None,
 ) -> dict[str, Any]:
-    """List change requests, optionally filtered by order or status."""
+    """List change requests, optionally filtered by order or status.
+
+    ``requested_by`` scopes the listing to one actor (the caller's own
+    records). It is applied HERE, in Python, and not pushed into the
+    storage ``filters`` dict: ``StorageBackend.list_change_requests``
+    understands only ``order_id`` and ``status`` and silently ignores any
+    other key, so a filter passed that way would fail OPEN and return
+    every tenant's records. ``None`` means unscoped and is reserved for
+    operator callers.
+    """
     from ..storage.factory import get_storage
 
     storage = await get_storage()
@@ -409,16 +425,28 @@ async def list_change_requests(
     if status:
         filters["status"] = status
     results = await storage.list_change_requests(filters if filters else None)
+    if requested_by is not None:
+        results = [cr for cr in results if cr.get("requested_by") == requested_by]
     return {"change_requests": results, "count": len(results)}
 
 
-async def get_change_request(cr_id: str) -> dict[str, Any]:
-    """Get a change request by ID."""
+async def get_change_request(
+    cr_id: str,
+    requested_by: Optional[str] = None,
+) -> dict[str, Any]:
+    """Get a change request by ID.
+
+    ``requested_by`` scopes the read to one actor. A record belonging to
+    a different actor is reported as 404, not 403 — a distinguishable
+    "exists but not yours" would turn this route into an existence oracle
+    over every tenant's change request ids. ``None`` means unscoped and
+    is reserved for operator callers.
+    """
     from ..storage.factory import get_storage
 
     storage = await get_storage()
     cr = await storage.get_change_request(cr_id)
-    if not cr:
+    if not cr or (requested_by is not None and cr.get("requested_by") != requested_by):
         raise HTTPException(
             status_code=404,
             detail={

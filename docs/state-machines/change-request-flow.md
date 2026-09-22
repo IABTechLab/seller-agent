@@ -93,7 +93,7 @@ The `ChangeRequest` model tracks the full lifecycle:
 | `status` | ChangeRequestStatus | Current lifecycle status |
 | `change_type` | ChangeType | Category of change |
 | `severity` | ChangeSeverity | `minor`, `material`, or `critical` |
-| `requested_by` | string | Who requested the change |
+| `requested_by` | string | Who requested the change. Stamped by the seller from the presented credential, never taken from the request body |
 | `requested_at` | datetime | When the request was created |
 | `reason` | string | Explanation for the change |
 | `diffs` | list[FieldDiff] | Field-level changes: `{field, old_value, new_value}` |
@@ -106,4 +106,4 @@ The `ChangeRequest` model tracks the full lifecycle:
 | `rejection_reason` | string | Reason for rejection |
 | `applied_at` | datetime | When changes were applied |
 | `applied_by` | string | Who applied the changes |
-| `rollback_snapshot` | dict | Snapshot of order state before changes (for rollback) |
+| `rollback_snapshot` | dict | Snapshot of order state before changes (for rollback). **Server-side only** — it is a full copy of the order, audit log included, and is excluded from every response on the change-request surface |

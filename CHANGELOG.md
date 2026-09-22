@@ -12,6 +12,25 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 - The operator rate card now drives pricing: matching entries override
   catalog base CPM for quotes, bookings, and negotiation anchors (floors
   still apply); previously it was stored but never read (issue #69).
+- **Breaking — change-request routes now require a credential and are
+  scoped to the caller (seller-928).** `GET /api/v1/change-requests`,
+  `GET /api/v1/change-requests/{cr_id}` and
+  `POST /api/v1/change-requests` reject anonymous callers with `401`; a
+  buyer credential sees only its own change requests (another actor's
+  record reads `404`, not `403`), while an operator credential still sees
+  the whole queue for review. All five handlers now declare a
+  `response_model`, so `rollback_snapshot` — a full copy of the order
+  including its state-machine audit log, quote id and deal id — can no
+  longer reach the wire; it is still recorded server-side. `requested_by`
+  has been removed from the create body and is stamped from the presented
+  credential instead; a body that still sends it is accepted and the
+  value ignored. The idempotency key for change-request creation is now
+  namespaced per actor as well as per order.
+  **Operators on an earlier build should assume every order's change
+  requests — audit trail, transition actors and reasons, quote ids and
+  deal ids — were readable by anyone who could reach the seller, and that
+  any `requested_by` value in a record created on that build is
+  self-asserted and not trustworthy.**
 
 ### Fixed
 
