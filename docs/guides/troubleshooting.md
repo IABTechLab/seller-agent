@@ -110,19 +110,40 @@ The deal was created in the seller agent but not yet pushed to PubMatic.
 
 ### Index Exchange API Errors
 
+**Error: `Index Exchange: 401 Unauthorized`**
+
+`INDEX_EXCHANGE_API_KEY` must be a valid Keycloak JWT bearer token, not a
+static API key — it expires and must be refreshed via the client-credentials
+grant. This is not automated yet; re-issue a fresh token in your `.env`.
+
 **Error: `Index Exchange: 403 Forbidden`**
 
-Your API key doesn't have permission for that operation.
+Your token doesn't have permission for that operation.
 
-1. Verify `INDEX_EXCHANGE_API_KEY` in your `.env`.
-2. Contact your Index Exchange account manager to confirm the key has deal management scope.
+1. Verify `INDEX_EXCHANGE_API_KEY` in your `.env` is current (not expired).
+2. Contact your Index Exchange account manager to confirm the token has deal management scope.
+
+**Error: `ValueError: external_deal_id is required` / `account_id is required` / `dsp_id is required`**
+
+`/v3/deals` requires `externalDealID`, `account.accountID`, and `dspID`
+(`directConfigurations.dspID` for Direct deal types, or
+`marketplaceConfigurations.dspID` for Marketplace Package) on every create
+call. `external_deal_id` is supplied automatically by the seller-agent's
+deal flow. `dsp_id` can be resolved automatically from `buyer_seat_ids` (set
+at deal-creation time, e.g. via `create_curated_deal`'s `buyer_seat_ids`
+param) — if the seat ID(s) match more than one DSP, the deal is held
+pending human approval instead of guessing (see `approve_or_reject` /
+`resume_approval`). `account_id` has no automatic source yet; pass it
+explicitly via `distribute_deal_via_ssp`'s `account_id` param if it isn't
+already on the stored deal.
 
 **Error: `Index Exchange: 422 Unprocessable Entity`**
 
 Deal data failed validation on the Index Exchange side.
 
-- Check the response body for a `errors` field — it will name the invalid field.
-- Common causes: floor price below IX minimum, unsupported ad format, missing `seller_id`.
+- Check the response body for an `errors` field — it will name the invalid field.
+- Common causes: `floor` below IX minimum, `externalDealID` starting with `0`
+  or outside 3–64 chars, missing `directConfigurations.dspID` on a Direct deal.
 
 ---
 

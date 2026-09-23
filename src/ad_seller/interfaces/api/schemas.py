@@ -559,9 +559,10 @@ class SSPDealDistributeRequest(BaseModel):
     advertiser: Optional[str] = None
     cpm: Optional[float] = None
     buyer_seat_ids: Optional[list[str]] = None
+    account_id: Optional[int] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
-    targeting: Optional[dict[str, Any]] = None
+    targeting: Optional[list[dict[str, Any]]] = None
     # Routing hint — if set, routes to this SSP. Otherwise uses routing rules.
     ssp_name: Optional[str] = None
     inventory_type: Optional[str] = None  # for routing: ctv, display, video, etc.
