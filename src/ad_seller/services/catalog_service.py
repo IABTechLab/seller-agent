@@ -246,13 +246,25 @@ def product_from_config(cfg: dict[str, Any], product_id: str) -> Any:
     )
 
 
+_RECOGNISED_INVENTORY_TYPES = {"ctv", "video", "native", "mobile_app", "linear_tv", "display"}
+
+
 def classify_inventory_type(item: Any) -> str:
     """Classify an ad server inventory item into an inventory type string.
 
     Canonical classification, shared by the catalog builder and
     ``ProductSetupFlow`` (which delegates here) so CSV-mode catalog
     products and sync-seeded products can never diverge.
+
+    A declared ``raw["inventory_type"]`` wins outright over the
+    name/ad_format/sizes guesses below it -- rate cards match on this
+    value by exact string, so guessing wrong silently changes pricing.
     """
+    raw = getattr(item, "raw", None) or {}
+    declared = str(raw.get("inventory_type") or "").strip().lower()
+    if declared in _RECOGNISED_INVENTORY_TYPES:
+        return declared
+
     name_lower = item.name.lower() if hasattr(item, "name") else ""
     if "ctv" in name_lower or "ott" in name_lower or "connected" in name_lower:
         return "ctv"
@@ -270,15 +282,12 @@ def classify_inventory_type(item: Any) -> str:
     ):
         return "linear_tv"
 
-    ad_formats = {
-        str(fmt).lower() for fmt in (getattr(item, "raw", None) or {}).get("ad_formats", []) or []
-    }
+    # Last resort: no declared type, no name signal (GAM/FreeWheel items
+    # carry no `raw` at all).
+    ad_formats = {str(fmt).lower() for fmt in raw.get("ad_formats", []) or []}
     if "video" in ad_formats:
         return "video"
     if "native" in ad_formats:
-        return "native"
-    sizes = getattr(item, "sizes", None) or []
-    if sizes and all(w == 0 and h == 0 for w, h in sizes):
         return "native"
     return "display"
 
