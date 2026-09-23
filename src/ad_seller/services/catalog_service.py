@@ -246,7 +246,17 @@ def product_from_config(cfg: dict[str, Any], product_id: str) -> Any:
     )
 
 
-_RECOGNISED_INVENTORY_TYPES = {"ctv", "video", "native", "mobile_app", "linear_tv", "display"}
+_RECOGNISED_INVENTORY_TYPES = {
+    "ctv",
+    "video",
+    "native",
+    "mobile_app",
+    "linear_tv",
+    "display",
+    "linear",
+    "digital_video",
+    "audio",
+}
 
 
 def classify_inventory_type(item: Any) -> str:
@@ -259,6 +269,9 @@ def classify_inventory_type(item: Any) -> str:
     A declared ``raw["inventory_type"]`` wins outright over the
     name/ad_format/sizes guesses below it -- rate cards match on this
     value by exact string, so guessing wrong silently changes pricing.
+    Every recognised value is trusted verbatim (never normalised to a
+    different spelling), so two rows with the same declared value can
+    never classify inconsistently against each other.
     """
     raw = getattr(item, "raw", None) or {}
     declared = str(raw.get("inventory_type") or "").strip().lower()
