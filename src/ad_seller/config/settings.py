@@ -314,3 +314,15 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+
+def seller_id_or_default(settings: object) -> str:
+    """Configured seller org id, or ``default`` when unset or empty.
+
+    ``seller_organization_id`` is ``Optional[str] = None``, so
+    ``getattr(settings, "seller_organization_id", "default")`` never uses the
+    fallback. The attribute exists and is ``None``, which then fails pydantic
+    ``sid: str`` on the default supply-chain node (issue #74).
+    """
+    value = getattr(settings, "seller_organization_id", None)
+    return value if value else "default"
