@@ -7,10 +7,18 @@ over guessing from ``ad_formats``/``sizes`` -- CTV rows have
 this value by exact string, so guessing wrong silently changes pricing.
 """
 
+import asyncio
+from pathlib import Path
+
 import pytest
 
 from ad_seller.clients.ad_server_base import AdServerInventoryItem, AdServerType
+from ad_seller.clients.csv_adapter import CSVAdServerClient
 from ad_seller.services.catalog_service import classify_inventory_type
+
+AWS_WORKSHOP_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "data" / "csv" / "samples" / "aws_workshop"
+)
 
 
 def _item(name: str, sizes=None, ad_formats=None, inventory_type=None) -> AdServerInventoryItem:
@@ -168,3 +176,59 @@ class TestSizesFallbackAndGamCompatibility:
         """No raw attribute at all must not raise for the name-matched path."""
         item = _gam_item(name, sizes=[(1920, 1080)])
         assert classify_inventory_type(item) in ("ctv", "video")
+
+
+class TestAwsWorkshopVocabularyIsTrustedNotGuessed:
+    """aws_workshop/inventory.csv declares ``linear``/``digital_video``/
+    ``audio`` -- none of the original 6 recognised types. Before this fix
+    those 8 rows had their declared value silently discarded and fell
+    through inconsistently: 'SportsPulse Live Broadcasts' (linear) matched
+    the name ladder's 'linear_tv' keyword, while its two sibling 'linear'
+    rows had no name match and fell through the ad_formats=video fallback
+    to 'video' instead -- two rows with an identical declared value ending
+    up with different classifications. Each of the 3 declared values is
+    now trusted verbatim, so siblings can no longer diverge."""
+
+    @pytest.mark.parametrize(
+        "name,declared",
+        [
+            ("GNN Primetime News", "linear"),
+            ("SportsPulse Live Broadcasts", "linear"),
+            ("Crestline Entertainment Block", "linear"),
+            ("GNN.com Pre-Roll Video", "digital_video"),
+            ("SportsPulse Mid-Roll Video", "digital_video"),
+            ("GNN.com Outstream Video", "digital_video"),
+            ("GNN Podcast Sponsorship", "audio"),
+            ("Apex Companion Podcast Audio", "audio"),
+        ],
+    )
+    def test_declared_value_is_trusted_verbatim(self, name, declared):
+        item = _item(name, sizes=[(1920, 1080)], ad_formats=["video"], inventory_type=declared)
+        assert classify_inventory_type(item) == declared
+
+    def test_real_aws_workshop_csv_classifies_every_declared_type_verbatim(self):
+        """Parses the real shipped CSV through CSVAdServerClient (not a
+        synthetic item) so drift in the sample file itself would fail
+        this test."""
+        client = CSVAdServerClient(str(AWS_WORKSHOP_DIR))
+
+        async def _load():
+            await client.connect()
+            return await client.list_inventory()
+
+        items = asyncio.run(_load())
+        by_id = {item.id: item for item in items}
+
+        expected = {
+            "inv-lin-gnn-primetime": "linear",
+            "inv-lin-sportspulse-live": "linear",
+            "inv-lin-crestline-entertainment": "linear",
+            "inv-dig-gnn-preroll": "digital_video",
+            "inv-dig-sportspulse-midroll": "digital_video",
+            "inv-dig-gnn-outstream": "digital_video",
+            "inv-aud-gnn-podcast": "audio",
+            "inv-aud-apex-programmatic": "audio",
+        }
+        for item_id, declared in expected.items():
+            assert item_id in by_id, f"{item_id} missing from aws_workshop/inventory.csv"
+            assert classify_inventory_type(by_id[item_id]) == declared
