@@ -166,7 +166,7 @@ MANAGER_LLM_MODEL=llama3
 |----------|------|---------|-------------|
 | `DEFAULT_CURRENCY` | `str` | `"USD"` | Default currency for pricing |
 | `MIN_DEAL_VALUE` | `float` | `1000.0` | Minimum deal value |
-| `DEFAULT_PRICE_FLOOR_CPM` | `float` | `5.0` | Global default price floor (CPM) |
+| `DEFAULT_PRICE_FLOOR_CPM` | `float` | `10.0` | Global default price floor (CPM) |
 
 ## Yield Optimization
 
@@ -300,7 +300,7 @@ DATABASE_URL=sqlite:///./ad_seller.db
 # =============================================================================
 DEFAULT_CURRENCY=USD
 MIN_DEAL_VALUE=1000.0
-DEFAULT_PRICE_FLOOR_CPM=5.0
+DEFAULT_PRICE_FLOOR_CPM=10.0
 
 # =============================================================================
 # Yield Optimization
