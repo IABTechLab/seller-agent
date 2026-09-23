@@ -249,7 +249,7 @@ def product_from_config(cfg: dict[str, Any], product_id: str) -> Any:
 def classify_inventory_type(item: Any) -> str:
     """Classify an ad server inventory item into an inventory type string.
 
-    Canonical name-based classification, shared by the catalog builder and
+    Canonical classification, shared by the catalog builder and
     ``ProductSetupFlow`` (which delegates here) so CSV-mode catalog
     products and sync-seeded products can never diverge.
     """
@@ -269,6 +269,17 @@ def classify_inventory_type(item: Any) -> str:
         or "cable" in name_lower
     ):
         return "linear_tv"
+
+    ad_formats = {
+        str(fmt).lower() for fmt in (getattr(item, "raw", None) or {}).get("ad_formats", []) or []
+    }
+    if "video" in ad_formats:
+        return "video"
+    if "native" in ad_formats:
+        return "native"
+    sizes = getattr(item, "sizes", None) or []
+    if sizes and all(w == 0 and h == 0 for w, h in sizes):
+        return "native"
     return "display"
 
 
