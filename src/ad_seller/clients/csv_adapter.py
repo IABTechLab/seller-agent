@@ -234,12 +234,21 @@ class CSVAdServerClient(AdServerClient):
             missing = INVENTORY_REQUIRED_COLUMNS - actual_columns
             if missing:
                 raise ValueError(f"inventory.csv missing required columns: {sorted(missing)}")
-            # Validate required fields are non-empty
+            # Row-level tolerance (mirrors S3CsvAdServerClient): an optional
+            # field like ``status`` defaults rather than failing the whole
+            # load, and a row missing a truly-required field (id/name) is
+            # skipped with a warning instead of raising — one bad row must not
+            # collapse the entire catalog into the synthetic default (which
+            # silently replaces real inv-* ids with prod-<hash> ids).
             for i, row in enumerate(rows):
-                for col in INVENTORY_REQUIRED_COLUMNS:
+                if not row.get("status", "").strip():
+                    row["status"] = "ACTIVE"
+                for col in ("id", "name"):
                     if not row.get(col, "").strip():
-                        raise ValueError(
-                            f"inventory.csv row {i + 1}: required field '{col}' is empty"
+                        logger.warning(
+                            "inventory.csv row %d: required field '%s' is empty; skipping row",
+                            i + 1,
+                            col,
                         )
 
         # Schema validation for audiences.csv if present
@@ -270,6 +279,16 @@ class CSVAdServerClient(AdServerClient):
         results: list[AdServerInventoryItem] = []
 
         for row in rows:
+            # Skip rows missing a truly-required field (id/name); status
+            # defaults to ACTIVE below (mirrors S3CsvAdServerClient). This
+            # keeps one malformed row from being emitted as a broken product.
+            if not row.get("id", "").strip() or not row.get("name", "").strip():
+                logger.warning(
+                    "inventory.csv: skipping row with empty id/name: %r",
+                    row.get("id") or row.get("name") or "<blank>",
+                )
+                continue
+
             name = row.get("name", "")
             if filter_str and filter_str.lower() not in name.lower():
                 continue
@@ -297,7 +316,7 @@ class CSVAdServerClient(AdServerClient):
                 id=row.get("id", ""),
                 name=name,
                 parent_id=row.get("parent_id") or None,
-                status=row.get("status", "ACTIVE"),
+                status=(row.get("status") or "").strip() or "ACTIVE",
                 sizes=sizes,
                 ad_server_type=AdServerType.CSV,
             )
