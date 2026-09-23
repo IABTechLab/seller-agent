@@ -1,22 +1,10 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""classify_inventory_type is name-string-only; ignores placement ad_format
-and sizes.
-
-Regression tests: the classifier only ever looked at ``item.name``. Real
-inventory rows whose name carries no classification keyword (e.g. "Article
-Inline", "Apex Premium Series", "GNN Primetime News") fell straight through
-to the "display" default even though their ``ad_formats``/``sizes`` clearly
-identified them as native/video/etc. Scope is universal (any ad server): the
-CSV adapter attaches ``ad_formats`` via ``item.raw``, GAM/FreeWheel items
-carry no ``raw`` at all (only ``sizes``), so the fallback must degrade
-gracefully rather than assume either is present.
-
-Every case a name keyword already classified correctly is pinned here too,
-to guard against the fix demoting a currently-correct classification (the
-"Mobile App Interstitial" case: name says mobile_app, ad_formats includes
-"video" -- name must still win).
+"""classify_inventory_type must trust a declared ``raw["inventory_type"]``
+over guessing from ``ad_formats``/``sizes`` -- CTV rows have
+``ad_formats=video`` but ``inventory_type=ctv``, and rate cards match on
+this value by exact string, so guessing wrong silently changes pricing.
 """
 
 import pytest
@@ -25,16 +13,20 @@ from ad_seller.clients.ad_server_base import AdServerInventoryItem, AdServerType
 from ad_seller.services.catalog_service import classify_inventory_type
 
 
-def _item(name: str, sizes=None, ad_formats=None) -> AdServerInventoryItem:
-    """A CSV-shaped item: sizes on the base model, ad_formats stashed on
-    ``raw`` the way ``CsvAdServerClient.list_inventory`` attaches it."""
+def _item(name: str, sizes=None, ad_formats=None, inventory_type=None) -> AdServerInventoryItem:
+    """A CSV-shaped item: sizes on the base model, ad_formats/inventory_type
+    stashed on ``raw`` the way ``CsvAdServerClient.list_inventory`` attaches
+    every extra CSV column."""
     item = AdServerInventoryItem(
         id="inv-test",
         name=name,
         sizes=sizes or [],
         ad_server_type=AdServerType.CSV,
     )
-    item.__dict__["raw"] = {"ad_formats": ad_formats or []}
+    raw: dict = {"ad_formats": ad_formats or []}
+    if inventory_type is not None:
+        raw["inventory_type"] = inventory_type
+    item.__dict__["raw"] = raw
     return item
 
 
@@ -110,13 +102,58 @@ class TestAdFormatFallbackWhenNameIsUninformative:
         assert classify_inventory_type(item) == "display"
 
 
+class TestDeclaredInventoryTypeWinsOverGuessing:
+    """6 of 10 rows in ctv_streaming/inventory.csv declare inventory_type=ctv
+    but have hyphenated preroll/midroll names + ad_formats=video -- must
+    classify as "ctv", not the guessed "video"."""
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Sports Pre-Roll :15/:30",
+            "Sports Mid-Roll :15/:30",
+            "News Pre-Roll :15/:30",
+            "Entertainment Pre-Roll :30",
+            "Entertainment Mid-Roll :15",
+            "Kids & Family Pre-Roll :15",
+        ],
+    )
+    def test_ctv_preroll_and_midroll_rows_classify_as_ctv_not_video(self, name):
+        item = _item(name, sizes=[(1920, 1080)], ad_formats=["video"], inventory_type="ctv")
+        assert classify_inventory_type(item) == "ctv"
+
+    def test_declared_type_wins_even_against_a_conflicting_name_keyword(self):
+        """Declared type outranks the name ladder too, not just ad_formats."""
+        item = _item(
+            "Video Highlights Reel",
+            sizes=[(1920, 1080)],
+            ad_formats=["video"],
+            inventory_type="native",
+        )
+        assert classify_inventory_type(item) == "native"
+
+    def test_unrecognised_declared_type_falls_back_instead_of_being_trusted_blindly(self):
+        """An unrecognised declared value falls back to the ladder, not
+        through verbatim."""
+        item = _item(
+            "Sports Pre-Roll :15/:30",
+            sizes=[(1920, 1080)],
+            ad_formats=["video"],
+            inventory_type="premium-video-xyz",
+        )
+        assert classify_inventory_type(item) == "video"
+
+
 class TestSizesFallbackAndGamCompatibility:
     """GAM/FreeWheel items never carry ``item.raw`` -- the fallback must
     still work off ``sizes`` alone without raising."""
 
-    def test_gam_item_with_zero_sizes_falls_back_to_native(self):
+    def test_gam_item_with_zero_sizes_and_no_other_signal_stays_display(self):
+        """The '0x0 sizes -> native' rule is dropped: no real GAM inventory
+        exercises it, and the sample row it did fire on already declares
+        inventory_type=native."""
         item = _gam_item("Homepage Takeover", sizes=[(0, 0)])
-        assert classify_inventory_type(item) == "native"
+        assert classify_inventory_type(item) == "display"
 
     def test_gam_item_with_real_sizes_and_no_name_signal_stays_display(self):
         item = _gam_item("Homepage Takeover", sizes=[(300, 250)])
