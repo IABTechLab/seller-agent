@@ -639,15 +639,16 @@ async def apply_inventory_type_override(product: Any) -> Any:
     withdraw one they did. The cached catalog itself is never mutated, so a
     later override removal doesn't need cache invalidation to take effect.
 
-    Scope: wired into ``GET /products`` and ``GET /products/{id}`` only.
-    MCP's ``list_products`` tool, avails, quotes, and
-    ``create_deal_from_template`` still read the un-overridden type
-    directly from the catalog — extending this to every read surface needs
-    the catalog accessor itself to be the one place every consumer calls
-    through, which lands separately alongside AI-6's async catalog-accessor
-    consolidation (moving this call inside ``get_static_product_catalog()``
-    at that point is a natural, tracked follow-up, not done here to avoid
-    duplicating that in-flight conversion).
+    Scope: applied once, centrally, inside ``get_static_product_catalog()``
+    — every consumer that calls through that accessor (REST ``GET
+    /products``/``GET /products/{id}``, MCP's ``list_products`` tool,
+    avails, quotes, ``create_deal_from_template``, and any future caller)
+    sees the override, not just the two REST routes. Known gaps this does
+    NOT close, tracked separately: ``catalog["inventory_types"]`` is built
+    pre-override and isn't recomputed (AI-17), and
+    ``negotiation_service.counter_proposal`` anchors off the product
+    snapshotted at ``submit_proposal`` time, so an override applied
+    mid-negotiation doesn't reach later rounds (AI-18).
     """
     override = await get_inventory_type_override(product.product_id)
     if not override:
