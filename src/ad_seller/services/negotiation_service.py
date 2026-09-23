@@ -355,7 +355,18 @@ async def apply_terminal_action(
 
 
 async def get_negotiation_status(proposal_id: str) -> dict[str, Any]:
-    """Get full negotiation history for a proposal."""
+    """Get the buyer-visible negotiation status for a proposal.
+
+    This is a BUYER-FACING projection of the internal
+    ``NegotiationHistory``, not a dump of it. The history's ``strategy``,
+    ``base_price``, ``floor_price`` and ``limits`` (``max_rounds``) are the
+    seller's internal negotiation guardrails and are deliberately omitted:
+    a counterparty who knows the seller's floor and remaining concession
+    budget concedes nothing above it. The shared ``Negotiation`` primitive
+    excludes the same four fields for exactly this reason.
+
+    Anything added here reaches the wire, so add buyer-visible facts only.
+    """
     from ..models.negotiation import NegotiationHistory
     from ..storage.factory import get_storage
 
@@ -370,12 +381,8 @@ async def get_negotiation_status(proposal_id: str) -> dict[str, Any]:
         "proposal_id": history.proposal_id,
         "product_id": history.product_id,
         "buyer_tier": history.buyer_tier.value,
-        "strategy": history.strategy.value,
-        "base_price": history.base_price,
-        "floor_price": history.floor_price,
         "status": history.status,
         "total_rounds": len(history.rounds),
-        "max_rounds": history.limits.max_rounds,
         "rounds": [r.model_dump(mode="json") for r in history.rounds],
         "started_at": history.started_at.isoformat(),
         "completed_at": history.completed_at.isoformat() if history.completed_at else None,
