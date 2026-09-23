@@ -66,7 +66,7 @@ class ChatInterface:
         """
         from ...services import catalog_service
 
-        catalog = catalog_service.get_static_product_catalog()
+        catalog = await catalog_service.get_static_product_catalog()
         self._products = catalog["products"]
 
     def set_buyer_context(self, context: BuyerContext) -> None:

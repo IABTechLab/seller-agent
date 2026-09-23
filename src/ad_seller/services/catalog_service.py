@@ -408,14 +408,25 @@ def build_static_product_catalog() -> dict[str, Any]:
     }
 
 
-def get_static_product_catalog() -> dict[str, Any]:
+async def get_static_product_catalog() -> dict[str, Any]:
     """Return the seller's product catalog without running the flow.
 
     In CSV mode (``AD_SERVER_TYPE=csv``) the catalog is built from the CSV
     inventory; in every other mode it is the static default catalog
     (byte-identical to the pre-CSV-wiring behavior).
 
-    Cached — repeated reads return stable product_ids (issue #34).
+    The underlying product list is cached — repeated reads return stable
+    product_ids (issue #34) — but any stored inventory-type override is
+    applied fresh on every call via :func:`apply_inventory_type_overrides_batch`.
+    This is now the ONE place every consumer (REST, MCP, CLI, chat,
+    negotiation, quote/pricing) sees an override applied. Previously only
+    two REST routes applied it themselves, so `GET /products` could show
+    an overridden type while `POST /quotes` priced off the original one —
+    a real mispricing, not just a display inconsistency (AI-14 follow-up).
+    The cache itself is never mutated: when nothing is overridden, the
+    identical cached dict is returned (no allocation, and `is` identity
+    across calls is preserved); when something is, a shallow copy with
+    the overridden products substituted is returned instead.
     """
     global _CATALOG_CACHE
     if _CATALOG_CACHE is None:
@@ -423,7 +434,11 @@ def get_static_product_catalog() -> dict[str, Any]:
             _CATALOG_CACHE = build_csv_product_catalog()
         else:
             _CATALOG_CACHE = build_static_product_catalog()
-    return _CATALOG_CACHE
+
+    products = await apply_inventory_type_overrides_batch(_CATALOG_CACHE["products"])
+    if products is _CATALOG_CACHE["products"]:
+        return _CATALOG_CACHE
+    return {**_CATALOG_CACHE, "products": products}
 
 
 def reset_catalog_cache() -> None:
@@ -597,6 +612,76 @@ async def get_inventory_type_override(product_id: str) -> Optional[dict[str, Any
 
     storage = await get_storage()
     return await storage.get(f"inventory_override:{product_id}")
+
+
+async def apply_inventory_type_override(product: Any) -> Any:
+    """Apply a stored inventory-type override to a product, if one exists (AI-14).
+
+    ``override_inventory_type``/``get_inventory_type_override`` have always
+    round-tripped correctly through storage, but nothing on the read side
+    ever consulted them: ``GET /products`` and ``GET /products/{id}`` serve
+    exclusively from the cached static catalog (deliberately, to avoid a
+    live per-request rebuild), so an applied override was invisible on
+    every read path — the exact "write-only" shape reported.
+
+    Returns a COPY with ONLY ``inventory_type`` swapped. Every other
+    declared field — ``supported_deal_types``, ``base_cpm``, ``floor_cpm``,
+    targeting — is left exactly as this catalog hand-declares it.
+    ``infer_deal_types()`` is NOT used to recompute deal types here: that
+    mapping is the canonical default for products BUILT from an ad-server/
+    CSV item, a different set of products with independently-declared
+    values that don't line up with this catalog's own hand-curated entries
+    — e.g. "Premium Display - Homepage" declares
+    ``[PROGRAMMATIC_GUARANTEED, PREFERRED_DEAL]``, while
+    ``infer_deal_types("display")`` returns
+    ``[PREFERRED_DEAL, PRIVATE_AUCTION]``. Recomputing off the new type
+    label would silently grant a deal type the seller never offered and
+    withdraw one they did. The cached catalog itself is never mutated, so a
+    later override removal doesn't need cache invalidation to take effect.
+
+    Scope: applied once, centrally, inside ``get_static_product_catalog()``
+    — every consumer that calls through that accessor (REST ``GET
+    /products``/``GET /products/{id}``, MCP's ``list_products`` tool,
+    avails, quotes, ``create_deal_from_template``, and any future caller)
+    sees the override, not just the two REST routes. Known gaps this does
+    NOT close, tracked separately: ``catalog["inventory_types"]`` is built
+    pre-override and isn't recomputed (AI-17), and
+    ``negotiation_service.counter_proposal`` anchors off the product
+    snapshotted at ``submit_proposal`` time, so an override applied
+    mid-negotiation doesn't reach later rounds (AI-18).
+    """
+    override = await get_inventory_type_override(product.product_id)
+    if not override:
+        return product
+
+    return product.model_copy(update={"inventory_type": override["inventory_type"]})
+
+
+async def apply_inventory_type_overrides_batch(products: dict[str, Any]) -> dict[str, Any]:
+    """Apply stored inventory-type overrides across a whole catalog dict.
+
+    A single ``keys("inventory_override:*")`` probe short-circuits to the
+    catalog unchanged when nothing has ever been overridden (the common
+    case), instead of one storage read per product regardless — this is
+    what ``list_products`` uses instead of gathering
+    :func:`apply_inventory_type_override` over every product unconditionally.
+    """
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    override_keys = await storage.keys("inventory_override:*")
+    if not override_keys:
+        return products
+
+    overridden_ids = {key.removeprefix("inventory_override:") for key in override_keys}
+    relevant_ids = overridden_ids & products.keys()
+    if not relevant_ids:
+        return products
+
+    result = dict(products)
+    for product_id in relevant_ids:
+        result[product_id] = await apply_inventory_type_override(result[product_id])
+    return result
 
 
 async def delete_inventory_type_override(product_id: str) -> bool:

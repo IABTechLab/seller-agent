@@ -47,12 +47,15 @@ def init(
 ):
     """Initialize the seller system and set up default products."""
     from ...services import catalog_service
+    from ...services.catalog_service import _run_blocking
 
     console.print(Panel("Initializing Ad Seller System...", title="Setup"))
 
     # Read the default catalog from the single cached service source (EP-3.2)
     # rather than spinning up ProductSetupFlow / an OpenDirect MCP session.
-    products = catalog_service.get_static_product_catalog()["products"]
+    # Bridged via _run_blocking since this Typer command is synchronous but
+    # the catalog accessor is async (applies inventory-type overrides).
+    products = _run_blocking(catalog_service.get_static_product_catalog())["products"]
 
     console.print(f"[green]✓[/green] Organization '{organization_name}' initialized")
     console.print(f"[green]✓[/green] Created {len(products)} default products")
@@ -79,8 +82,9 @@ def init(
 def catalog():
     """View the product catalog."""
     from ...services import catalog_service
+    from ...services.catalog_service import _run_blocking
 
-    products = catalog_service.get_static_product_catalog()["products"]
+    products = _run_blocking(catalog_service.get_static_product_catalog())["products"]
 
     table = Table(title="Product Catalog")
     table.add_column("ID", style="cyan")
@@ -115,9 +119,10 @@ def price(
     """Get pricing for a product based on buyer tier."""
     from ...models.buyer_identity import AccessTier, BuyerContext, BuyerIdentity
     from ...services import catalog_service, quote_service
+    from ...services.catalog_service import _run_blocking
 
     # Product from the single cached catalog source (EP-3.2)
-    products = catalog_service.get_static_product_catalog()["products"]
+    products = _run_blocking(catalog_service.get_static_product_catalog())["products"]
 
     product = products.get(product_id)
     if not product:

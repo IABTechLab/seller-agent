@@ -126,11 +126,11 @@ class TestCatalogService:
         yield
         get_settings.cache_clear()
 
-    def test_catalog_is_cached_with_stable_product_ids(self):
+    async def test_catalog_is_cached_with_stable_product_ids(self):
         """Happy: repeated reads return the SAME catalog object and ids."""
         catalog_service.reset_catalog_cache()
-        first = catalog_service.get_static_product_catalog()
-        second = catalog_service.get_static_product_catalog()
+        first = await catalog_service.get_static_product_catalog()
+        second = await catalog_service.get_static_product_catalog()
 
         assert first is second
         assert len(first["products"]) == len(catalog_service.DEFAULT_PRODUCT_CONFIGS)
@@ -139,7 +139,7 @@ class TestCatalogService:
         }
         catalog_service.reset_catalog_cache()
 
-    def test_reset_preserves_stable_product_ids(self):
+    async def test_reset_preserves_stable_product_ids(self):
         """Ids are deterministic: a cache reset must NOT mint new ids.
 
         Contract change with the deterministic-id fix (issue #34): ids derive
@@ -148,9 +148,9 @@ class TestCatalogService:
         broke follow-up lookups for external integrators.
         """
         catalog_service.reset_catalog_cache()
-        ids_before = set(catalog_service.get_static_product_catalog()["products"])
+        ids_before = set((await catalog_service.get_static_product_catalog())["products"])
         catalog_service.reset_catalog_cache()
-        ids_after = set(catalog_service.get_static_product_catalog()["products"])
+        ids_after = set((await catalog_service.get_static_product_catalog())["products"])
 
         assert ids_before == ids_after
         catalog_service.reset_catalog_cache()

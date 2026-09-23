@@ -47,6 +47,35 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   helper (mirrors `interfaces.api.deps`, matching how `_registry_service`
   and `_api_key_service` already do this) instead of each re-instantiating
   the service independently.
+- `GET /products` and `GET /products/{id}` now apply a stored
+  inventory-type override (AI-14). `POST /products/{id}/inventory-type`
+  always round-tripped correctly through storage, but nothing on the
+  read side ever consulted it — both routes served exclusively from the
+  cached static catalog, so an applied override was invisible
+  everywhere. `catalog_service.apply_inventory_type_override` now
+  resolves it, swapping only `inventory_type` — every other declared
+  field (`supported_deal_types`, pricing, targeting) is left exactly as
+  the catalog declares it. An earlier version of this fix recomputed
+  `supported_deal_types` via `infer_deal_types(new_type)`; a maintainer
+  review caught that this mapping is the canonical default for products
+  built from an ad-server/CSV item, not this catalog's independently
+  hand-curated ones, so it could silently grant a deal type the seller
+  never offered. `GET /products` applies overrides via a new
+  batch-efficient helper (one storage probe, not one read per product).
+  Follow-up the same day: a broader review found the override reached
+  only 2 of roughly 15 catalog consumers — critically,
+  `quote_service.create_quote` still priced off the un-overridden type
+  via `rate_card_service.resolve_base_cpm`'s exact-match lookup, so a
+  buyer could see `ctv` on `GET /products` and be quoted the `display`
+  rate: a real mispricing, not just a display inconsistency. Fixed by
+  moving the override application inside
+  `catalog_service.get_static_product_catalog()` itself — the actual
+  lowest-common-ancestor every consumer (REST, MCP, CLI, chat,
+  negotiation, quote/pricing) already calls through — so every one of
+  them now sees the override with no further per-call-site wiring. The
+  catalog accessor is async now (needs storage to check for overrides);
+  the two genuinely-synchronous callers (3 CLI commands, the CrewAI
+  avails tool) bridge via the existing `_run_blocking()` helper.
 - Map internal deal status to the shared wire enum on read; deals
   created via from-template, bulk, or curated paths no longer 500 on
   GET (#73). Internal `confirmed` reads as `booked`, internal

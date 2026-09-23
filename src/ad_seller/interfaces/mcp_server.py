@@ -92,11 +92,11 @@ async def _service_json(coro) -> str:
     return _dumps(result)
 
 
-def _static_catalog() -> dict[str, Any]:
+async def _static_catalog() -> dict[str, Any]:
     """Single cached product catalog source (same one the REST routes read)."""
     from ..services import catalog_service
 
-    return catalog_service.get_static_product_catalog()
+    return await catalog_service.get_static_product_catalog()
 
 
 def _public_context():
@@ -404,7 +404,7 @@ async def list_products(limit: int | None = 50) -> str:
     # Read from the single cached catalog source (EP-3.3) instead of running
     # ProductSetupFlow per call (which spins up an OpenDirect MCP session that
     # hangs in session.initialize()). Same source the REST /products route uses.
-    catalog = catalog_service.get_static_product_catalog()
+    catalog = await catalog_service.get_static_product_catalog()
 
     products = []
     for pid, product in list(catalog["products"].items())[:limit]:
@@ -593,7 +593,7 @@ async def get_pricing(product_id: str, buyer_tier: str = "public", volume: int =
     # quote_service.get_pricing the REST /pricing route calls (single source)
     # instead of re-instantiating ProductSetupFlow/TieredPricingConfig/
     # PricingRulesEngine independently.
-    catalog = catalog_service.get_static_product_catalog()
+    catalog = await catalog_service.get_static_product_catalog()
     product = catalog["products"].get(product_id)
 
     if not product:
@@ -641,9 +641,8 @@ async def request_quote(product_id: str, deal_type: str = "PD", impressions: int
         target_cpm=None,
         buyer_identity=None,
     )
-    return await _service_json(
-        quote_service.create_quote(request, _public_context(), _static_catalog())
-    )
+    catalog = await _static_catalog()
+    return await _service_json(quote_service.create_quote(request, _public_context(), catalog))
 
 
 @mcp.tool()
@@ -678,8 +677,9 @@ async def create_deal_from_template(
         notes=None,
     )
     try:
+        catalog = await _static_catalog()
         deal_data = await deal_service.create_deal_from_template(
-            request, _public_context(), _static_catalog()
+            request, _public_context(), catalog
         )
     except HTTPException as exc:
         return _dumps({"detail": exc.detail})
@@ -1156,7 +1156,8 @@ async def create_curated_deal(
         audience_segments=[],
         content_categories=[],
     )
-    return await _service_json(deal_service.create_curated_deal(request, _static_catalog()))
+    catalog = await _static_catalog()
+    return await _service_json(deal_service.create_curated_deal(request, catalog))
 
 
 # =============================================================================
