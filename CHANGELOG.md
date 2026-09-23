@@ -15,6 +15,11 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   surfacing later as an uncaught `AttributeError` in
   `apply_change_request`'s `order_meta.update(proposed)`, a 500 with no
   way to repair the order.
+- `ad-seller create-operator-key` gains `--quiet` / `-q`: print only the
+  minted key, for scripting (e.g.
+  `KEY=$(ad-seller create-operator-key --label ci --quiet)`), matching
+  the buyer CLI's existing flag. Default interactive output is
+  unchanged (#80).
 
 ### Changed
 
@@ -62,6 +67,33 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   had repeated `"2.4.2"` and already survived two bumps unnoticed. A
   regression test scans `src/` for the literal and fails if it appears
   outside the top-level `__init__.py`.
+- FD-12 idempotency is now enforced on `POST /api/v1/change-requests`:
+  the request body now requires a non-empty `idempotency_key` (requests
+  without one are rejected with 422), an identical replay returns the
+  original change request instead of placing a duplicate material
+  change into the approval queue, and reusing a key with a different
+  payload returns 409 `idempotency_conflict` (#64). Keys are scoped per
+  order and idempotency records expire after 24 hours, matching the
+  other FD-12 endpoints.
+- Change requests against an order that has no deal reference now
+  return 400 `deal_id_required` instead of an unstructured 500 (a null
+  `deal_id` crashed change-request model validation) (#65). Newly
+  created orders persist an empty-string `deal_id` when none is given,
+  and legacy records with a null `deal_id` are guarded on read.
+- A failed MCP connection attempt in `OpenDirect21Client` no longer
+  crashes the whole `ExecutionActivationFlow` with anyio's "Attempted
+  to exit cancel scope in a different task than it was entered in": the
+  `streamablehttp_client`/`ClientSession` lifecycle now opens and
+  closes inside one dedicated background task instead of splitting
+  `__aenter__`/`__aexit__` across `connect()`/`disconnect()`, so a
+  connection failure degrades to the REST fallback with a state warning
+  (#66, issue #60 part 2).
+- `POST /approvals/{approval_id}/resume` no longer 500s after a
+  recorded decision: CrewAI 1.15 made `Flow.state` a read-only
+  property, so re-hydrating the flow snapshot on resume raised
+  `AttributeError`. Resume now hydrates the private `_state` attribute
+  the property reads, and an empty snapshot no longer throws (#72,
+  issue #67). Approval decisions themselves were unaffected.
 
 ### Docs
 
