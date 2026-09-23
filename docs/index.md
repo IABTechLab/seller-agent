@@ -12,12 +12,12 @@ Part of the IAB Tech Lab Agent Ecosystem --- see also the [Buyer Agent](https://
 |----------|----------|----------|
 | **[MCP](api/mcp.md)** | `/mcp/` (Streamable HTTP), `/mcp-sse/sse` (legacy) | Primary interface — 46 tools for Claude, ChatGPT, Codex, Cursor, and buyer agents |
 | **[A2A](api/a2a.md)** | *(planned — not yet served)* | Conversational agent interactions — natural language, multi-turn |
-| **[REST API](api/overview.md)** | `/api/v1/*` | Programmatic access — 87 endpoints across 25 groups |
+| **[REST API](api/overview.md)** | `/api/v1/*` | Programmatic access — 88 endpoints across 25 groups |
 
 ## Key Capabilities
 
 - **46 MCP tools** for Claude, ChatGPT, Codex, Cursor, and Windsurf — interactive setup wizard + full operations
-- **87 REST endpoints** across 25 categories covering the complete ad selling workflow
+- **88 REST endpoints** across 25 categories covering the complete ad selling workflow
 - **Pluggable ad server** support — Google Ad Manager and FreeWheel (Streaming Hub + Buyer Cloud)
 - **Multi-SSP distribution** — PubMatic (MCP), Index Exchange (REST), Magnite (REST) with routing rules
 - **IAB Deals API v1.0** — standardized deal push to buyer DSPs
@@ -54,7 +54,7 @@ Part of the IAB Tech Lab Agent Ecosystem --- see also the [Buyer Agent](https://
 
 ### API Reference
 
-- [API Overview](api/overview.md) --- all 87 endpoints grouped by tag
+- [API Overview](api/overview.md) --- all 88 endpoints grouped by tag
 - [MCP Protocol](api/mcp.md) --- 46 MCP tools for Claude, ChatGPT, and buyer agents
 - [A2A Protocol](api/a2a.md) --- conversational agent-to-agent interface
 - [Agent Discovery](api/agent-discovery.md) --- `/.well-known/agent.json` and trust registry

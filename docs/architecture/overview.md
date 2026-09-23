@@ -20,7 +20,7 @@ graph LR
     subgraph "Seller Agent"
         MCP_S["/mcp/ (Streamable HTTP)<br/>MCP Server"]
         A2A_S["/a2a/seller/jsonrpc<br/>A2A Server"]
-        REST_S["REST API<br/>87 endpoints"]
+        REST_S["REST API<br/>88 endpoints"]
         NLP[NL Processing]
         TOOLS[Seller Tools]
         FLOWS[CrewAI Flows]
@@ -61,7 +61,7 @@ graph TB
         subgraph "Protocol Layer"
             MCP[MCP Server<br/>/mcp/ Streamable HTTP]
             A2A[A2A Server<br/>/a2a/seller/jsonrpc]
-            API[REST API<br/>87 endpoints, 25 tags]
+            API[REST API<br/>88 endpoints, 25 tags]
         end
 
         AUTH[Auth & API Keys]
@@ -135,7 +135,7 @@ graph TB
 
 ### API Layer
 
-**FastAPI application** with 87 endpoints across 25 OpenAPI tags. Handles HTTP routing, request validation, authentication, and response serialization. See [API Overview](../api/overview.md).
+**FastAPI application** with 88 endpoints across 25 OpenAPI tags. Handles HTTP routing, request validation, authentication, and response serialization. See [API Overview](../api/overview.md).
 
 ### Authentication and Agent Registry
 
