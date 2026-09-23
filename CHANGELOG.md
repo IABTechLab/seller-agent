@@ -62,6 +62,40 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   had repeated `"2.4.2"` and already survived two bumps unnoticed. A
   regression test scans `src/` for the literal and fails if it appears
   outside the top-level `__init__.py`.
+- **Information disclosure:** the chat interface and every counter-offer
+  no longer hand the buyer the seller's floor price. Two separate
+  surfaces were disclosing it. (1) On a negotiation reject, the chat
+  interface stated the floor outright in prose — "Our floor for this
+  inventory is $X CPM", formatted from the negotiation's `floor_price` —
+  so the seller told its counterparty its own floor mid-negotiation. The
+  reject is now a walk-away that discloses no number, and it no longer
+  interpolates the engine's reject rationale, whose max-rounds variant
+  read "Maximum N rounds reached" and published the concession budget.
+  (2) `counter_terms` carried `floor_price` (the product's `floor_cpm`)
+  and is returned to the buyer on **every** counter-offer, so the floor
+  crossed the wire on the normal negotiation path rather than on an
+  obscure read. That key is removed; `proposed_price`, `negotiation_id`
+  and the rest of the counter terms are unchanged. Operators running an
+  earlier build should assume their product floors were readable by any
+  buyer who received a counter-offer, and by any buyer who was rejected
+  in chat. A regression test asserts that neither path carries
+  `floor_price`, `base_price`, `strategy` or `max_rounds` as a field
+  name at any nesting depth, so a future addition of a guardrail to
+  either payload fails rather than shipping. (3) The prose leak on the
+  same class is closed with **two rationales**: the negotiation engine's
+  `rationale` used to state the floor, the strategy and the round budget
+  in a sentence (for example "Countering at the floor price $X CPM ...
+  (round 1/5)") which shipped to the buyer as `counter_terms["reason"]`,
+  in the chat counter/final-offer text, and on the REST negotiation
+  responses. The engine now also emits a deliberately constructed
+  `buyer_rationale` that explains the action without stating the
+  seller's price in prose (the structured `seller_price` carries the
+  number unlabeled) and without naming the floor, the strategy, the
+  concession budget or the round limit — and every outbound surface
+  sends only that one. The internal `rationale` is unchanged and stays
+  in logs and the stored negotiation history for audit. Engine pricing
+  arithmetic (concession math, floor clamping, gap-split, acceptance
+  conditions) is untouched.
 
 ### Docs
 

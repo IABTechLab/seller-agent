@@ -303,7 +303,12 @@ async def counter_proposal(
         "seller_price": round_result.seller_price,
         "concession_pct": round_result.concession_pct,
         "cumulative_concession_pct": round_result.cumulative_concession_pct,
-        "rationale": round_result.rationale,
+        # This dict is returned to the buyer verbatim on the legacy counter
+        # route and mapped into the shared NegotiationRoundResponse on the
+        # canonical route, so it carries the buyer-facing rationale. The
+        # internal rationale (floor, strategy, round budget) stays in the
+        # stored history persisted above.
+        "rationale": round_result.buyer_rationale,
         "status": history.status,
         "rounds_remaining": history.limits.max_rounds - round_result.round_number,
     }
@@ -341,6 +346,13 @@ async def apply_terminal_action(
                     seller_price=seller_price,
                     action=NegotiationAction(action),
                     rationale=(
+                        f"Buyer accepted at ${seller_price:.2f} CPM."
+                        if action == "accept"
+                        else "Buyer declined (walk-away)."
+                    ),
+                    # Same text on both: the buyer's own terminal move
+                    # discloses no seller guardrail.
+                    buyer_rationale=(
                         f"Buyer accepted at ${seller_price:.2f} CPM."
                         if action == "accept"
                         else "Buyer declined (walk-away)."

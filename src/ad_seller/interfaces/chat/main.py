@@ -528,7 +528,15 @@ class ChatInterface:
         round_result: Any,
         history: Any,
     ) -> str:
-        """Format a negotiation round result as human-readable text."""
+        """Format a negotiation round result as human-readable text.
+
+        This text goes straight to the counterparty, so it is an outbound
+        surface: ``history`` carries the seller's internal guardrails
+        (``floor_price``, ``base_price``, ``strategy``, ``limits.max_rounds``)
+        and none of them may be interpolated into what is returned here. The
+        shared ``Negotiation`` primitive excludes those same four fields
+        deliberately, for the same reason.
+        """
         from ...models.negotiation import NegotiationAction
 
         action = round_result.action
@@ -538,25 +546,36 @@ class ChatInterface:
                 f"Would you like me to generate a Deal ID for DSP activation?"
             )
         elif action == NegotiationAction.REJECT:
+            # Information disclosure fix: this branch used to state the
+            # seller's floor outright -- "Our floor for this inventory is
+            # $X CPM" -- formatted from history.floor_price, mid-negotiation,
+            # to the counterparty. A buyer who knows the floor concedes
+            # nothing above it, so the walk-away now discloses no number at
+            # all. The engine's REJECT rationale is not interpolated either:
+            # its max-rounds variant reads "Maximum N rounds reached", which
+            # publishes the concession budget in prose.
             return (
-                f"I'm sorry, but we can't go that low. "
-                f"{round_result.rationale}\n\n"
-                f"Our floor for this inventory is **${history.floor_price:.2f} CPM**. "
-                f"Would you like to explore other packages that might fit your budget?"
+                "I'm sorry, but we can't make that work for this inventory.\n\n"
+                "We've gone as far as we can on price here. "
+                "Would you like to explore other packages that might fit your budget?"
             )
         elif action == NegotiationAction.FINAL_OFFER:
+            # buyer_rationale, never rationale: the internal rationale labels
+            # the price as the floor and states the concession cap.
             return (
                 f"Here's our **best and final offer**: **${round_result.seller_price:.2f} CPM**.\n\n"
-                f"{round_result.rationale}\n\n"
+                f"{round_result.buyer_rationale}\n\n"
                 f"This is the lowest we can go. Would you like to accept?"
             )
         else:
             # COUNTER
+            # buyer_rationale, never rationale: the internal rationale names
+            # the strategy, the round budget and (below floor) the floor.
             rounds_left = history.limits.max_rounds - round_result.round_number
             return (
                 f"We appreciate your offer of ${round_result.buyer_price:.2f} CPM. "
                 f"How about **${round_result.seller_price:.2f} CPM**?\n\n"
-                f"{round_result.rationale}\n\n"
+                f"{round_result.buyer_rationale}\n\n"
                 f"{'We have room for further discussion.' if rounds_left > 1 else 'This is close to our limit.'}"
             )
 
