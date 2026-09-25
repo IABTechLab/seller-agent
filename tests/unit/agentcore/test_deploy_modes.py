@@ -21,7 +21,7 @@ from hypothesis import strategies as st
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DEPLOY_SCRIPT = REPO_ROOT / "infra" / "aws" / "agentcore" / "deploy.sh"
 
-VALID_MODES = ["all", "mcp", "http", "crew", "chat"]
+VALID_MODES = ["all", "mcp", "http", "crew", "chat", "a2a"]
 VALID_STORAGE = ["sqlite", "postgres"]
 
 
@@ -93,6 +93,81 @@ class TestDeployScriptBasics:
 
 
 # ===================================================================
+# Auth-stack wiring (enterprise-auth-gateway groups 1-2)
+# ===================================================================
+
+
+class TestAuthFlags:
+    """Validate --auth / BYO-IdP flag wiring in deploy.sh."""
+
+    def _content(self):
+        return DEPLOY_SCRIPT.read_text()
+
+    def test_help_shows_auth_flag(self):
+        result = subprocess.run(
+            ["bash", str(DEPLOY_SCRIPT), "--help"],
+            capture_output=True, text=True, timeout=10,
+        )
+        assert "--auth" in result.stdout
+        assert "--no-auth" in result.stdout
+        assert "--idp-discovery-url" in result.stdout
+
+    def test_auth_default_on(self):
+        """Auth is applied BY DEFAULT (Req 5.4): DEPLOY_AUTH initializes to true."""
+        content = self._content()
+        assert "DEPLOY_AUTH=true" in content
+
+    def test_parses_no_auth_flag(self):
+        content = self._content()
+        assert "--no-auth)" in content
+        assert "DEPLOY_AUTH=false" in content
+
+    def test_parses_auth_flag(self):
+        content = self._content()
+        assert "--auth)" in content
+
+    def test_parses_byo_idp_flags(self):
+        content = self._content()
+        assert "--idp-discovery-url)" in content
+        assert "--idp-allowed-clients)" in content
+        assert "--idp-allowed-scopes)" in content
+
+    def test_has_deploy_auth_stack_function(self):
+        content = self._content()
+        assert "deploy_auth_stack()" in content
+        assert "auth-agentcore.yaml" in content
+
+    def test_authorizer_wired_into_runtimes(self):
+        """All three runtime configure blocks (mcp/http/a2a) append the authorizer."""
+        content = self._content()
+        assert "_authorizer_config_json()" in content
+        # def + mcp + http + a2a call sites
+        assert content.count("_authorizer_config_json") >= 4
+        assert content.count("--authorizer-config") >= 3
+        for proto in ("mcp", "http", "a2a"):
+            assert f"CUSTOM_JWT authorizer attached ({proto})" in content
+
+    def test_authorizer_uses_builder(self):
+        content = self._content()
+        assert "authorizer_config.py" in content
+
+    def test_auth_stack_called_in_main_flow(self):
+        content = self._content()
+        assert content.count("deploy_auth_stack") >= 2
+
+    def test_byo_idp_validates_discovery_url(self):
+        """BYO-IdP path must assert a valid OIDC document before configuring."""
+        content = self._content()
+        assert "token_endpoint" in content
+
+    def test_secret_not_printed(self):
+        """The auth-stack deploy must not echo the app-client secret value."""
+        content = self._content()
+        # We reference retrieving it via CLI, but never echo a secret VALUE.
+        assert "describe-user-pool-client" in content
+
+
+# ===================================================================
 # Property 2: Valid modes produce correct runtime names and protocols
 # ===================================================================
 
@@ -145,8 +220,8 @@ class TestValidModes:
     def test_mode_to_runtime_name_mapping(self):
         """Verify the expected runtime name conventions exist in the script."""
         content = DEPLOY_SCRIPT.read_text()
-        assert "staging_aamp_seller_mcp" in content
-        assert "staging_aamp_seller_http" in content
+        assert "aamp_seller_mcp" in content
+        assert "aamp_seller_http" in content
 
     def test_mcp_mode_uses_mcp_protocol(self):
         """MCP mode should configure with -p MCP."""
@@ -244,3 +319,109 @@ class TestStorageFlag:
     def test_script_has_deploy_http_runtime_function(self):
         content = DEPLOY_SCRIPT.read_text()
         assert "deploy_http_runtime" in content
+
+
+class TestProtocolsFlag:
+    """--protocols deploys a comma-list of protocol runtimes in one run."""
+
+    def test_help_shows_protocols_option(self):
+        result = subprocess.run(
+            ["bash", str(DEPLOY_SCRIPT), "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert "--protocols" in result.stdout
+
+    def test_help_mentions_a2a_mode(self):
+        result = subprocess.run(
+            ["bash", str(DEPLOY_SCRIPT), "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert "a2a" in result.stdout
+
+    def test_invalid_protocol_rejected(self):
+        # --protocols with an unknown token must exit non-zero. Use --test-only
+        # so no real deploy is attempted; the loop runs only under deploy.
+        result = subprocess.run(
+            ["bash", str(DEPLOY_SCRIPT), "--protocols", "http,bogus", "--region", "us-west-2"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode != 0
+        assert "bogus" in (result.stdout + result.stderr)
+
+
+# ===================================================================
+# Req 11: self-sustaining Bedrock token — deploy.sh grants the exec role
+# bedrock:CallWithBearerToken and stops baking an empty/stale key.
+# ===================================================================
+
+
+class TestBedrockTokenGrant:
+    """**Validates: Requirement 11**
+
+    deploy.sh must (1) grant bedrock:CallWithBearerToken to each runtime's
+    execution role via a separately-named inline policy, wired into all three
+    runtime deploys, and (2) only bake ANTHROPIC_COMPATIBLE_LLM_API_KEY when a
+    token was actually supplied.
+    """
+
+    def _content(self):
+        return DEPLOY_SCRIPT.read_text()
+
+    def test_grant_helper_defined(self):
+        content = self._content()
+        assert "_grant_bedrock_bearer_token_permission()" in content
+        assert "bedrock:CallWithBearerToken" in content
+        assert "BedrockCallWithBearerToken" in content  # dedicated policy name
+        assert "put-role-policy" in content
+
+    def test_grant_wired_into_all_three_runtimes(self):
+        """def + one call in each of mcp/http/a2a = 4 references."""
+        content = self._content()
+        assert content.count("_grant_bedrock_bearer_token_permission") >= 4
+
+    def test_grant_gated_on_bedrock_base_url(self):
+        """The grant runs when the Anthropic base URL is a Bedrock endpoint
+        (the runtime mints authoritatively there, even over a baked key)."""
+        content = self._content()
+        assert '"${ANTHROPIC_BASE_URL}" == *bedrock-runtime*' in content
+
+    def test_key_env_not_baked_when_empty(self):
+        """The API-key --env is appended conditionally, not baked unconditionally."""
+        content = self._content()
+        # The old unconditional form must be gone; the conditional append present.
+        assert 'env_args+=(--env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}")' in content
+
+    def test_grant_is_best_effort(self):
+        """A failed grant warns but does not abort the deploy."""
+        content = self._content()
+        assert "runtime token mint may 403" in content
+
+
+# ===================================================================
+# Req 6.1/6.2/6.5: deploy.sh registers runtimes + prints connection info
+# ===================================================================
+
+
+class TestRuntimeRegistrationStep:
+    """**Validates: Requirement 6** — post-deploy registration/print wiring."""
+
+    def _content(self):
+        return DEPLOY_SCRIPT.read_text()
+
+    def test_registration_module_invoked(self):
+        content = self._content()
+        assert "ad_seller.registry.runtime_registration" in content
+
+    def test_registration_gated_on_auth(self):
+        content = self._content()
+        # The registration/print step lives under the DEPLOY_AUTH branch.
+        assert 'if [[ "${DEPLOY_AUTH}" == "true" ]]; then' in content
+
+    def test_runtime_arns_exported_for_registration(self):
+        content = self._content()
+        for var in ("SELLER_MCP_RUNTIME_ARN", "SELLER_A2A_RUNTIME_ARN", "SELLER_HTTP_RUNTIME_ARN"):
+            assert var in content

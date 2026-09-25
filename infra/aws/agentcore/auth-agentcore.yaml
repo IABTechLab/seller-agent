@@ -1,0 +1,280 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Auth stack for the AAMP seller AgentCore deployment. The seller OWNS the
+  shared Cognito identity used for cross-org buyer authentication: a machine-to-
+  machine (client_credentials) User Pool + resource server + app client. Buyers
+  authenticate to the seller's runtimes with a short-lived OAuth2 JWT minted
+  from THIS pool; the runtimes validate it at their CUSTOM_JWT edge. The buyer
+  repo does NOT create its own pool — it references this stack's outputs.
+
+# =============================================================================
+# NOTE — SECURITY MODEL / WHEN TO USE THIS
+# =============================================================================
+# This stack is the seller-owned identity provider for the CROSS-ORG path:
+# external buyer agents (different companies, no shared AWS IAM) obtain a
+# `client_credentials` JWT from this Cognito pool and present it directly to the
+# seller's http/mcp/a2a AgentCore runtimes, each configured with a matching
+# CUSTOM_JWT inbound authorizer (see the enterprise-auth-gateway spec, group 3).
+#
+# BYO-IdP: a customer who wants agent identities in their own OIDC provider
+# (Okta/Entra/existing Cognito) sets --idp-discovery-url at deploy time; this
+# stack is then NOT deployed and the runtimes validate against that issuer
+# instead. The `DeployCognito` condition gates every resource here for that case.
+#
+# The app-client SECRET is never a stack output and never logged; the operator
+# retrieves it via the Cognito CLI at use time.
+# =============================================================================
+
+# =============================================================================
+# Parameters
+# =============================================================================
+Parameters:
+  Environment:
+    Type: String
+    Default: staging
+    AllowedValues: [staging, production]
+  ResourceServerIdentifier:
+    Type: String
+    Default: seller-agent
+    Description: >
+      Cognito resource-server identifier. The invoke scope string presented to
+      the runtime authorizer is <identifier>/invoke (e.g. seller-agent/invoke).
+  DeployCognito:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      "true" provisions the shared Cognito pool (default). "false" skips ALL
+      resources here — used for the BYO-IdP path, where the runtimes validate
+      against a customer-supplied OIDC discovery URL instead.
+
+# =============================================================================
+# Conditions
+# =============================================================================
+Conditions:
+  DeployCognitoPool: !Equals [!Ref DeployCognito, "true"]
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+
+  # ---------------------------------------------------------------------------
+  # Shared Cognito User Pool — the seller's agent-identity pool (ONE, shared).
+  # Machine-to-machine only (client_credentials); no browser users.
+  # ---------------------------------------------------------------------------
+  SellerUserPool:
+    Type: AWS::Cognito::UserPool
+    Condition: DeployCognitoPool
+    Properties:
+      UserPoolName: !Sub "aamp-seller-${Environment}-agents"
+      # M2M app clients only — no self-service user sign-up.
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      UserPoolTags:
+        Project: ad-seller-system
+        Environment: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # Resource server — defines the `invoke` scope (→ <identifier>/invoke) PLUS the
+  # per-tier authorization scopes (Req 13). Tier is a Cognito-verified scope, not
+  # a self-declared payload field: an app client is granted ONLY the tier scope
+  # matching the buyer's contracted tier, so the token the buyer mints carries
+  # that scope and no other. `public` is the absence of a tier scope (invoke
+  # only). The runtime authorizer verifies the scope at the edge; the seller app
+  # then reads the forwarded tier (see the header-allowlist in deploy.sh) and
+  # maps scope → AccessTier for the pricing/yield business logic.
+  # ---------------------------------------------------------------------------
+  SellerResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Condition: DeployCognitoPool
+    Properties:
+      UserPoolId: !Ref SellerUserPool
+      Identifier: !Ref ResourceServerIdentifier
+      Name: AAMP Seller Agent
+      Scopes:
+        - ScopeName: invoke
+          ScopeDescription: Invoke the AAMP seller AgentCore runtimes
+        - ScopeName: seat
+          ScopeDescription: Registered-buyer (seat) tier — exact price, custom deals
+        - ScopeName: agency
+          ScopeDescription: Preferred-agency tier — negotiation, premium inventory, volume discounts
+        - ScopeName: advertiser
+          ScopeDescription: Strategic-advertiser tier — highest yield relationship, full access
+
+  # ---------------------------------------------------------------------------
+  # App client — client_credentials (M2M) grant for buyer agents.
+  # GenerateSecret so the buyer can do HTTP Basic client_id:secret at the
+  # token endpoint. The secret is retrieved via CLI at use time (never output).
+  # ---------------------------------------------------------------------------
+  SellerAppClient:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: DeployCognitoPool
+    DependsOn: SellerResourceServer
+    Properties:
+      ClientName: !Sub "aamp-seller-${Environment}-buyer-client"
+      UserPoolId: !Ref SellerUserPool
+      GenerateSecret: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthScopes:
+        - !Sub "${ResourceServerIdentifier}/invoke"
+      SupportedIdentityProviders:
+        - COGNITO
+      # M2M tokens: no browser redirect flows.
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # ---------------------------------------------------------------------------
+  # Per-tier app clients (Req 13) — each grants invoke + EXACTLY ONE tier scope,
+  # so a buyer provisioned on this client can only ever mint a token carrying
+  # its own tier. This is the per-client provisioning/audit boundary: "this
+  # buyer is an agency" == "issue them the agency client's id+secret". Cognito
+  # is the source of truth for which tier a token may claim; the app cannot be
+  # tricked into a higher tier by a forged header because the authorizer only
+  # admits the scope the client was actually granted. Adding a new tier later is
+  # a resource-server scope + one client here (tiers change rarely).
+  #
+  # NOTE: the base SellerAppClient above (invoke only) is the `public` tier —
+  # authenticated to invoke but carrying no tier scope.
+  # ---------------------------------------------------------------------------
+  SellerAppClientSeat:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: DeployCognitoPool
+    DependsOn: SellerResourceServer
+    Properties:
+      ClientName: !Sub "aamp-seller-${Environment}-buyer-client-seat"
+      UserPoolId: !Ref SellerUserPool
+      GenerateSecret: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthScopes:
+        - !Sub "${ResourceServerIdentifier}/invoke"
+        - !Sub "${ResourceServerIdentifier}/seat"
+      SupportedIdentityProviders:
+        - COGNITO
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  SellerAppClientAgency:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: DeployCognitoPool
+    DependsOn: SellerResourceServer
+    Properties:
+      ClientName: !Sub "aamp-seller-${Environment}-buyer-client-agency"
+      UserPoolId: !Ref SellerUserPool
+      GenerateSecret: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthScopes:
+        - !Sub "${ResourceServerIdentifier}/invoke"
+        - !Sub "${ResourceServerIdentifier}/agency"
+      SupportedIdentityProviders:
+        - COGNITO
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  SellerAppClientAdvertiser:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: DeployCognitoPool
+    DependsOn: SellerResourceServer
+    Properties:
+      ClientName: !Sub "aamp-seller-${Environment}-buyer-client-advertiser"
+      UserPoolId: !Ref SellerUserPool
+      GenerateSecret: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthScopes:
+        - !Sub "${ResourceServerIdentifier}/invoke"
+        - !Sub "${ResourceServerIdentifier}/advertiser"
+      SupportedIdentityProviders:
+        - COGNITO
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+  SellerUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Condition: DeployCognitoPool
+    Properties:
+      UserPoolId: !Ref SellerUserPool
+      Domain: !Sub "aamp-seller-${Environment}-${AWS::AccountId}"
+
+# =============================================================================
+# Outputs — consumed when configuring each runtime's CUSTOM_JWT authorizer and
+# documented for buyer callers. The app-client SECRET is deliberately absent.
+# =============================================================================
+Outputs:
+  UserPoolId:
+    Condition: DeployCognitoPool
+    Description: Cognito User Pool ID (the shared seller agent-identity pool).
+    Value: !Ref SellerUserPool
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolId"
+
+  DiscoveryUrl:
+    Condition: DeployCognitoPool
+    Description: >
+      OIDC discovery URL for the pool — set as the runtime authorizer's
+      discoveryUrl.
+    Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${SellerUserPool}/.well-known/openid-configuration"
+    Export:
+      Name: !Sub "${AWS::StackName}-DiscoveryUrl"
+
+  AppClientId:
+    Condition: DeployCognitoPool
+    Description: >
+      App client id — set as the runtime authorizer's allowedClients entry and
+      used by the buyer as the client_credentials client_id.
+    Value: !Ref SellerAppClient
+    Export:
+      Name: !Sub "${AWS::StackName}-AppClientId"
+
+  TokenEndpoint:
+    Condition: DeployCognitoPool
+    Description: >
+      OAuth2 token endpoint. Buyers POST grant_type=client_credentials with
+      HTTP Basic client_id:secret and scope <identifier>/invoke to mint a JWT.
+    Value: !Sub "https://aamp-seller-${Environment}-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com/oauth2/token"
+    Export:
+      Name: !Sub "${AWS::StackName}-TokenEndpoint"
+
+  InvokeScope:
+    Condition: DeployCognitoPool
+    Description: The scope string buyers request and the authorizer validates.
+    Value: !Sub "${ResourceServerIdentifier}/invoke"
+    Export:
+      Name: !Sub "${AWS::StackName}-InvokeScope"
+
+  # --- Per-tier authorization (Req 13) ---------------------------------------
+  SeatAppClientId:
+    Condition: DeployCognitoPool
+    Description: App client id for the SEAT (registered_buyer) tier.
+    Value: !Ref SellerAppClientSeat
+    Export:
+      Name: !Sub "${AWS::StackName}-SeatAppClientId"
+
+  AgencyAppClientId:
+    Condition: DeployCognitoPool
+    Description: App client id for the AGENCY (preferred_agency) tier.
+    Value: !Ref SellerAppClientAgency
+    Export:
+      Name: !Sub "${AWS::StackName}-AgencyAppClientId"
+
+  AdvertiserAppClientId:
+    Condition: DeployCognitoPool
+    Description: App client id for the ADVERTISER (strategic_advertiser) tier.
+    Value: !Ref SellerAppClientAdvertiser
+    Export:
+      Name: !Sub "${AWS::StackName}-AdvertiserAppClientId"
+
+  TierScopes:
+    Condition: DeployCognitoPool
+    Description: >
+      Comma-separated per-tier scope strings the authorizer may allow and the
+      seller app maps to AccessTier (seat/agency/advertiser; public = no scope).
+    Value: !Sub "${ResourceServerIdentifier}/seat,${ResourceServerIdentifier}/agency,${ResourceServerIdentifier}/advertiser"
+    Export:
+      Name: !Sub "${AWS::StackName}-TierScopes"

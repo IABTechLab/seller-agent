@@ -29,7 +29,7 @@ patches/
 infra/aws/agentcore/
 ├── deploy.sh             # Build + deploy via agentcore CLI
 ├── requirements.txt      # Python dependencies for container
-├── agentcore-network.yaml # CloudFormation (VPC mode)
+├── network-agentcore.yaml # CloudFormation (VPC mode)
 └── main-agentcore.yaml   # CloudFormation (root stack)
 ```
 

@@ -400,26 +400,76 @@ async def list_products(limit: int | None = 50) -> str:
     """List products in the catalog. These are the inventory items available for deals."""
     limit = limit or 50
     from ..services import catalog_service
+    from .api import contract_mappers as cm
 
     # Read from the single cached catalog source (EP-3.3) instead of running
     # ProductSetupFlow per call (which spins up an OpenDirect MCP session that
     # hangs in session.initialize()). Same source the REST /products route uses.
     catalog = catalog_service.get_static_product_catalog()
 
-    products = []
-    for pid, product in list(catalog["products"].items())[:limit]:
-        products.append(
-            {
-                "product_id": pid,
-                "name": product.name,
-                "inventory_type": product.inventory_type,
-                "base_cpm": product.base_cpm,
-                "floor_cpm": product.floor_cpm,
-                "deal_types": [dt.value for dt in product.supported_deal_types],
-            }
-        )
+    # Serialize through the shared boundary mapper (same one the REST /products
+    # route uses) so the MCP catalog surface emits full, contract-valid shared
+    # Product records — including seller_organization_id and ad_formats — rather
+    # than a thin hand-built dict. A partial dict makes cross-org buyers reject
+    # every product (their shared WireProduct requires seller_organization_id).
+    resp = cm.products_to_list_response(list(catalog["products"].values()), limit=limit)
+    return resp.model_dump_json(indent=2)
 
-    return json.dumps({"products": products, "count": len(products)}, indent=2)
+
+@mcp.tool()
+async def get_product_details(product_id: str) -> str:
+    """Get full details for a single product by ID (shared Product primitive).
+
+    Mirrors the REST ``GET /products/{product_id}`` route: reads the cached
+    static catalog and serializes through the SAME shared boundary mapper
+    (``internal_product_to_shared``) so the MCP single-product surface emits a
+    full, contract-valid shared Product (including seller_organization_id and
+    ad_formats) that cross-org buyers can validate — instead of the missing
+    tool the buyer proxy previously called.
+    """
+    from ..services import catalog_service
+    from .api import contract_mappers as cm
+
+    catalog = catalog_service.get_static_product_catalog()
+    product = catalog["products"].get(product_id)
+    if not product:
+        return json.dumps({"error": f"Product '{product_id}' not found"})
+    return cm.internal_product_to_shared(product).model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def check_avails(
+    product_id: str,
+    requested_impressions: int = 0,
+    budget: float = 0.0,
+) -> str:
+    """Check real availability + pricing for a product (OpenDirect avails).
+
+    Mirrors the REST ``POST /products/avails`` (legacy scalar dialect): reads
+    the cached catalog and delegates to ``catalog_service.check_avails`` — the
+    single honest-availability policy (no fabricated numbers) the REST route
+    uses — then serializes the shared ``AvailsResponse``. This is the real
+    availability surface the buyer's avails path needs; ``get_pricing`` returns
+    price only and cannot report available impressions.
+    """
+    from ..services import catalog_service
+    from .api.schemas import AvailsResponse
+
+    catalog = catalog_service.get_static_product_catalog()
+    product = catalog["products"].get(product_id)
+    if not product:
+        return json.dumps({"error": f"Product '{product_id}' not found"})
+
+    try:
+        result = catalog_service.check_avails(
+            product,
+            requested_impressions=requested_impressions or None,
+            budget=budget or None,
+        )
+    except Exception as exc:  # noqa: BLE001 - surface unpriceable/422 as a tool result, not a crash
+        return json.dumps({"error": f"Availability unavailable for '{product_id}': {exc}"})
+
+    return AvailsResponse(**result).model_dump_json(indent=2)
 
 
 @mcp.tool()
