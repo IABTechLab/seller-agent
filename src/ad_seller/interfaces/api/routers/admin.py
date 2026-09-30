@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from .... import __version__
 from .. import deps
 from ..schemas import (
     CreateApiKeyRequest,
@@ -27,7 +28,7 @@ async def root():
     """API root."""
     return {
         "name": "Ad Seller System API",
-        "version": "2.4.2",
+        "version": __version__,
         "docs": "/docs",
     }
 
