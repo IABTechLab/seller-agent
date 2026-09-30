@@ -68,6 +68,33 @@ File-based storage using aiosqlite. Suitable for development and single-instance
 
 Network-based storage using aioredis. Supports native TTL, key pattern matching, and multi-instance deployments. Recommended for production.
 
+## Durability on AgentCore
+
+The default backend on a deployed AgentCore runtime is **in-memory SQLite**
+(`sqlite:///:memory:`), so all authorization state — minted API keys,
+`VerifiedTrust` records, and deal/order records — is **EPHEMERAL and lost on
+every container recycle**. This is fine for same-account/dev but not for
+production.
+
+Durable persistence uses `--storage postgres`, which deploys Aurora + Redis and
+runs the runtime with `STORAGE_TYPE=hybrid` (`DATABASE_URL` → Aurora KV,
+`REDIS_URL` → Redis). Because Aurora lives in private subnets, this **requires
+CUSTOMER_VPC mode AND the VPC reachability fix**: the private-subnet runtime
+needs interface VPC endpoints for `bedrock-agentcore`/`bedrock-runtime`, `sts`,
+and `secretsmanager` (plus ECR + CloudWatch Logs), and a **443 self-ingress on
+the runtime's security group** so its ENIs can reach those shared-SG endpoints.
+Without that 443 self-ingress the container is dark — health-check times out
+with zero logs, since it cannot even reach the Logs endpoint. See
+`infra/aws/agentcore/network-agentcore.yaml`.
+
+**Product data is independent of the KV backend.** Products load from the
+CSV/S3 ad-server adapter (`AD_SERVER_TYPE=csv|s3`) into an in-memory dict at
+startup — never from the KV store — so the Postgres KV backend and the CSV/S3
+catalog coexist with no product-into-Postgres migration.
+
+The entrypoints use `os.environ.setdefault("STORAGE_TYPE", "sqlite")`, so a
+deploy-supplied `hybrid` value wins while the dev default stays SQLite.
+
 ## Implementing a Custom Backend
 
 1. Subclass `StorageBackend` from `src/ad_seller/storage/base.py`

@@ -118,3 +118,6 @@ data/csv/samples/aws_workshop/audiences_*
 data/csv/samples/aws_workshop/inventory_*
 # Internal issue tracker (not published)
 .beads/
+
+# Kiro specs/steering are managed OUTSIDE the repo (internal assets) — never commit.
+.kiro/

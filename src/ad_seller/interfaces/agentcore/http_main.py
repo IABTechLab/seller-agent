@@ -58,6 +58,14 @@ os.environ.setdefault(
     "SELLER_AGENT_URL", f"http://localhost:{os.environ.get('INTERNAL_API_PORT', '8001')}"
 )
 
+# Durable Bedrock auth: if no Anthropic-compatible API key was supplied but the
+# Bedrock Messages base URL is configured, mint a fresh bearer token from the
+# runtime's execution role NOW (at startup). This avoids baking a short-lived
+# token into --env at deploy time (which expires and 403s every crew call).
+from ad_seller.llm.bedrock_token import ensure_bedrock_token  # noqa: E402
+
+ensure_bedrock_token()
+
 from bedrock_agentcore.runtime import BedrockAgentCoreApp  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -301,7 +309,12 @@ async def _get_chat():
 
 
 def _build_buyer_context(payload: dict):
-    """Build a BuyerContext from the payload's buyer_tier field."""
+    """Build a CLAIMED BuyerContext from the payload's buyer_tier field.
+
+    This is the SELF-DECLARED context (no verification). Price-moving paths must
+    use ``_verified_buyer_context_from_payload`` instead, which caps this claim
+    at the registry-verified ceiling. Kept as the claimed-context helper.
+    """
     tier = payload.get("buyer_tier", "public")
     identity_fields = _TIER_MAP.get(tier)
     if not identity_fields:
@@ -315,6 +328,62 @@ def _build_buyer_context(payload: dict):
         is_authenticated=tier != "public",
         authentication_method="a2a",
         request_type="deal",
+    )
+
+
+async def _verified_buyer_context_from_payload(payload: dict, context=None):
+    """AgentCore entrypoint adapter over the shared verification core (Req 8).
+
+    Extracts the buyer identity from the payload and delegates to
+    ``ad_seller.auth.verification.verify_buyer_context`` — the SAME verify → cap
+    → floor → persist → block logic the FastAPI routers use. a2a reaches this via
+    ``_handle_invocation``; the mcp tools call the core directly. Re-raises the
+    transport-neutral ``BlockedAgentError`` so the caller returns a 403-equivalent.
+    Returns None for an unmapped/public tier (unchanged behavior).
+
+    Task 5.2 (defense-in-depth): when ``context`` carries a verified JWT whose
+    ``client_id``/``scope`` maps to a tier (via CLAIM_TIER_MAP/SCOPE_TIER_MAP),
+    that CLAIM-derived tier takes precedence over the self-declared
+    ``buyer_tier`` payload field. The claimed tier is still fed through the same
+    registry-verified ceiling cap below, so this only ever LOWERS or confirms
+    trust — it can never raise the effective tier above the registry ceiling.
+    When no mapping is configured or no token is present, the seam is inert and
+    the payload tier is used exactly as before.
+    """
+    tier = payload.get("buyer_tier", "public")
+
+    # Prefer the tier derived from verified JWT claims when the seam is active.
+    if context is not None:
+        try:
+            from ad_seller.interfaces.agentcore.claims import tier_from_context
+
+            claim_tier = tier_from_context(context)
+            if claim_tier:
+                if claim_tier != tier:
+                    logger.info(
+                        "claim→tier: overriding self-declared buyer_tier %r with "
+                        "claim-derived %r",
+                        tier,
+                        claim_tier,
+                    )
+                tier = claim_tier
+        except Exception as exc:  # never let the seam break an invoke
+            logger.warning("claim→tier seam error (%s) — using payload tier.", exc)
+
+    fields = _TIER_MAP.get(tier)
+    # Unmapped tier, or the public tier (empty identity fields) → no context,
+    # matching the prior _build_buyer_context behavior.
+    if not fields:
+        return None
+
+    from ad_seller.interfaces.agentcore.verification import verify_buyer_context
+    return await verify_buyer_context(
+        endpoint="agentcore:invoke",
+        buyer_tier=tier,
+        agency_id=fields.get("agency_id"),
+        advertiser_id=fields.get("advertiser_id"),
+        seat_id=fields.get("seat_id"),
+        agent_url=payload.get("agent_url") or payload.get("buyer_agent_url"),
     )
 
 
@@ -442,17 +511,35 @@ async def _run_crew_with_crewai(prompt: str, payload: dict) -> dict:
     authorization and a deal-specific task description when the prompt
     asks for deals. No deterministic Python fallback.
     """
-    from crewai import LLM, Crew, Process, Task
+    from crewai import Crew, Process, Task
 
     from ad_seller.crews.publisher_crew import PublisherCrew
 
-    # Apply Bedrock Converse compatibility patches
-    try:
-        from patches.crewai_bedrock_fix import apply_patches
+    # Apply Bedrock compatibility patches. The Converse sanitizer
+    # (crewai_bedrock_fix) is only needed on the legacy Converse path
+    # (DEFAULT_LLM_MODEL="bedrock/..."). When ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL
+    # is set, Claude runs on Bedrock's Anthropic Messages endpoint via CrewAI's
+    # native Anthropic provider, which needs the strict-strip patch instead.
+    _default_model = os.environ.get("DEFAULT_LLM_MODEL", "")
+    _on_converse_path = not os.environ.get(
+        "ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL"
+    ) and _default_model.startswith("bedrock/")
+    if _on_converse_path:
+        try:
+            from patches.crewai_bedrock_fix import apply_patches
 
-        apply_patches()
-    except ImportError:
-        logger.warning("patches.crewai_bedrock_fix not available — skipping")
+            apply_patches()
+        except ImportError:
+            logger.warning("patches.crewai_bedrock_fix not available — skipping")
+    else:
+        try:
+            from patches.crewai_bedrock_anthropic_fix import (
+                apply_patches as apply_anthropic_patches,
+            )
+
+            apply_anthropic_patches()
+        except ImportError:
+            logger.warning("patches.crewai_bedrock_anthropic_fix not available — skipping")
 
     # Apply AgentCore memory patch (read_only mode — no RememberTool injection)
     if os.environ.get("CREW_MEMORY_ENABLED", "false").lower() == "true":
@@ -470,9 +557,14 @@ async def _run_crew_with_crewai(prompt: str, payload: dict) -> dict:
 
     bedrock_model = os.environ.get(
         "DEFAULT_LLM_MODEL",
-        "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "us.anthropic.claude-sonnet-5",
     )
-    bedrock_llm = LLM(model=bedrock_model, temperature=0.3, max_tokens=4096)
+    # Build via the shared factory so the Anthropic Messages endpoint config
+    # (ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL / _API_KEY) is honored — the deploy
+    # sets these to run Claude on Bedrock without the Converse provider.
+    from ad_seller.llm import build_llm
+
+    bedrock_llm = build_llm(model=bedrock_model, temperature=0.3, max_tokens=4096)
     publisher_crew.inventory_manager.llm = bedrock_llm
     publisher_crew.inventory_manager.memory = False
 
@@ -637,7 +729,7 @@ Format as markdown with headers and tables where appropriate."""
 # ---------------------------------------------------------------------------
 
 
-async def _handle_invocation(payload: dict):
+async def _handle_invocation(payload: dict, context=None):
     """Async handler — routes to ChatInterface or CrewAI based on routing mode."""
     routing_mode = _get_routing_mode(payload)
 
@@ -670,7 +762,17 @@ async def _handle_invocation(payload: dict):
         return {"error": "Missing 'prompt', 'message', or 'input' field"}
 
     session_id = _extract_session_id(payload)
-    buyer_context = _build_buyer_context(payload)
+    try:
+        buyer_context = await _verified_buyer_context_from_payload(payload, context)
+    except Exception as exc:
+        from ad_seller.interfaces.agentcore.verification import BlockedAgentError
+
+        if isinstance(exc, BlockedAgentError):
+            logger.warning("Rejected blocked buyer agent: %s", exc.agent_url)
+            return {"error": "Agent is blocked. Contact the seller operator for access."}
+        # Fail-closed: never crash the invoke on a verification error.
+        logger.warning("Buyer verification error (%s) — proceeding public.", exc)
+        buyer_context = None
 
     if session_id:
         logger.info("Session: %s — prompt: %s", session_id, prompt[:80])
@@ -715,14 +817,14 @@ def invoke(payload, context):
     product catalog, and session-scoped negotiation state.
     """
     try:
-        return asyncio.run(_handle_invocation(payload))
+        return asyncio.run(_handle_invocation(payload, context))
     except RuntimeError:
         # If an event loop is already running (e.g. nested async),
         # create a new loop in a thread.
         import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            future = pool.submit(asyncio.run, _handle_invocation(payload))
+            future = pool.submit(asyncio.run, _handle_invocation(payload, context))
             return future.result(timeout=120)
     except Exception as exc:
         logger.exception("Invocation failed: %s", exc)

@@ -36,8 +36,15 @@ def main():
         from ad_seller.interfaces.agentcore.http_main import app
 
         app.run()
+    elif mode == "a2a":
+        from ad_seller.interfaces.agentcore.a2a_main import main as a2a_main
+
+        a2a_main()
     else:
-        print(f"ERROR: Unknown AGENTCORE_MODE={mode!r}. Must be 'mcp' or 'http'.", file=sys.stderr)
+        print(
+            f"ERROR: Unknown AGENTCORE_MODE={mode!r}. Must be 'mcp', 'http', or 'a2a'.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
