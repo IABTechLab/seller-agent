@@ -161,3 +161,40 @@ def principal_from_api_key(record: ApiKeyRecord) -> str:
         or "unknown"
     )
     return f"apikey:{record.key_id}:{buyer}"
+
+
+def actor_from_api_key(record: ApiKeyRecord) -> str:
+    """Derive the seller-stamped ACTOR id for a credentialed request.
+
+    Unlike :func:`principal_from_api_key` — which anchors to the immutable
+    ``key_id`` because an approval audit entry must name the exact
+    credential that decided — this is an OWNERSHIP key: it must stay the
+    same for the same buyer across key rotation, or a buyer would lose
+    sight of records it filed under an earlier key. So it anchors to the
+    strongest stable buyer identifier and only falls back to ``key_id``
+    for a credential that asserts no buyer identity at all (where no
+    stable owner exists to anchor to).
+
+    Shape follows the shared contract's actor convention
+    (``'system'`` / ``'human:<id>'`` / ``'agent:<id>'``): a buyer-agent
+    credential is an ``agent:``; an operator credential gets its own
+    ``operator:`` namespace so a buyer identifier can never collide with
+    a seller-side actor.
+
+    Used to stamp ``ChangeRequest.requested_by`` and to scope change
+    request reads — it is never taken from the wire.
+    """
+    from ..models.api_key import ApiKeyRole
+
+    if record.role == ApiKeyRole.OPERATOR:
+        return f"operator:{record.key_id}"
+
+    identity = record.identity
+    buyer = (
+        getattr(identity, "advertiser_id", None)
+        or getattr(identity, "agency_id", None)
+        or getattr(identity, "seat_id", None)
+    )
+    if buyer:
+        return f"agent:{buyer}"
+    return f"agent:key:{record.key_id}"

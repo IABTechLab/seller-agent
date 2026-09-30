@@ -1937,6 +1937,86 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "List Deals",
+        "description": "List stored deals, optionally filtered by wire status.\n\nOperator-only: the list spans every buyer's deals. Buyers read their\nown deal with ``GET /api/v1/deals/{deal_id}``.\n\n``status`` is the shared :class:`DealStatus` value the deal carries on\nthe wire (the same value ``GET /api/v1/deals/{deal_id}`` returns), so\nthe filter is applied after mapping each stored record to its\nresponse shape.\n\nRegistered ahead of ``/api/v1/deals/{deal_id}``; the two paths differ in\nlength so there is no shadowing, but keeping literal routes together\nwith ``/export`` keeps the EP-8.4 ordering rule easy to audit.",
+        "operationId": "list_deals_api_v1_deals_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DealStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DealListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/agentic-audience/match": {
@@ -5398,7 +5478,7 @@
           "Change Requests"
         ],
         "summary": "Create Change Request",
-        "description": "Submit a change request for an existing order.\n\nValidates the change against the current order state, classifies\nseverity, and routes to approval if needed.\n\n**Idempotency (FD-12):** the request carries a required\n``idempotency_key``. An identical replay returns the original change\nrequest without creating a second approval; reusing the key with a\ndifferent body returns ``idempotency_conflict`` (HTTP 409). Keys are\nscoped per order and expire after 24 hours.",
+        "description": "Submit a change request for an existing order. Requires authentication.\n\nThe requesting actor is stamped from the presented credential, never\nfrom the body \u2014 ``requested_by`` is exactly the field a human\nreviewer trusts when deciding whether to approve, so a caller must\nnot be able to name itself \"human:cfo@publisher.example\".\n\n**Idempotency (FD-12):** the request carries a required\n``idempotency_key``. An identical replay returns the original change\nrequest without creating a second approval; reusing the key with a\ndifferent body returns ``idempotency_conflict`` (HTTP 409). Keys are\nscoped per actor and order, and expire after 24 hours.",
         "operationId": "create_change_request_api_v1_change_requests_post",
         "parameters": [
           {
@@ -5449,7 +5529,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeRequestResponse"
+                }
               }
             }
           },
@@ -5470,7 +5552,7 @@
           "Change Requests"
         ],
         "summary": "List Change Requests",
-        "description": "List change requests, optionally filtered by order or status.",
+        "description": "List change requests, optionally filtered by order or status.\n\nRequires authentication and returns only the caller's own change\nrequests; an operator credential sees all of them.",
         "operationId": "list_change_requests_api_v1_change_requests_get",
         "parameters": [
           {
@@ -5543,7 +5625,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeRequestListResponse"
+                }
               }
             }
           },
@@ -5566,7 +5650,7 @@
           "Change Requests"
         ],
         "summary": "Get Change Request",
-        "description": "Get a change request by ID.",
+        "description": "Get a change request by ID.\n\nRequires authentication. Another actor's change request reads as 404,\nso the route cannot be walked as an existence oracle over change\nrequest ids.",
         "operationId": "get_change_request_api_v1_change_requests__cr_id__get",
         "parameters": [
           {
@@ -5616,7 +5700,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeRequestResponse"
+                }
               }
             }
           },
@@ -5699,7 +5785,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeRequestResponse"
+                }
               }
             }
           },
@@ -5772,7 +5860,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeRequestApplyResponse"
+                }
               }
             }
           },
@@ -6557,6 +6647,189 @@
         "title": "CancellationTerms",
         "description": "Structured cancellation window for linear TV deals."
       },
+      "ChangeRequestApplyResponse": {
+        "properties": {
+          "change_request_id": {
+            "type": "string",
+            "title": "Change Request Id",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          },
+          "order_id": {
+            "type": "string",
+            "title": "Order Id",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "ChangeRequestApplyResponse",
+        "description": "Wire shape of ``POST /api/v1/change-requests/{cr_id}/apply``."
+      },
+      "ChangeRequestListResponse": {
+        "properties": {
+          "change_requests": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeRequestResponse"
+            },
+            "type": "array",
+            "title": "Change Requests",
+            "default": []
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ChangeRequestListResponse",
+        "description": "Wire shape of ``GET /api/v1/change-requests``."
+      },
+      "ChangeRequestResponse": {
+        "properties": {
+          "change_request_id": {
+            "type": "string",
+            "title": "Change Request Id",
+            "default": ""
+          },
+          "order_id": {
+            "type": "string",
+            "title": "Order Id",
+            "default": ""
+          },
+          "deal_id": {
+            "type": "string",
+            "title": "Deal Id",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": ""
+          },
+          "change_type": {
+            "type": "string",
+            "title": "Change Type",
+            "default": ""
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": ""
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By",
+            "default": ""
+          },
+          "requested_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested At"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "diffs": {
+            "items": {
+              "$ref": "#/components/schemas/FieldDiffModel"
+            },
+            "type": "array",
+            "title": "Diffs",
+            "default": []
+          },
+          "proposed_values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Proposed Values",
+            "default": {}
+          },
+          "validation_errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Validation Errors",
+            "default": []
+          },
+          "pricing_impact": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Impact"
+          },
+          "availability_check": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Availability Check"
+          },
+          "approved_by": {
+            "type": "string",
+            "title": "Approved By",
+            "default": ""
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "rejection_reason": {
+            "type": "string",
+            "title": "Rejection Reason",
+            "default": ""
+          },
+          "applied_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "applied_by": {
+            "type": "string",
+            "title": "Applied By",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "ChangeRequestResponse",
+        "description": "Wire shape of a change request.\n\nDeclared explicitly so the router cannot serialise the stored record\nwholesale. In particular ``rollback_snapshot`` \u2014 a full copy of the\norder, including its state-machine audit log, every transition's\nactor and reason, and its quote/deal ids \u2014 is a SERVER-SIDE field and\nis absent here by construction, not by filtering."
+      },
       "CommercialTerms": {
         "properties": {
           "supported_deal_types": {
@@ -6902,11 +7175,6 @@
             "type": "string",
             "title": "Reason",
             "default": ""
-          },
-          "requested_by": {
-            "type": "string",
-            "title": "Requested By",
-            "default": "system"
           }
         },
         "type": "object",
@@ -6916,7 +7184,7 @@
           "change_type"
         ],
         "title": "CreateChangeRequestModel",
-        "description": "Request to create a change request for an order."
+        "description": "Request to create a change request for an order.\n\n``requested_by`` is deliberately ABSENT. The actor is stamped\nserver-side from the presented credential\n(``auth.dependencies.actor_from_api_key``) \u2014 it is the field a human\nreviewer trusts when approving, so it must never be a wire string the\nrequester chooses. A body that still carries ``requested_by`` is\naccepted and the value ignored (pydantic drops unknown fields)."
       },
       "CreateOperatorApiKeyRequest": {
         "properties": {
@@ -7699,6 +7967,36 @@
         ],
         "title": "DealFromTemplateResponse",
         "description": "Response for template-based deal creation."
+      },
+      "DealListResponse": {
+        "properties": {
+          "deals": {
+            "items": {
+              "$ref": "#/components/schemas/DealBookingResponse"
+            },
+            "type": "array",
+            "title": "Deals"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "deals",
+          "count"
+        ],
+        "title": "DealListResponse",
+        "description": "Page of stored deals in the shared booking-response shape."
       },
       "DealMigrationRequest": {
         "properties": {
