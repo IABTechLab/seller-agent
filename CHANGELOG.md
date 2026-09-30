@@ -15,6 +15,10 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   surfacing later as an uncaught `AttributeError` in
   `apply_change_request`'s `order_meta.update(proposed)`, a 500 with no
   way to repair the order.
+- `GET /api/v1/deals` lists stored deals (operator key; optional
+  wire-status filter; unserializable rows reported in `skipped`), and
+  `GET /api/v1/deals/export` now reads stored deals instead of an index
+  nothing wrote.
 
 ### Changed
 
@@ -47,6 +51,28 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   helper (mirrors `interfaces.api.deps`, matching how `_registry_service`
   and `_api_key_service` already do this) instead of each re-instantiating
   the service independently.
+- **Information disclosure:** `GET /proposals/{proposal_id}/negotiation`
+  no longer returns the seller's internal negotiation guardrails, and no
+  longer answers unauthenticated callers. The route previously had no auth
+  dependency and no response model, so any caller who knew or guessed a
+  proposal id received `strategy`, `base_price`, `floor_price` and
+  `max_rounds` — the seller's floor price and its remaining concession
+  budget. Operators running an earlier build should assume those values
+  were readable for every negotiation that existed on that build. The four
+  fields are now dropped from the service projection (so no consumer can
+  re-expose them), the response shape is pinned by
+  `NegotiationStatusResponse`, and the route resolves a verified buyer
+  context like its sibling negotiation routes, rejecting anonymous callers
+  with 401. The shared `Negotiation` primitive excludes the same four
+  fields deliberately. The `rounds` array is likewise typed
+  (`NegotiationRoundView`) rather than passed through as raw round dumps:
+  each internal round carries `cumulative_concession_pct`, from which
+  `seller_price / (1 - cumulative_concession_pct)` reconstructs
+  `base_price` exactly, and a `rationale` that can state the floor in
+  prose — both are excluded at the wire. Note that the response is now
+  authentication-scoped but not yet buyer-scoped: an authenticated buyer
+  can still read any proposal's negotiation, because the stored history
+  records no buyer identity to scope against.
 - `GET /products` and `GET /products/{id}` now apply a stored
   inventory-type override (AI-14). `POST /products/{id}/inventory-type`
   always round-tripped correctly through storage, but nothing on the
@@ -91,6 +117,15 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   had repeated `"2.4.2"` and already survived two bumps unnoticed. A
   regression test scans `src/` for the literal and fails if it appears
   outside the top-level `__init__.py`.
+- The test suite now runs against a per-run temporary SQLite database
+  instead of whatever `DATABASE_URL` or a local `.env` points at, so runs
+  no longer share persisted state. Previously the suite wrote a database
+  into the working tree and reused it, which made the first run green and
+  every later run fail: the negotiation idempotency short-circuit replayed
+  the response cached by the earlier run, so the mocked `counter_proposal`
+  was never called and `test_self_asserted_advertiser_identity_is_floored`
+  raised on a `None` `await_args`. CI never caught it because every job
+  starts from a clean checkout.
 
 ### Docs
 
