@@ -133,6 +133,24 @@ async def _api_key_service():
     return ApiKeyService(storage)
 
 
+async def _media_kit_service():
+    """Build a MediaKitService (mirrors interfaces.api.deps, no app import).
+
+    ``MediaKitService`` takes ``storage``/``pricing_engine`` positionally
+    (AI-12) — both call sites that used to construct it with no arguments
+    (``list_packages``, ``get_setup_status``) now go through this single
+    helper instead of duplicating the construction independently.
+    """
+    from ..engines.media_kit_service import MediaKitService
+    from ..engines.pricing_rules_engine import PricingRulesEngine
+    from ..models.pricing_tiers import TieredPricingConfig
+
+    storage = await _get_storage()
+    config = TieredPricingConfig(seller_organization_id="default")
+    pricing = PricingRulesEngine(config)
+    return MediaKitService(storage, pricing)
+
+
 async def _deny_unless_operator() -> Optional[str]:
     """Enforce operator-key auth on admin MCP tools over HTTP transports.
 
@@ -197,6 +215,19 @@ async def _deny_unless_operator() -> Optional[str]:
 # =============================================================================
 
 
+def _ad_server_configured(settings: Any) -> bool:
+    ad_server_type = settings.ad_server_type
+    if ad_server_type == "google_ad_manager":
+        return bool(settings.gam_network_code)
+    if ad_server_type == "freewheel":
+        return bool(settings.freewheel_sh_mcp_url)
+    if ad_server_type == "csv":
+        return bool(settings.csv_data_dir)
+    if ad_server_type == "s3":
+        return bool(settings.s3_data_bucket)
+    return False
+
+
 @mcp.tool()
 async def get_setup_status() -> str:
     """Check what's configured and what's missing. Use this on first connection
@@ -206,15 +237,13 @@ async def get_setup_status() -> str:
 
     # Check each area
     identity_configured = settings.seller_organization_name != "Default Publisher"
-    ad_server_configured = bool(settings.gam_network_code or settings.freewheel_sh_mcp_url)
+    ad_server_configured = _ad_server_configured(settings)
     ssp_configured = bool(settings.ssp_connectors)
 
     # Check if media kit has packages
     packages = []
     try:
-        from ..engines.media_kit_service import MediaKitService
-
-        service = MediaKitService()
+        service = await _media_kit_service()
         packages = await service.list_packages_public()
     except Exception:
         pass
@@ -267,7 +296,7 @@ async def health_check() -> str:
 
     # Ad server
     settings = _get_settings()
-    if settings.gam_network_code or settings.freewheel_sh_mcp_url:
+    if _ad_server_configured(settings):
         try:
             from ..clients.ad_server_base import get_ad_server_client
 
@@ -450,9 +479,7 @@ async def list_inventory(limit: int | None = 100) -> str:
 @mcp.tool()
 async def list_packages(featured_only: bool = False) -> str:
     """List packages in the media kit. These are what buyers browse."""
-    from ..engines.media_kit_service import MediaKitService
-
-    service = MediaKitService()
+    service = await _media_kit_service()
     packages = await service.list_packages_public(featured_only=featured_only)
     return json.dumps(
         {
@@ -885,6 +912,48 @@ async def bulk_deal_operations(operations: str) -> str:
 # =============================================================================
 # Orders & Change Requests
 # =============================================================================
+
+
+@mcp.tool()
+async def create_order(deal_id: str = "", quote_id: str = "", metadata: str = "") -> str:
+    """Create a new order and persist its state machine.
+
+    Mirrors ``POST /api/v1/orders`` — an MCP-only flow previously had no
+    way to turn a booked deal into an order, dead-ending at "distributed".
+    ``metadata`` is optional, passed as a JSON object string
+    (e.g. '{"campaign": "spring-2026"}').
+    """
+    from ..services import order_service
+
+    parsed_metadata = json.loads(metadata) if metadata else None
+    # REST types metadata as Optional[dict] (Pydantic-enforced); this MCP
+    # tool accepts a raw JSON string, so a bare '"spring"' or '[1, 2]' parses
+    # fine but isn't a dict. Left unchecked, that non-dict value would be
+    # stored as-is and only surface as an uncaught AttributeError later, on
+    # `order_meta.update(proposed)` inside apply_change_request — a 500 with
+    # no way to repair the order. Reject it here instead, matching REST's
+    # 422 shape (full schema validation isn't needed, just the type gate).
+    if parsed_metadata is not None and not isinstance(parsed_metadata, dict):
+        return _dumps(
+            {
+                "detail": {
+                    "error": "invalid_metadata",
+                    "message": (
+                        "metadata must be a JSON object, e.g. "
+                        '\'{"campaign": "spring-2026"}\'. '
+                        f"Got: {type(parsed_metadata).__name__}"
+                    ),
+                }
+            }
+        )
+
+    return await _service_json(
+        order_service.create_order(
+            deal_id=deal_id or None,
+            quote_id=quote_id or None,
+            metadata=parsed_metadata,
+        )
+    )
 
 
 @mcp.tool()

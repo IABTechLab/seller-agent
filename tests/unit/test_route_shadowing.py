@@ -52,6 +52,9 @@ def mock_storage():
     storage.set_deal = AsyncMock(
         side_effect=lambda did, data: store.__setitem__(f"deal:{did}", data)
     )
+    storage.list_deals = AsyncMock(
+        side_effect=lambda: [v for k, v in store.items() if k.startswith("deal:")]
+    )
     storage._store = store
     return storage
 

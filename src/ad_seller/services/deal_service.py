@@ -516,8 +516,8 @@ async def create_deal_from_template(
     from ..storage.factory import get_storage
 
     deal_type_map = _quote_deal_type_map()
-    deal_type_str = request.deal_type.upper()
-    if deal_type_str not in deal_type_map:
+    deal_type_str = _normalize_deal_type_code(request.deal_type)
+    if deal_type_str is None:
         raise HTTPException(
             status_code=400,
             detail={
@@ -627,6 +627,27 @@ def _quote_deal_type_map():
         "PD": DealType.PREFERRED_DEAL,
         "PA": DealType.PRIVATE_AUCTION,
     }
+
+
+_DEAL_TYPE_ALIASES: dict[str, str] = {
+    "PG": "PG",
+    "PROGRAMMATICGUARANTEED": "PG",
+    "PROGRAMMATIC_GUARANTEED": "PG",
+    "PD": "PD",
+    "PREFERREDDEAL": "PD",
+    "PREFERRED_DEAL": "PD",
+    "PA": "PA",
+    "PRIVATEAUCTION": "PA",
+    "PRIVATE_AUCTION": "PA",
+}
+
+
+def _normalize_deal_type_code(raw: str) -> Optional[str]:
+    """Map any accepted deal-type spelling to its canonical short code.
+
+    Returns ``None`` when ``raw`` matches none of the accepted spellings.
+    """
+    return _DEAL_TYPE_ALIASES.get(raw.upper())
 
 
 def _build_seller_schain() -> dict[str, Any]:
@@ -802,23 +823,24 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
 # =============================================================================
 
 
-async def export_deals(format: str = "generic", status: Optional[str] = None) -> dict[str, Any]:
-    """Export deals in DSP-native format for platform connectors."""
+async def list_deals(status: Optional[str] = None) -> list[dict[str, Any]]:
+    """Return every stored deal, optionally filtered by status.
+
+    Both booking paths persist deals under ``deal:<id>``; the storage
+    backend enumerates them via ``list_deals()`` (a ``deal:*`` key scan).
+    """
     from ..storage.factory import get_storage
 
     storage = await get_storage()
+    deals = await storage.list_deals()
+    if status:
+        deals = [d for d in deals if d.get("status") == status]
+    return deals
 
-    # Collect all deals (scan deal:* keys)
-    all_deals = []
-    # Storage doesn't have a list_deals method, so we track deal IDs
-    deal_index = await storage.get("deal_index") or {"deal_ids": []}
 
-    for deal_id in deal_index.get("deal_ids", []):
-        deal = await storage.get_deal(deal_id)
-        if deal:
-            if status and deal.get("status") != status:
-                continue
-            all_deals.append(deal)
+async def export_deals(format: str = "generic", status: Optional[str] = None) -> dict[str, Any]:
+    """Export deals in DSP-native format for platform connectors."""
+    all_deals = await list_deals(status=status)
 
     if format == "ttd":
         # The Trade Desk format

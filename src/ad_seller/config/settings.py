@@ -109,6 +109,27 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Minimum time budget at which kicking off the proposal-review crew is
+    # worth it at all. The 5-task review crew was measured at ~646s end to
+    # end (see proposal_flow_time_budget_seconds above), so a positive budget
+    # far below that can never let the crew finish: the request is answered
+    # by the deterministic fallback while the abandoned crew burns 16-40 LLM
+    # calls in a worker thread whose result is discarded (CrewAI has no
+    # cancellation API). When the effective budget is positive but below this
+    # threshold, the flow does not start the crew and goes straight to the
+    # deterministic evaluation — same decision, zero discarded LLM calls.
+    # <= 0 disables the skip (always kick the crew off, the previous
+    # behavior). A budget of <= 0 still means "no bound" and always runs the
+    # crew regardless of this threshold.
+    # Env: PROPOSAL_CREW_MIN_BUDGET (documented) or the field name.
+    proposal_crew_min_budget_seconds: float = Field(
+        default=120.0,
+        validation_alias=AliasChoices(
+            "proposal_crew_min_budget",
+            "proposal_crew_min_budget_seconds",
+        ),
+    )
+
     # Seller Identity
     seller_organization_id: Optional[str] = None
     seller_organization_name: str = "Default Publisher"

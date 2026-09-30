@@ -4,6 +4,22 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- MCP `create_order` tool (AI-11), mirroring `POST /api/v1/orders`. An
+  MCP-only flow could previously book and distribute a deal but had no
+  tool to turn it into an order, dead-ending at "distributed." `metadata`
+  is now rejected with `invalid_metadata` when the parsed JSON isn't an
+  object (matching REST, which types it `Optional[dict]`) — a bare
+  string or array previously parsed fine and was stored as-is, only
+  surfacing later as an uncaught `AttributeError` in
+  `apply_change_request`'s `order_meta.update(proposed)`, a 500 with no
+  way to repair the order.
+- `GET /api/v1/deals` lists stored deals (operator key; optional
+  wire-status filter; unserializable rows reported in `skipped`), and
+  `GET /api/v1/deals/export` now reads stored deals instead of an index
+  nothing wrote.
+
 ### Changed
 
 - Booking (POST /api/v1/deals) now requires a verified buyer key matching
@@ -12,9 +28,29 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 - The operator rate card now drives pricing: matching entries override
   catalog base CPM for quotes, bookings, and negotiation anchors (floors
   still apply); previously it was stored but never read (issue #69).
+- The proposal flow no longer kicks off the proposal-review crew when its
+  result could never be used: with a positive time budget below the new
+  `proposal_crew_min_budget_seconds` (default 120, env
+  `PROPOSAL_CREW_MIN_BUDGET`; 0 restores the previous always-run behavior),
+  the flow goes straight to the deterministic evaluation and logs one INFO
+  line. The crew was measured at ~646s against a 20s default budget, so
+  every default-config proposal burned 16-40 discarded LLM calls in an
+  orphaned worker thread (CrewAI has no cancellation API). Budget <= 0
+  still means "no bound" and always runs the crew; wire answers on the
+  timeout path are unchanged.
 
 ### Fixed
 
+- MCP `list_packages` no longer crashes (AI-12). It constructed
+  `MediaKitService()` with no arguments, but the class requires
+  `storage`/`pricing_engine`, so every call raised `TypeError`
+  unconditionally. `get_setup_status` had the identical bug at its own
+  media-kit check, silently swallowed by a `try/except`, so setup status
+  always reported `media_kit.configured: false` regardless of the actual
+  package count. Both call sites now go through one `_media_kit_service()`
+  helper (mirrors `interfaces.api.deps`, matching how `_registry_service`
+  and `_api_key_service` already do this) instead of each re-instantiating
+  the service independently.
 - Scheduled/manual inventory sync (`inventory_sync_scheduler._run_sync`,
   `POST /packages/sync`) now actually persists what it fetches (AI-9,
   AI-10) instead of discarding it after only counting items, by
@@ -55,6 +91,15 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   had repeated `"2.4.2"` and already survived two bumps unnoticed. A
   regression test scans `src/` for the literal and fails if it appears
   outside the top-level `__init__.py`.
+- The test suite now runs against a per-run temporary SQLite database
+  instead of whatever `DATABASE_URL` or a local `.env` points at, so runs
+  no longer share persisted state. Previously the suite wrote a database
+  into the working tree and reused it, which made the first run green and
+  every later run fail: the negotiation idempotency short-circuit replayed
+  the response cached by the earlier run, so the mocked `counter_proposal`
+  was never called and `test_self_asserted_advertiser_identity_is_floored`
+  raised on a `None` `await_args`. CI never caught it because every job
+  starts from a clean checkout.
 
 ### Docs
 
