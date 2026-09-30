@@ -1937,6 +1937,86 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "List Deals",
+        "description": "List stored deals, optionally filtered by wire status.\n\nOperator-only: the list spans every buyer's deals. Buyers read their\nown deal with ``GET /api/v1/deals/{deal_id}``.\n\n``status`` is the shared :class:`DealStatus` value the deal carries on\nthe wire (the same value ``GET /api/v1/deals/{deal_id}`` returns), so\nthe filter is applied after mapping each stored record to its\nresponse shape.\n\nRegistered ahead of ``/api/v1/deals/{deal_id}``; the two paths differ in\nlength so there is no shadowing, but keeping literal routes together\nwith ``/export`` keeps the EP-8.4 ordering rule easy to audit.",
+        "operationId": "list_deals_api_v1_deals_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DealStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DealListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/agentic-audience/match": {
@@ -7699,6 +7779,36 @@
         ],
         "title": "DealFromTemplateResponse",
         "description": "Response for template-based deal creation."
+      },
+      "DealListResponse": {
+        "properties": {
+          "deals": {
+            "items": {
+              "$ref": "#/components/schemas/DealBookingResponse"
+            },
+            "type": "array",
+            "title": "Deals"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "deals",
+          "count"
+        ],
+        "title": "DealListResponse",
+        "description": "Page of stored deals in the shared booking-response shape."
       },
       "DealMigrationRequest": {
         "properties": {

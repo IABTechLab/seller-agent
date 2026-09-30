@@ -31,7 +31,7 @@ The seller agent exposes four communication interfaces:
 |-----------|----------|----------|
 | **MCP** | `/mcp` (Streamable HTTP), `/mcp-sse/sse` (legacy) | Primary interface — 46 tools for Claude, ChatGPT, Codex, Cursor, and buyer agents |
 | **A2A** | `/a2a/{agent}/jsonrpc` | Conversational JSON-RPC 2.0 for natural language queries |
-| **REST** | `/api/v1/*` | Programmatic access — 88 endpoints across 25 groups |
+| **REST** | `/api/v1/*` | Programmatic access — 89 endpoints across 25 groups |
 | **Chat** | `/chat` | Web-based conversational interface for human buyers |
 
 > [Protocol Documentation](https://iabtechlab.github.io/seller-agent/api/mcp/)
@@ -215,7 +215,7 @@ INDEX_EXCHANGE_API_URL=https://api.indexexchange.com
 
 ## API Reference
 
-88 endpoints across 25 groups:
+89 endpoints across 25 groups:
 
 | Group | Endpoints | Description |
 |-------|-----------|-------------|
@@ -223,7 +223,7 @@ INDEX_EXCHANGE_API_URL=https://api.indexexchange.com
 | Packages | 7 | Tier-gated package CRUD, assembly, and sync |
 | Products | 6 | Product catalog, avails, inventory type overrides |
 | Quotes | 2 | Non-binding price quotes (IAB Deals API) |
-| Deal Booking | 11 | Deals, from-template, push, distribute, migrate, deprecate, lineage, export |
+| Deal Booking | 12 | Deals, list, from-template, push, distribute, migrate, deprecate, lineage, export |
 | Deals | 1 | Deal creation from accepted proposals |
 | Deal Performance | 1 | Delivery metrics |
 | Bulk Operations | 1 | Batch deal create/update/cancel |
@@ -238,7 +238,7 @@ INDEX_EXCHANGE_API_URL=https://api.indexexchange.com
 | Supply Chain | 1 | sellers.json-like self-description |
 | Curators | 4 | Curator registration + curated deals |
 | Sessions | 5 | Multi-turn session persistence |
-| Authentication | 4 | API key management |
+| Authentication | 5 | API key management |
 | Agent Registry | 6 | Agent card, trust + discovery |
 | Pricing | 3 | Rate card + pricing calculation |
 | Events | 2 | Event log queries |
