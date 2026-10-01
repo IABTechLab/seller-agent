@@ -455,6 +455,10 @@ def http_client():
             ),
             "get_deal": staticmethod(lambda did: _async_return(store.get(f"deal:{did}"))),
             "set_deal": staticmethod(lambda did, data: _async_set(store, f"deal:{did}", data)),
+            # Generic KV path: booking resolves a quote's negotiation through
+            # the negotiation_by_quote pointer before reading the record.
+            "get": staticmethod(lambda key: _async_return(store.get(key))),
+            "set": staticmethod(lambda key, value, ttl=None: _async_set(store, key, value)),
             # Booking consults negotiation state; none stored here.
             "get_negotiation": staticmethod(
                 lambda pid: _async_return(store.get(f"negotiation:{pid}"))

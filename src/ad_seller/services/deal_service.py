@@ -189,6 +189,34 @@ def match_agentic_audience(ref: dict[str, Any]) -> dict[str, Any]:
 # =============================================================================
 
 
+async def _resolve_accepted_negotiation(storage: Any, quote_id: str) -> Optional[dict[str, Any]]:
+    """Return the ACCEPTED negotiation about ``quote_id``, or None.
+
+    ``DealBookingRequest`` carries only the quote id, so the quote is the only
+    handle the protocol offers for correlating a booking to a negotiation.
+    An accepted negotiation indexes itself under
+    ``negotiation_by_quote:{quote_id}`` (see
+    ``negotiation_service._persist_negotiation``); that pointer names the key
+    its record is stored under, whichever id the buyer led with.
+
+    The direct read by quote id is retained as a fallback: a quote-led
+    negotiation is itself stored under the quote id, and records written
+    before the index existed have no pointer.
+    """
+    from ..storage.base import negotiation_by_quote_key
+
+    negotiation = None
+    pointer = await storage.get(negotiation_by_quote_key(quote_id))
+    if isinstance(pointer, str) and pointer:
+        negotiation = await storage.get_negotiation(pointer)
+    if not negotiation:
+        negotiation = await storage.get_negotiation(quote_id)
+
+    if isinstance(negotiation, dict) and negotiation.get("status") == "accepted":
+        return negotiation
+    return None
+
+
 async def book_deal(request: Any) -> dict[str, Any]:
     """Book a deal from a previously issued quote (``DealBookingRequestModel``).
 
@@ -238,27 +266,51 @@ async def book_deal(request: Any) -> dict[str, Any]:
             },
         )
 
-    # Honor ACCEPTED negotiation state on this quote: a
-    # quote-led negotiation is keyed by the quote_id; when it concluded
-    # accepted, the booking strikes the AGREED price, not the stale quoted
-    # price. A re-quote at the agreed price (the buyer's historical
-    # workaround) carries no negotiation and books unchanged.
-    negotiation = await storage.get_negotiation(request.quote_id)
-    if negotiation and negotiation.get("status") == "accepted":
+    # Honor ACCEPTED negotiation state on this quote: when a negotiation about
+    # this quote concluded accepted, the booking strikes the AGREED price, not
+    # the stale quoted price. A quote with no accepted negotiation (including a
+    # re-quote at the agreed price, the buyer's historical workaround) books
+    # unchanged.
+    #
+    # Resolution goes through the quote index an accepted negotiation writes
+    # (`negotiation_by_quote:{quote_id}` -> the key its record is stored
+    # under). Passing the quote id straight to get_negotiation only ever
+    # worked for a QUOTE-LED negotiation, which happens to be stored under the
+    # quote id; a proposal-led one is stored under its `prop-` id, so the
+    # lookup missed every time and the agreed price was silently dropped. The
+    # direct read is kept as a fallback so quote-led negotiations recorded
+    # before this index existed are still honored.
+    negotiation = await _resolve_accepted_negotiation(storage, request.quote_id)
+    if negotiation:
         rounds = negotiation.get("rounds") or []
         agreed_cpm = rounds[-1].get("seller_price") if rounds else None
-        if agreed_cpm is not None:
-            quote = {
-                **quote,
-                "pricing": {
-                    **quote["pricing"],
-                    "final_cpm": agreed_cpm,
-                    "rationale": (
-                        f"{quote['pricing'].get('rationale', '')} | Negotiated to "
-                        f"${agreed_cpm:.2f} CPM ({negotiation.get('negotiation_id')})"
-                    ).strip(" |"),
+        if agreed_cpm is None:
+            # A negotiation that concluded accepted with no price is a corrupt
+            # record. Booking it at list price is the worst available outcome —
+            # it is exactly the silent overpayment this whole path exists to
+            # prevent — so refuse instead.
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "negotiation_price_unresolved",
+                    "message": (
+                        f"Negotiation '{negotiation.get('negotiation_id')}' for quote "
+                        f"'{request.quote_id}' is accepted but carries no agreed price. "
+                        "Refusing to book at the un-negotiated quoted price."
+                    ),
                 },
-            }
+            )
+        quote = {
+            **quote,
+            "pricing": {
+                **quote["pricing"],
+                "final_cpm": agreed_cpm,
+                "rationale": (
+                    f"{quote['pricing'].get('rationale', '')} | Negotiated to "
+                    f"${agreed_cpm:.2f} CPM ({negotiation.get('negotiation_id')})"
+                ).strip(" |"),
+            },
+        }
 
     # Pre-flight: if the buyer sent an audience_plan with this booking, validate
     # it against the seller's capability block. Per proposal §5.7 layer 3, any
