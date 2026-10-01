@@ -84,7 +84,20 @@ STRATEGY_LIMITS: dict[NegotiationStrategy, NegotiationLimits] = {
 
 
 class NegotiationRound(BaseModel):
-    """A single round in a negotiation."""
+    """A single round in a negotiation.
+
+    Carries TWO rationales, and the distinction is load-bearing:
+
+    - ``rationale`` is the INTERNAL explanation. It may (and does) name the
+      seller's guardrails — the floor, the strategy, the round budget, the
+      concession caps — because it exists for logs, stored history and audit.
+      It must never be interpolated into anything the buyer receives.
+    - ``buyer_rationale`` is the BUYER-FACING explanation. It is authored
+      deliberately in the engine and never names the floor (by value or by
+      label), the strategy, the concession budget or the round limit. Every
+      outbound surface (counter_terms["reason"], the chat text, the REST
+      negotiation responses) must use this one.
+    """
 
     round_number: int
     buyer_price: float  # What buyer offered
@@ -92,7 +105,8 @@ class NegotiationRound(BaseModel):
     action: NegotiationAction
     concession_pct: float = 0.0  # How much seller conceded this round (0-1)
     cumulative_concession_pct: float = 0.0  # Total concession so far (0-1)
-    rationale: str = ""
+    rationale: str = ""  # Internal-only: logs, stored history, audit
+    buyer_rationale: str = ""  # Outbound: the only rationale the buyer may see
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
