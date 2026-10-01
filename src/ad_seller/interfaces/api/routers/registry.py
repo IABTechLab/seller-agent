@@ -37,7 +37,7 @@ async def agent_card():
     # ProductSetupFlow per request (which hangs in OpenDirect MCP
     # session.initialize() — see `catalog_service` for context).
     try:
-        inventory_types = set(deps.get_product_catalog()["inventory_types"])
+        inventory_types = set((await deps.get_product_catalog())["inventory_types"])
     except Exception:
         inventory_types = {"display", "video", "ctv", "native", "mobile_app"}
 
