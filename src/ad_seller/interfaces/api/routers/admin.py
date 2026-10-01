@@ -216,13 +216,13 @@ async def get_supply_chain():
     per IAB spec. Otherwise returns a default single-node chain.
     Also includes an OpenRTB-compatible schain object.
     """
-    from ....config import get_settings
+    from ....config import get_settings, seller_id_or_default
     from ....models.supply_chain import build_schain_from_sellers_json, load_sellers_json
 
     settings = get_settings()
     seller_domain = getattr(settings, "seller_domain", "demo-publisher.example.com")
     seller_name = getattr(settings, "seller_name", "Demo Publisher")
-    seller_id = getattr(settings, "seller_organization_id", "default")
+    seller_id = seller_id_or_default(settings)
     sellers_json_path = getattr(settings, "sellers_json_path", None)
 
     sellers_json = load_sellers_json(sellers_json_path)
