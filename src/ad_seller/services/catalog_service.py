@@ -314,6 +314,9 @@ def infer_deal_types(inv_type: str) -> list[DealType]:
         "mobile_app": [DealType.PREFERRED_DEAL, DealType.PRIVATE_AUCTION],
         "native": [DealType.PREFERRED_DEAL],
         "linear_tv": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+        "linear": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+        "digital_video": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
+        "audio": [DealType.PROGRAMMATIC_GUARANTEED, DealType.PREFERRED_DEAL],
     }.get(inv_type, [DealType.PREFERRED_DEAL])
 
 

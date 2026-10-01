@@ -14,7 +14,8 @@ import pytest
 
 from ad_seller.clients.ad_server_base import AdServerInventoryItem, AdServerType
 from ad_seller.clients.csv_adapter import CSVAdServerClient
-from ad_seller.services.catalog_service import classify_inventory_type
+from ad_seller.models.core import DealType
+from ad_seller.services.catalog_service import classify_inventory_type, product_from_inventory_item
 
 AWS_WORKSHOP_DIR = (
     Path(__file__).resolve().parent.parent.parent / "data" / "csv" / "samples" / "aws_workshop"
@@ -232,3 +233,40 @@ class TestAwsWorkshopVocabularyIsTrustedNotGuessed:
         for item_id, declared in expected.items():
             assert item_id in by_id, f"{item_id} missing from aws_workshop/inventory.csv"
             assert classify_inventory_type(by_id[item_id]) == declared
+
+
+class TestAwsWorkshopTypesSupportTheirOwnDealTypes:
+    """linear/digital_video/audio are recognised by classify_inventory_type
+    but were missing from infer_deal_types, so they fell to the
+    [PREFERRED_DEAL]-only default -- a real behavior change on shipped
+    sample data, since proposal_handling_flow rejects any proposal whose
+    deal_type isn't in supported_deal_types."""
+
+    @pytest.mark.parametrize(
+        "name,declared",
+        [
+            ("GNN Primetime News", "linear"),
+            ("GNN.com Pre-Roll Video", "digital_video"),
+            ("GNN Podcast Sponsorship", "audio"),
+        ],
+    )
+    def test_programmatic_guaranteed_is_supported(self, name, declared):
+        item = _item(name, sizes=[(1920, 1080)], ad_formats=["video"], inventory_type=declared)
+        product = product_from_inventory_item(item)
+        assert DealType.PROGRAMMATIC_GUARANTEED in product.supported_deal_types
+
+    def test_real_aws_workshop_rows_accept_programmatic_guaranteed(self):
+        client = CSVAdServerClient(str(AWS_WORKSHOP_DIR))
+
+        async def _load():
+            await client.connect()
+            return await client.list_inventory()
+
+        items = asyncio.run(_load())
+        by_id = {item.id: item for item in items}
+
+        for item_id in ("inv-lin-gnn-primetime", "inv-dig-gnn-preroll", "inv-aud-gnn-podcast"):
+            product = product_from_inventory_item(by_id[item_id])
+            assert DealType.PROGRAMMATIC_GUARANTEED in product.supported_deal_types, (
+                f"{item_id} ({product.inventory_type}) lost PG support"
+            )
