@@ -173,15 +173,15 @@ def _wire_product_ids(body: dict) -> set[str]:
 
 
 class TestCsvCatalogService:
-    def test_catalog_serves_csv_inventory_in_csv_mode(self, csv_mode):
-        catalog = catalog_service.get_static_product_catalog()
+    async def test_catalog_serves_csv_inventory_in_csv_mode(self, csv_mode):
+        catalog = await catalog_service.get_static_product_catalog()
         assert set(catalog["products"].keys()) == CSV_IDS, (
             "CSV mode must serve the CSV inventory as the product catalog, "
             f"got: {sorted(catalog['products'].keys())}"
         )
 
-    def test_csv_products_carry_row_data(self, csv_mode):
-        catalog = catalog_service.get_static_product_catalog()
+    async def test_csv_products_carry_row_data(self, csv_mode):
+        catalog = await catalog_service.get_static_product_catalog()
         product = catalog["products"]["inv-t-ctv-drama"]
         assert product.name == "Test CTV Drama"
         assert product.base_cpm == 30.0
@@ -189,18 +189,18 @@ class TestCsvCatalogService:
         assert product.inventory_type == "ctv"
         assert "ctv" in catalog["inventory_types"]
 
-    def test_csv_catalog_ids_stable_within_process(self, csv_mode):
-        first = catalog_service.get_static_product_catalog()
-        second = catalog_service.get_static_product_catalog()
+    async def test_csv_catalog_ids_stable_within_process(self, csv_mode):
+        first = await catalog_service.get_static_product_catalog()
+        second = await catalog_service.get_static_product_catalog()
         assert first is second, "single-cache design: catalog built once per process"
         assert list(first["products"].keys()) == list(second["products"].keys())
 
-    def test_csv_catalog_ids_deterministic_across_rebuild(self, csv_mode):
+    async def test_csv_catalog_ids_deterministic_across_rebuild(self, csv_mode):
         """Simulated reboot: fresh cache over the same CSV yields the same ids."""
-        first_ids = set(catalog_service.get_static_product_catalog()["products"])
+        first_ids = set((await catalog_service.get_static_product_catalog())["products"])
         catalog_service.reset_catalog_cache()
         api_main._STATIC_PRODUCT_CATALOG = None
-        second_ids = set(catalog_service.get_static_product_catalog()["products"])
+        second_ids = set((await catalog_service.get_static_product_catalog())["products"])
         assert first_ids == second_ids == CSV_IDS
 
 
@@ -210,28 +210,28 @@ class TestCsvCatalogService:
 
 
 class TestNonCsvModesUnchanged:
-    def test_default_mode_serves_default_catalog(self, default_mode):
-        catalog = catalog_service.get_static_product_catalog()
+    async def test_default_mode_serves_default_catalog(self, default_mode):
+        catalog = await catalog_service.get_static_product_catalog()
         expected_names = [c["name"] for c in catalog_service.DEFAULT_PRODUCT_CONFIGS]
         assert [p.name for p in catalog["products"].values()] == expected_names
         assert len(catalog["products"]) == 13
 
-    def test_default_mode_ids_stay_uuid_shaped_and_stable(self, default_mode):
+    async def test_default_mode_ids_stay_uuid_shaped_and_stable(self, default_mode):
         import re
 
-        first = catalog_service.get_static_product_catalog()
+        first = await catalog_service.get_static_product_catalog()
         for pid in first["products"]:
             assert re.fullmatch(r"prod-[0-9a-f]{8}", pid), pid
-        second = catalog_service.get_static_product_catalog()
+        second = await catalog_service.get_static_product_catalog()
         assert list(first["products"].keys()) == list(second["products"].keys())
 
-    def test_default_mode_ids_survive_cache_reset(self, default_mode):
+    async def test_default_mode_ids_survive_cache_reset(self, default_mode):
         # Proxy for multi-worker and restart behavior (issue #34): each uvicorn
         # worker builds its own catalog cache, so ids must be deterministic
         # across independent builds, not merely stable within one cache.
-        first = catalog_service.get_static_product_catalog()
+        first = await catalog_service.get_static_product_catalog()
         catalog_service.reset_catalog_cache()
-        second = catalog_service.get_static_product_catalog()
+        second = await catalog_service.get_static_product_catalog()
         assert list(first["products"].keys()) == list(second["products"].keys())
         assert len(set(first["products"])) == len(catalog_service.DEFAULT_PRODUCT_CONFIGS)
 
