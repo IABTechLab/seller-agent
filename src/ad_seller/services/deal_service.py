@@ -192,6 +192,9 @@ def match_agentic_audience(ref: dict[str, Any]) -> dict[str, Any]:
 async def _emit_deal_created(deal_data: dict[str, Any], source: str) -> None:
     """Publish ``deal.created`` for a deal just persisted by a booking path.
 
+    Call it after the path's last write (quote marked booked, replaced deal
+    deprecated), so a listener reading storage sees the finished state.
+
     ``source`` names the path (``quote``, ``template``, ``curated``,
     ``bulk``, ``migration``) so consumers of the event feed can tell how
     the deal came to exist.
@@ -783,11 +786,11 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
                     "notes": op.notes,
                 }
                 await storage.set_deal(deal_id, deal_data)
-                await _emit_deal_created(deal_data, source="bulk")
 
                 # Mark quote as booked
                 quote["status"] = QuoteStatus.BOOKED.value
                 await storage.set_quote(op.quote_id, quote)
+                await _emit_deal_created(deal_data, source="bulk")
 
                 results.append(_result(i, "create", True, deal_id=deal_id))
 
@@ -1496,7 +1499,6 @@ async def migrate_deal(deal_id: str, request: Any) -> dict[str, Any]:
     }
 
     await storage.set_deal(new_deal_id, new_deal)
-    await _emit_deal_created(new_deal, source="migration")
 
     # Deprecate old deal
     old_deal["status"] = "deprecated"
@@ -1504,6 +1506,7 @@ async def migrate_deal(deal_id: str, request: Any) -> dict[str, Any]:
     old_deal["deprecated_reason"] = request.reason or "Replaced by migration"
     old_deal["replacement_deal_id"] = new_deal_id
     await storage.set_deal(deal_id, old_deal)
+    await _emit_deal_created(new_deal, source="migration")
 
     return {
         "new_deal_id": new_deal_id,

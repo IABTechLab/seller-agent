@@ -78,6 +78,20 @@ def _assert_payload(event, **expected):
     assert event.payload == expected
 
 
+def _observe_at_publish(bus, observe):
+    """Record ``observe()`` at the moment the bus publishes, i.e. the state a
+    listener reacting to the event would read back from storage."""
+    seen = []
+    publish = bus.publish
+
+    async def _publish(event):
+        seen.append(observe())
+        return await publish(event)
+
+    bus.publish = _publish
+    return seen
+
+
 class TestBookingEmitsDealCreated:
     async def test_quote_booking_emits_deal_created(self, client, mock_storage, event_bus):
         quote = _make_available_quote()
@@ -169,6 +183,9 @@ class TestBookingEmitsDealCreated:
         quote = _make_available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
         op = SimpleNamespace(action="create", quote_id=quote["quote_id"], deal_id=None, notes=None)
+        quote_status = _observe_at_publish(
+            event_bus, lambda: mock_storage._store[f"quote:{quote['quote_id']}"]["status"]
+        )
 
         with (
             patch("ad_seller.storage.factory.get_storage", AsyncMock(return_value=mock_storage)),
@@ -179,6 +196,8 @@ class TestBookingEmitsDealCreated:
         assert results[0]["success"] is True, results
         events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
         assert [e.deal_id for e in events] == [results[0]["deal_id"]]
+        # The quote is already booked when a listener sees the deal.
+        assert quote_status == ["booked"]
         _assert_payload(
             events[0],
             source="bulk",
@@ -208,6 +227,9 @@ class TestBookingEmitsDealCreated:
             buyer_seat_ids=None,
             reason="better supply path",
         )
+        old_status = _observe_at_publish(
+            event_bus, lambda: mock_storage._store[f"deal:{old_id}"]["status"]
+        )
 
         with (
             patch("ad_seller.storage.factory.get_storage", AsyncMock(return_value=mock_storage)),
@@ -217,6 +239,8 @@ class TestBookingEmitsDealCreated:
 
         events = await event_bus.list_events(event_type=EventType.DEAL_CREATED.value)
         assert [e.deal_id for e in events] == [result["new_deal_id"]]
+        # The replaced deal is already deprecated when a listener sees the new one.
+        assert old_status == ["deprecated"]
         _assert_payload(
             events[0],
             source="migration",
