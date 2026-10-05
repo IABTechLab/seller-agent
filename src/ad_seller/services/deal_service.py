@@ -1006,9 +1006,10 @@ async def _resolve_dsp_id_or_pending_approval(
 ) -> Optional[dict[str, Any]]:
     """Resolve create_request.dsp_id from buyer_seat_ids if not already set.
 
-    Mutates create_request.dsp_id in place when resolution is unambiguous
-    (0 or 1 candidate). If the seat ID(s) collide across more than one DSP,
-    creates a pending ApprovalGate request instead of guessing which one is
+    Mutates create_request.dsp_id in place when exactly one DSP owns every
+    seat ID. Raises a 400 if any seat has no active match or the seats share
+    no DSP (a deal can target only one). If more than one DSP owns every
+    seat (a seat ID collision), creates a pending ApprovalGate request instead of guessing which one is
     correct, and returns the response dict the caller should return
     immediately — the actual create_deal() call happens later, via the
     ssp_distribution/dsp_resolution resume path, once a human picks one.
@@ -1024,20 +1025,42 @@ async def _resolve_dsp_id_or_pending_approval(
     if resolver is None:
         return None
 
-    matches = await resolver(create_request.buyer_seat_ids)
-    if not matches:
+    seat_ids = create_request.buyer_seat_ids
+    matches = await resolver(seat_ids)
+
+    # A deal carries a single dspID, so it must be valid for every seat.
+    dsps_by_seat: dict[str, set[int]] = {s.casefold(): set() for s in seat_ids}
+    for m in matches:
+        dsps_by_seat.setdefault(m.extended_seat_id.casefold(), set()).add(m.dsp_id)
+
+    unmatched = [s for s in seat_ids if not dsps_by_seat[s.casefold()]]
+    if unmatched:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "dsp_resolution_failed",
-                "message": f"No active DSP found for seat ID(s): {create_request.buyer_seat_ids}",
+                "message": f"No active DSP found for seat ID(s): {unmatched}",
             },
         )
 
-    distinct_dsp_ids = sorted({m.dsp_id for m in matches})
+    distinct_dsp_ids = sorted(set.intersection(*(dsps_by_seat[s.casefold()] for s in seat_ids)))
+    if not distinct_dsp_ids:
+        mapping = {s: sorted(dsps_by_seat[s.casefold()]) for s in seat_ids}
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "dsp_resolution_failed",
+                "message": (
+                    f"Seat IDs do not belong to a single DSP (seat -> DSP IDs: {mapping}). "
+                    "A deal can target only one DSP; create a separate deal per DSP."
+                ),
+            },
+        )
     if len(distinct_dsp_ids) == 1:
         create_request.dsp_id = distinct_dsp_ids[0]
         return None
+
+    candidates = [m for m in matches if m.dsp_id in distinct_dsp_ids]
 
     from ..events.approval import ApprovalGate
     from ..storage.factory import get_storage
@@ -1050,7 +1073,7 @@ async def _resolve_dsp_id_or_pending_approval(
         gate_name="dsp_resolution",
         context={
             "seat_ids": create_request.buyer_seat_ids,
-            "candidates": [m.model_dump() for m in matches],
+            "candidates": [m.model_dump() for m in candidates],
         },
         flow_state_snapshot={
             "ssp_name": ssp.ssp_type.value,

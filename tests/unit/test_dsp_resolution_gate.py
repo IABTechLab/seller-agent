@@ -92,6 +92,100 @@ class TestResolveDspIdOrPendingApproval:
         assert exc_info.value.detail["error"] == "dsp_resolution_failed"
 
     @pytest.mark.asyncio
+    async def test_seats_on_different_dsps_raises_400(self):
+        ssp = MagicMock()
+        ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
+            return_value=[
+                DspSeatMatch(dsp_id=17, extended_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=52, extended_seat_id="seat-b", status="A"),
+            ]
+        )
+        request = _create_request(buyer_seat_ids=["seat-a", "seat-b"])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await _resolve_dsp_id_or_pending_approval(ssp, request, "deal-1")
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail["error"] == "dsp_resolution_failed"
+        assert "separate deal per DSP" in exc_info.value.detail["message"]
+        assert request.dsp_id is None
+
+    @pytest.mark.asyncio
+    async def test_one_seat_unmatched_raises_400(self):
+        ssp = MagicMock()
+        ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
+            return_value=[DspSeatMatch(dsp_id=17, extended_seat_id="seat-a", status="A")]
+        )
+        request = _create_request(buyer_seat_ids=["seat-a", "seat-b"])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await _resolve_dsp_id_or_pending_approval(ssp, request, "deal-1")
+
+        assert exc_info.value.status_code == 400
+        assert "seat-b" in exc_info.value.detail["message"]
+        assert "seat-a" not in exc_info.value.detail["message"]
+
+    @pytest.mark.asyncio
+    async def test_overlapping_seats_resolve_to_shared_dsp(self):
+        ssp = MagicMock()
+        ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
+            return_value=[
+                DspSeatMatch(dsp_id=17, extended_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=52, extended_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=17, extended_seat_id="seat-b", status="A"),
+            ]
+        )
+        request = _create_request(buyer_seat_ids=["seat-a", "seat-b"])
+
+        result = await _resolve_dsp_id_or_pending_approval(ssp, request, "deal-1")
+
+        assert result is None
+        assert request.dsp_id == 17
+
+    @pytest.mark.asyncio
+    async def test_seat_id_matching_is_case_insensitive(self):
+        ssp = MagicMock()
+        ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
+            return_value=[DspSeatMatch(dsp_id=17, extended_seat_id="ACC-100522", status="A")]
+        )
+        request = _create_request(buyer_seat_ids=["acc-100522"])
+
+        await _resolve_dsp_id_or_pending_approval(ssp, request, "deal-1")
+
+        assert request.dsp_id == 17
+
+    @pytest.mark.asyncio
+    async def test_gate_candidates_limited_to_dsps_shared_by_all_seats(self):
+        ssp = MagicMock()
+        ssp.ssp_type = SSPType.INDEX_EXCHANGE
+        ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
+            return_value=[
+                DspSeatMatch(dsp_id=17, extended_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=52, extended_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=99, extended_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=17, extended_seat_id="seat-b", status="A"),
+                DspSeatMatch(dsp_id=52, extended_seat_id="seat-b", status="A"),
+            ]
+        )
+        request = _create_request(buyer_seat_ids=["seat-a", "seat-b"])
+        mock_gate_instance = MagicMock()
+        mock_gate_instance.request_approval = AsyncMock(return_value=MagicMock(approval_id="a"))
+
+        with (
+            patch(
+                "ad_seller.storage.factory.get_storage",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+            patch("ad_seller.events.approval.ApprovalGate", return_value=mock_gate_instance),
+        ):
+            result = await _resolve_dsp_id_or_pending_approval(ssp, request, "deal-1")
+
+        assert result["status"] == "pending_approval"
+        candidates = mock_gate_instance.request_approval.call_args.kwargs["context"]["candidates"]
+        assert {c["dsp_id"] for c in candidates} == {17, 52}
+
+    @pytest.mark.asyncio
     async def test_multiple_matches_requests_approval_and_returns_pending(self):
         ssp = MagicMock()
         ssp.ssp_type = SSPType.INDEX_EXCHANGE
