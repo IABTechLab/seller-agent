@@ -74,8 +74,9 @@ class CatalogAvailsTool(BaseTool):
         inventory_type: Optional[str] = None,
     ) -> str:
         from ...services import catalog_service
+        from ...services.catalog_service import _run_blocking
 
-        catalog = catalog_service.get_static_product_catalog()
+        catalog = _run_blocking(catalog_service.get_static_product_catalog())
         products = catalog["products"]
 
         if product_id is None:

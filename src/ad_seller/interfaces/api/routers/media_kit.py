@@ -184,7 +184,7 @@ async def _resolve_package_products(product_ids: list[str], storage):
     """
     from ....models.flow_state import ProductDefinition
 
-    catalog_products = deps.get_product_catalog()["products"]
+    catalog_products = (await deps.get_product_catalog())["products"]
     resolved = []
     unresolved: list[str] = []
     for pid in product_ids:
@@ -459,6 +459,16 @@ async def sync_packages(
 
     flow = ProductSetupFlow()
     await flow.kickoff_async()
+
+    if flow.state.ad_server_sync_failed:
+        # A real ad-server failure leaves the previously-synced layer
+        # untouched (see sync_from_ad_server) -- report that honestly
+        # rather than "synced" with an empty/unchanged package list.
+        return {
+            "status": "error",
+            "synced_packages": flow.state.synced_segments,
+            "warnings": flow.state.warnings,
+        }
 
     await emit_event(
         event_type=EventType.PACKAGE_SYNCED,

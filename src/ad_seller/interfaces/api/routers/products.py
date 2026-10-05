@@ -48,8 +48,13 @@ async def list_products(
     spins up an OpenDirect MCP session that hangs in `session.initialize()`.
     Buyers filter client-side over the returned Product records (there is
     deliberately no POST /products/search on the shared catalog surface).
+
+    Any stored inventory-type override (AI-14) is applied automatically —
+    ``deps.get_product_catalog()`` itself now returns the catalog with
+    overrides already applied, so every consumer sees one consistent view,
+    not just this route and ``get_product``.
     """
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
     return cm.products_to_list_response(
         list(catalog["products"].values()), limit=limit, offset=offset
     )
@@ -133,7 +138,7 @@ async def check_avails(
     See :func:`ad_seller.services.catalog_service.check_avails` for the
     full policy.
     """
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
 
     if isinstance(request, ProductAvailsSearch):
         return _spec_avails_collection(request, catalog)
@@ -158,9 +163,11 @@ async def get_product(product_id: str) -> Product:
     """Get a specific product (shared Product primitive, no wrapper).
 
     Reads from the cached static catalog instead of running ProductSetupFlow
-    per request (see `list_products` for rationale).
+    per request (see `list_products` for rationale). Any stored
+    inventory-type override (AI-14) is applied automatically by
+    ``deps.get_product_catalog()``.
     """
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
     product = catalog["products"].get(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -173,7 +180,7 @@ async def get_pricing(
     api_key_record=Depends(deps._get_optional_api_key_record),
 ):
     """Get pricing for a product based on buyer context."""
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
     product = catalog["products"].get(request.product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -207,7 +214,7 @@ async def discovery_query(
     from ....flows import DiscoveryInquiryFlow
 
     # Product data from the single cached catalog source (EP-3.3)
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
 
     # Enforce agent registry
     _, max_tier = await deps._resolve_and_enforce_agent(request.agent_url)

@@ -3,6 +3,6 @@
 
 """Configuration module."""
 
-from .settings import Settings, get_settings
+from .settings import Settings, get_settings, seller_id_or_default
 
-__all__ = ["Settings", "get_settings"]
+__all__ = ["Settings", "get_settings", "seller_id_or_default"]
