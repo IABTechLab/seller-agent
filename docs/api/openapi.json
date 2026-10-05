@@ -1016,7 +1016,7 @@
           "Products"
         ],
         "summary": "List Products",
-        "description": "List products in the catalog (shared ProductListResponse).\n\nReads from the cached static catalog (see `_get_static_product_catalog`)\ninstead of running ProductSetupFlow per request \u2014 kicking off the flow\nspins up an OpenDirect MCP session that hangs in `session.initialize()`.\nBuyers filter client-side over the returned Product records (there is\ndeliberately no POST /products/search on the shared catalog surface).",
+        "description": "List products in the catalog (shared ProductListResponse).\n\nReads from the cached static catalog (see `_get_static_product_catalog`)\ninstead of running ProductSetupFlow per request \u2014 kicking off the flow\nspins up an OpenDirect MCP session that hangs in `session.initialize()`.\nBuyers filter client-side over the returned Product records (there is\ndeliberately no POST /products/search on the shared catalog surface).\n\nAny stored inventory-type override (AI-14) is applied automatically \u2014\n``deps.get_product_catalog()`` itself now returns the catalog with\noverrides already applied, so every consumer sees one consistent view,\nnot just this route and ``get_product``.",
         "operationId": "list_products_products_get",
         "parameters": [
           {
@@ -1131,7 +1131,7 @@
           "Products"
         ],
         "summary": "Get Product",
-        "description": "Get a specific product (shared Product primitive, no wrapper).\n\nReads from the cached static catalog instead of running ProductSetupFlow\nper request (see `list_products` for rationale).",
+        "description": "Get a specific product (shared Product primitive, no wrapper).\n\nReads from the cached static catalog instead of running ProductSetupFlow\nper request (see `list_products` for rationale). Any stored\ninventory-type override (AI-14) is applied automatically by\n``deps.get_product_catalog()``.",
         "operationId": "get_product_products__product_id__get",
         "parameters": [
           {
