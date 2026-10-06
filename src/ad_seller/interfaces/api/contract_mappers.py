@@ -350,7 +350,24 @@ def internal_deal_status_to_wire(status: Any) -> DealStatus:
 
 def internal_deal_to_shared_deal(data: dict[str, Any]) -> Deal:
     """Build the shared :class:`Deal` primitive from the internal deal dict."""
-    product = data.get("product", {})
+    # Template bookings store flat fields. Preserve nested quote-booked
+    # sections when present, including deliberately empty sections.
+    product = data.get("product")
+    if product is None:
+        product = {"product_id": data.get("product_id", "")}
+    pricing = data.get("pricing")
+    if pricing is None:
+        pricing = {
+            "final_cpm": data.get("actual_price_cpm"),
+            "currency": data.get("currency", "USD"),
+        }
+    terms = data.get("terms")
+    if terms is None:
+        terms = {
+            "impressions": data.get("impressions"),
+            "flight_start": data.get("flight_start"),
+            "flight_end": data.get("flight_end"),
+        }
     return Deal(
         deal_id=data["deal_id"],
         deal_type=DealType(data["deal_type"]),
@@ -361,8 +378,8 @@ def internal_deal_to_shared_deal(data: dict[str, Any]) -> Deal:
             name=product.get("name", ""),
             inventory_type=product.get("inventory_type"),
         ),
-        pricing=_quote_pricing_to_shared(data.get("pricing", {})),
-        terms=_quote_terms_to_shared(data.get("terms", {})),
+        pricing=_quote_pricing_to_shared(pricing),
+        terms=_quote_terms_to_shared(terms),
         buyer_tier=AccessTier(data.get("buyer_tier", "public")),
         seller_id=data.get("seller_id"),
         expires_at=_parse_dt(data.get("expires_at")),
