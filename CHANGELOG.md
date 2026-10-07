@@ -19,6 +19,10 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   wire-status filter; unserializable rows reported in `skipped`), and
   `GET /api/v1/deals/export` now reads stored deals instead of an index
   nothing wrote.
+- `deal.created` is now published from every booking path (quote,
+  template, curated, bulk, migration) with a `source` field; the event
+  is audit-class, so a bus failure falls back to the audit log and the
+  booking still succeeds.
 
 ### Changed
 
