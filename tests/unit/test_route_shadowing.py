@@ -24,10 +24,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch) — mirrors tests/unit/test_deal_booking_endpoints.py.
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
@@ -52,6 +51,9 @@ def mock_storage():
     storage.get_deal = AsyncMock(side_effect=lambda did: store.get(f"deal:{did}"))
     storage.set_deal = AsyncMock(
         side_effect=lambda did, data: store.__setitem__(f"deal:{did}", data)
+    )
+    storage.list_deals = AsyncMock(
+        side_effect=lambda: [v for k, v in store.items() if k.startswith("deal:")]
     )
     storage._store = store
     return storage

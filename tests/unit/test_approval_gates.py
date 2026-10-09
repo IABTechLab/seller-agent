@@ -21,10 +21,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch) before any import of ad_seller.flows triggers __init__.py.
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
@@ -137,6 +136,49 @@ class TestApprovalEndpointAuth:
             resume_resp = await client.post(f"/approvals/{approval_id}/resume")
         assert list_resp.status_code == 401
         assert resume_resp.status_code == 401
+
+    async def test_authenticated_resume_after_decide_returns_200(self, client, mock_storage):
+        """Resume after a recorded decision must not 500 on CrewAI's read-only state."""
+        from ad_seller.events.models import ApprovalResponse
+
+        raw_key = _seed_key(mock_storage._store, key_id="key-resume", agency_id="agency-resume")
+        req = ApprovalRequest(
+            event_id="evt-resume",
+            flow_id="flow-resume",
+            flow_type="proposal_handling",
+            gate_name="proposal_decision",
+            proposal_id="prop-resume",
+            status=ApprovalStatus.APPROVED,
+            flow_state_snapshot={
+                "proposal_id": "prop-resume",
+                "flow_id": "flow-resume",
+                "flow_type": "proposal_handling",
+            },
+        )
+        mock_storage._store[f"approval:{req.approval_id}"] = req.model_dump(mode="json")
+        mock_storage._store[f"approval_response:{req.approval_id}"] = ApprovalResponse(
+            approval_id=req.approval_id,
+            decision="approve",
+            decided_by="lab",
+        ).model_dump(mode="json")
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.events.helpers.emit_event",
+                new_callable=AsyncMock,
+            ),
+        ):
+            resp = await client.post(
+                f"/approvals/{req.approval_id}/resume",
+                headers={"X-Api-Key": raw_key},
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["proposal_id"] == "prop-resume"
+        assert body["status"] == "accepted"
+        assert body["resumed_from_approval"] == req.approval_id
 
     async def test_authenticated_decide_records_verified_principal(self, client, mock_storage):
         """A valid key authorizes the decision and the audit record stamps the

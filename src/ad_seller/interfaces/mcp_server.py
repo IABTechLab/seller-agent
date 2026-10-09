@@ -92,11 +92,11 @@ async def _service_json(coro) -> str:
     return _dumps(result)
 
 
-def _static_catalog() -> dict[str, Any]:
+async def _static_catalog() -> dict[str, Any]:
     """Single cached product catalog source (same one the REST routes read)."""
     from ..services import catalog_service
 
-    return catalog_service.get_static_product_catalog()
+    return await catalog_service.get_static_product_catalog()
 
 
 def _public_context():
@@ -131,6 +131,24 @@ async def _api_key_service():
 
     storage = await _get_storage()
     return ApiKeyService(storage)
+
+
+async def _media_kit_service():
+    """Build a MediaKitService (mirrors interfaces.api.deps, no app import).
+
+    ``MediaKitService`` takes ``storage``/``pricing_engine`` positionally
+    (AI-12) — both call sites that used to construct it with no arguments
+    (``list_packages``, ``get_setup_status``) now go through this single
+    helper instead of duplicating the construction independently.
+    """
+    from ..engines.media_kit_service import MediaKitService
+    from ..engines.pricing_rules_engine import PricingRulesEngine
+    from ..models.pricing_tiers import TieredPricingConfig
+
+    storage = await _get_storage()
+    config = TieredPricingConfig(seller_organization_id="default")
+    pricing = PricingRulesEngine(config)
+    return MediaKitService(storage, pricing)
 
 
 async def _deny_unless_operator() -> Optional[str]:
@@ -197,6 +215,19 @@ async def _deny_unless_operator() -> Optional[str]:
 # =============================================================================
 
 
+def _ad_server_configured(settings: Any) -> bool:
+    ad_server_type = settings.ad_server_type
+    if ad_server_type == "google_ad_manager":
+        return bool(settings.gam_network_code)
+    if ad_server_type == "freewheel":
+        return bool(settings.freewheel_sh_mcp_url)
+    if ad_server_type == "csv":
+        return bool(settings.csv_data_dir)
+    if ad_server_type == "s3":
+        return bool(settings.s3_data_bucket)
+    return False
+
+
 @mcp.tool()
 async def get_setup_status() -> str:
     """Check what's configured and what's missing. Use this on first connection
@@ -206,15 +237,13 @@ async def get_setup_status() -> str:
 
     # Check each area
     identity_configured = settings.seller_organization_name != "Default Publisher"
-    ad_server_configured = bool(settings.gam_network_code or settings.freewheel_sh_mcp_url)
+    ad_server_configured = _ad_server_configured(settings)
     ssp_configured = bool(settings.ssp_connectors)
 
     # Check if media kit has packages
     packages = []
     try:
-        from ..engines.media_kit_service import MediaKitService
-
-        service = MediaKitService()
+        service = await _media_kit_service()
         packages = await service.list_packages_public()
     except Exception:
         pass
@@ -267,7 +296,7 @@ async def health_check() -> str:
 
     # Ad server
     settings = _get_settings()
-    if settings.gam_network_code or settings.freewheel_sh_mcp_url:
+    if _ad_server_configured(settings):
         try:
             from ..clients.ad_server_base import get_ad_server_client
 
@@ -375,7 +404,7 @@ async def list_products(limit: int | None = 50) -> str:
     # Read from the single cached catalog source (EP-3.3) instead of running
     # ProductSetupFlow per call (which spins up an OpenDirect MCP session that
     # hangs in session.initialize()). Same source the REST /products route uses.
-    catalog = catalog_service.get_static_product_catalog()
+    catalog = await catalog_service.get_static_product_catalog()
 
     products = []
     for pid, product in list(catalog["products"].items())[:limit]:
@@ -450,9 +479,7 @@ async def list_inventory(limit: int | None = 100) -> str:
 @mcp.tool()
 async def list_packages(featured_only: bool = False) -> str:
     """List packages in the media kit. These are what buyers browse."""
-    from ..engines.media_kit_service import MediaKitService
-
-    service = MediaKitService()
+    service = await _media_kit_service()
     packages = await service.list_packages_public(featured_only=featured_only)
     return json.dumps(
         {
@@ -506,7 +533,15 @@ async def create_package(
 
 @mcp.tool()
 async def get_rate_card() -> str:
-    """Get the current rate card (base CPMs by inventory type)."""
+    """Get the current rate card (base CPMs by inventory type).
+
+    ``source: "defaults"`` means no rate card has been stored — these are
+    generic reference values, not an operator-configured card, and do NOT
+    drive pricing. ``source: "stored"`` is the operator's actual card;
+    entries matching a product's inventory type override that product's
+    base CPM for quotes, bookings, and negotiation (floors still apply;
+    issue #69).
+    """
     storage = await _get_storage()
     rate_card = await storage.get("rate_card:current")
 
@@ -521,12 +556,13 @@ async def get_rate_card() -> str:
                     {"inventory_type": "native", "base_cpm": 10.0},
                     {"inventory_type": "audio", "base_cpm": 15.0},
                 ],
+                "updated_at": None,
                 "source": "defaults",
             },
             indent=2,
         )
 
-    return json.dumps(rate_card, indent=2)
+    return json.dumps({**rate_card, "source": "stored"}, indent=2)
 
 
 @mcp.tool()
@@ -557,14 +593,14 @@ async def get_pricing(product_id: str, buyer_tier: str = "public", volume: int =
     # quote_service.get_pricing the REST /pricing route calls (single source)
     # instead of re-instantiating ProductSetupFlow/TieredPricingConfig/
     # PricingRulesEngine independently.
-    catalog = catalog_service.get_static_product_catalog()
+    catalog = await catalog_service.get_static_product_catalog()
     product = catalog["products"].get(product_id)
 
     if not product:
         return json.dumps({"error": f"Product '{product_id}' not found"})
 
     context = BuyerContext(identity=BuyerIdentity(), is_authenticated=buyer_tier != "public")
-    pricing = quote_service.get_pricing(
+    pricing = await quote_service.get_pricing(
         product_id=product_id,
         product=product,
         buyer_context=context,
@@ -605,9 +641,8 @@ async def request_quote(product_id: str, deal_type: str = "PD", impressions: int
         target_cpm=None,
         buyer_identity=None,
     )
-    return await _service_json(
-        quote_service.create_quote(request, _public_context(), _static_catalog())
-    )
+    catalog = await _static_catalog()
+    return await _service_json(quote_service.create_quote(request, _public_context(), catalog))
 
 
 @mcp.tool()
@@ -621,6 +656,10 @@ async def create_deal_from_template(
 ) -> str:
     """Create a deal directly from parameters (one-step, no quote needed).
     Returns the deal or a rejection if max_cpm is below floor."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from types import SimpleNamespace
 
     from fastapi import HTTPException
@@ -638,8 +677,9 @@ async def create_deal_from_template(
         notes=None,
     )
     try:
+        catalog = await _static_catalog()
         deal_data = await deal_service.create_deal_from_template(
-            request, _public_context(), _static_catalog()
+            request, _public_context(), catalog
         )
     except HTTPException as exc:
         return _dumps({"detail": exc.detail})
@@ -875,6 +915,48 @@ async def bulk_deal_operations(operations: str) -> str:
 
 
 @mcp.tool()
+async def create_order(deal_id: str = "", quote_id: str = "", metadata: str = "") -> str:
+    """Create a new order and persist its state machine.
+
+    Mirrors ``POST /api/v1/orders`` — an MCP-only flow previously had no
+    way to turn a booked deal into an order, dead-ending at "distributed".
+    ``metadata`` is optional, passed as a JSON object string
+    (e.g. '{"campaign": "spring-2026"}').
+    """
+    from ..services import order_service
+
+    parsed_metadata = json.loads(metadata) if metadata else None
+    # REST types metadata as Optional[dict] (Pydantic-enforced); this MCP
+    # tool accepts a raw JSON string, so a bare '"spring"' or '[1, 2]' parses
+    # fine but isn't a dict. Left unchecked, that non-dict value would be
+    # stored as-is and only surface as an uncaught AttributeError later, on
+    # `order_meta.update(proposed)` inside apply_change_request — a 500 with
+    # no way to repair the order. Reject it here instead, matching REST's
+    # 422 shape (full schema validation isn't needed, just the type gate).
+    if parsed_metadata is not None and not isinstance(parsed_metadata, dict):
+        return _dumps(
+            {
+                "detail": {
+                    "error": "invalid_metadata",
+                    "message": (
+                        "metadata must be a JSON object, e.g. "
+                        '\'{"campaign": "spring-2026"}\'. '
+                        f"Got: {type(parsed_metadata).__name__}"
+                    ),
+                }
+            }
+        )
+
+    return await _service_json(
+        order_service.create_order(
+            deal_id=deal_id or None,
+            quote_id=quote_id or None,
+            metadata=parsed_metadata,
+        )
+    )
+
+
+@mcp.tool()
 async def list_orders(limit: int | None = 50) -> str:
     """List orders and their current states."""
     limit = limit or 50
@@ -968,12 +1050,13 @@ async def set_approval_gates(
 @mcp.tool()
 async def get_supply_chain() -> str:
     """Get the seller's supply chain transparency info (sellers.json format)."""
+    from ..config import seller_id_or_default
     from ..models.supply_chain import build_schain_from_sellers_json, load_sellers_json
 
     settings = _get_settings()
     seller_domain = getattr(settings, "seller_domain", "demo-publisher.example.com")
     seller_name = getattr(settings, "seller_name", "Demo Publisher")
-    seller_id = getattr(settings, "seller_organization_id", "default")
+    seller_id = seller_id_or_default(settings)
     sellers_json_path = getattr(settings, "sellers_json_path", None)
     deal_types = ["programmatic_guaranteed", "preferred_deal", "private_auction"]
 
@@ -1074,7 +1157,8 @@ async def create_curated_deal(
         audience_segments=[],
         content_categories=[],
     )
-    return await _service_json(deal_service.create_curated_deal(request, _static_catalog()))
+    catalog = await _static_catalog()
+    return await _service_json(deal_service.create_curated_deal(request, catalog))
 
 
 # =============================================================================

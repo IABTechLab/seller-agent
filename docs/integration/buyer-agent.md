@@ -13,7 +13,7 @@ curl https://seller.example.com/.well-known/agent.json
 The agent card is A2A-protocol-compliant and includes:
 
 - **name** and **description** of the seller agent
-- **capabilities** --- supported protocols (`opendirect21`, `a2a`), streaming support
+- **capabilities** --- supported protocols (currently `opendirect21` only; A2A is a documented design, not yet a served inbound surface), streaming support
 - **skills** --- discovery, pricing, proposals, negotiation, deals
 - **authentication** --- supported schemes (`api_key`, `bearer`)
 - **inventory_types** --- what the seller offers (display, video, ctv, native, mobile_app)
@@ -85,24 +85,32 @@ curl -X POST -H "Authorization: Bearer <key>" \
 
 The simplest transaction pattern:
 
+Both the quote and the booking are money-mutating requests: each carries a required `idempotency_key` (requester-minted, UUID recommended). A replay with the same key and body returns the original quote/deal instead of creating a duplicate; the same key reused with a different body is an `idempotency_conflict` (HTTP 409).
+
 ```bash
-# 1. Request a quote
+# 1. Request a quote (product_id comes from GET /products — it is a
+#    seller-issued id like "prod-3f2a9c81", not a fixed catalog slug)
 curl -X POST -H "Authorization: Bearer <key>" \
   -H "Content-Type: application/json" \
   https://seller.example.com/api/v1/quotes \
   -d '{
-    "product_id": "display",
+    "idempotency_key": "<idempotency_key>",
+    "product_id": "prod-3f2a9c81",
     "deal_type": "PG",
     "impressions": 1000000,
     "flight_start": "2026-04-01",
     "flight_end": "2026-04-30"
   }'
+# Response is a {"quote": {...}} envelope; take quote_id from quote.quote_id.
 
 # 2. Book the deal (using quote_id from step 1)
 curl -X POST -H "Authorization: Bearer <key>" \
   -H "Content-Type: application/json" \
   https://seller.example.com/api/v1/deals \
-  -d '{"quote_id": "qt-a1b2c3d4e5f6"}'
+  -d '{
+    "idempotency_key": "<idempotency_key>",
+    "quote_id": "qt-a1b2c3d4e5f6"
+  }'
 
 # 3. Create an order for tracking
 curl -X POST -H "Authorization: Bearer <key>" \
@@ -174,17 +182,21 @@ curl -X POST https://seller.example.com/sessions/{session_id}/close
 After a deal is booked, use order and change request endpoints:
 
 ```bash
-# Transition order through the lifecycle
-curl -X POST -H "Authorization: Bearer <key>" \
+# Transition order through the lifecycle — operator-only (state
+# transitions drive billing-relevant lifecycle); a buyer agent cannot
+# call this directly and must ask the seller operator to transition
+# the order. Shown here with an operator credential, not the buyer's key.
+curl -X POST -H "Authorization: Bearer <operator_api_key>" \
   -H "Content-Type: application/json" \
   https://seller.example.com/api/v1/orders/{order_id}/transition \
   -d '{"to_status": "submitted", "actor": "agent:buyer-001"}'
 
-# Request a modification
+# Request a modification (idempotency_key required since #64)
 curl -X POST -H "Authorization: Bearer <key>" \
   -H "Content-Type: application/json" \
   https://seller.example.com/api/v1/change-requests \
   -d '{
+    "idempotency_key": "<idempotency_key>",
     "order_id": "ORD-A1B2C3D4E5F6",
     "change_type": "flight_dates",
     "diffs": [{"field": "flight_start", "old_value": "2026-04-01", "new_value": "2026-04-05"}],

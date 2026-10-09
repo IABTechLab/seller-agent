@@ -8,6 +8,8 @@ Covers:
 - get_setup_status reports complete when identity + ad server + media kit configured
 - health_check returns healthy status
 - get_config returns non-secret config values
+- _media_kit_service builds a real MediaKitService (AI-12)
+- list_packages returns packages without crashing (AI-12)
 """
 
 import json
@@ -24,6 +26,8 @@ def _make_settings(**overrides):
         "seller_organization_id": "org-001",
         "gam_network_code": None,
         "freewheel_sh_mcp_url": None,
+        "csv_data_dir": "",
+        "s3_data_bucket": "",
         "ssp_connectors": "",
         "ssp_routing_rules": "",
         "ad_server_type": "google_ad_manager",
@@ -46,6 +50,33 @@ def _make_settings(**overrides):
     }
     defaults.update(overrides)
     return types.SimpleNamespace(**defaults)
+
+
+class TestAdServerConfigured:
+    """_ad_server_configured tests -- shared by get_setup_status and health_check."""
+
+    @pytest.mark.parametrize(
+        "overrides,expected",
+        [
+            ({"ad_server_type": "google_ad_manager", "gam_network_code": "12345"}, True),
+            ({"ad_server_type": "google_ad_manager", "gam_network_code": None}, False),
+            (
+                {"ad_server_type": "freewheel", "freewheel_sh_mcp_url": "https://shmcp.fw.com"},
+                True,
+            ),
+            ({"ad_server_type": "freewheel", "freewheel_sh_mcp_url": None}, False),
+            ({"ad_server_type": "csv", "csv_data_dir": "./data/csv/samples/ctv_streaming"}, True),
+            ({"ad_server_type": "csv", "csv_data_dir": ""}, False),
+            ({"ad_server_type": "s3", "s3_data_bucket": "my-bucket"}, True),
+            ({"ad_server_type": "s3", "s3_data_bucket": ""}, False),
+            ({"ad_server_type": "unknown_future_type"}, False),
+        ],
+    )
+    def test_ad_server_configured(self, overrides, expected):
+        from ad_seller.interfaces.mcp_server import _ad_server_configured
+
+        settings = _make_settings(**overrides)
+        assert _ad_server_configured(settings) is expected
 
 
 class TestGetSetupStatus:
@@ -112,6 +143,101 @@ class TestGetSetupStatus:
         assert result["setup_complete"] is True
         assert "fully configured" in result["message"].lower()
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"ad_server_type": "csv", "csv_data_dir": "./data/csv/samples/ctv_streaming"},
+            {"ad_server_type": "s3", "s3_data_bucket": "my-inventory-bucket"},
+        ],
+    )
+    async def test_ad_server_configured_for_non_gam_freewheel_adapters(self, overrides):
+        from ad_seller.interfaces.mcp_server import get_setup_status
+
+        settings = _make_settings(**overrides)
+        storage = AsyncMock()
+
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+        ):
+            result = json.loads(await get_setup_status())
+
+        assert result["ad_server"]["configured"] is True
+        assert result["ad_server"]["type"] == overrides["ad_server_type"]
+
+    @pytest.mark.asyncio
+    async def test_ad_server_not_configured_for_csv_without_data_dir(self):
+        from ad_seller.interfaces.mcp_server import get_setup_status
+
+        settings = _make_settings(ad_server_type="csv", csv_data_dir="")
+        storage = AsyncMock()
+
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+        ):
+            result = json.loads(await get_setup_status())
+
+        assert result["ad_server"]["configured"] is False
+
+
+class TestMediaKitServiceHelper:
+    """_media_kit_service builds a real MediaKitService (AI-12 regression).
+
+    ``MediaKitService`` takes ``storage``/``pricing_engine`` positionally;
+    both call sites used to construct it with no arguments at all
+    (``MediaKitService()``), which raises ``TypeError`` unconditionally.
+    Unlike test_complete_when_fully_configured above (which patches out
+    the whole media_kit_service module and so cannot see a constructor
+    mismatch), this exercises the real constructor.
+    """
+
+    @pytest.mark.asyncio
+    async def test_builds_a_real_media_kit_service(self):
+        from ad_seller.engines.media_kit_service import MediaKitService
+        from ad_seller.interfaces.mcp_server import _media_kit_service
+
+        storage = AsyncMock()
+
+        with patch(
+            "ad_seller.interfaces.mcp_server._get_storage",
+            new_callable=AsyncMock,
+            return_value=storage,
+        ):
+            service = await _media_kit_service()
+
+        assert isinstance(service, MediaKitService)
+        assert service._storage is storage
+
+
+class TestListPackages:
+    """list_packages tool (AI-12: crashed with MediaKitService() taking no args)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_packages_without_crashing(self):
+        from ad_seller.interfaces.mcp_server import list_packages
+
+        storage = AsyncMock()
+        storage.list_packages.return_value = []
+
+        with patch(
+            "ad_seller.interfaces.mcp_server._get_storage",
+            new_callable=AsyncMock,
+            return_value=storage,
+        ):
+            result = json.loads(await list_packages())
+
+        assert result == {"packages": [], "count": 0}
+
 
 class TestHealthCheck:
     """health_check tool tests."""
@@ -154,6 +280,56 @@ class TestHealthCheck:
 
         assert result["status"] == "degraded"
         assert "error" in result["checks"]["storage"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"ad_server_type": "csv", "csv_data_dir": "./data/csv/samples/ctv_streaming"},
+            {"ad_server_type": "s3", "s3_data_bucket": "my-inventory-bucket"},
+        ],
+    )
+    async def test_ad_server_configured_for_non_gam_freewheel_adapters(self, overrides):
+        from ad_seller.interfaces.mcp_server import health_check
+
+        settings = _make_settings(**overrides)
+        storage = AsyncMock()
+        mock_client = MagicMock()
+
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+            patch(
+                "ad_seller.clients.ad_server_base.get_ad_server_client",
+                return_value=mock_client,
+            ),
+        ):
+            result = json.loads(await health_check())
+
+        assert result["checks"]["ad_server"] == f"configured ({overrides['ad_server_type']})"
+
+    @pytest.mark.asyncio
+    async def test_ad_server_not_configured_for_s3_without_bucket(self):
+        from ad_seller.interfaces.mcp_server import health_check
+
+        settings = _make_settings(ad_server_type="s3", s3_data_bucket="")
+        storage = AsyncMock()
+
+        with (
+            patch("ad_seller.interfaces.mcp_server._get_settings", return_value=settings),
+            patch(
+                "ad_seller.interfaces.mcp_server._get_storage",
+                new_callable=AsyncMock,
+                return_value=storage,
+            ),
+        ):
+            result = json.loads(await health_check())
+
+        assert result["checks"]["ad_server"] == "not configured"
 
 
 class TestGetConfig:
@@ -511,3 +687,85 @@ class TestListConfigurableFlows:
         for section in ["approval_gates", "guard_conditions", "event_flows"]:
             assert section in result, f"Missing section: {section}"
             assert "configurable" in result[section], f"No configurable hint in {section}"
+
+
+# =============================================================================
+# AI-11: create_order MCP tool
+# =============================================================================
+
+
+class TestCreateOrder:
+    """create_order tool tests (AI-11: no MCP equivalent of POST /api/v1/orders
+    previously existed, so an MCP-only flow could book a deal but had no way
+    to turn it into an order)."""
+
+    @pytest.mark.asyncio
+    async def test_creates_and_persists_an_order(self):
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(deal_id="DEMO-ABC123", quote_id="qt-xyz789"))
+
+        assert result["order_id"].startswith("ORD-")
+        assert result["deal_id"] == "DEMO-ABC123"
+        assert result["quote_id"] == "qt-xyz789"
+        storage.set_order.assert_awaited_once()
+        persisted_id, persisted_data = storage.set_order.await_args.args
+        assert persisted_id == result["order_id"]
+        assert persisted_data["deal_id"] == "DEMO-ABC123"
+
+    @pytest.mark.asyncio
+    async def test_metadata_json_string_is_parsed(self):
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(metadata='{"campaign": "spring-2026"}'))
+
+        assert result["metadata"] == {"campaign": "spring-2026"}
+
+    @pytest.mark.asyncio
+    async def test_non_dict_metadata_is_rejected_not_stored(self):
+        """A bare JSON string/array parses fine but isn't a dict. REST types
+        metadata as Optional[dict]; left unchecked here, this would be
+        stored as-is and only surface later as an uncaught AttributeError
+        in apply_change_request's order_meta.update(proposed) — a 500 with
+        no repair path. Must be rejected here instead, never reach storage."""
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(metadata='"spring"'))
+
+        assert result["detail"]["error"] == "invalid_metadata"
+        storage.set_order.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_dict_metadata_array_is_also_rejected(self):
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order(metadata="[1, 2, 3]"))
+
+        assert result["detail"]["error"] == "invalid_metadata"
+        storage.set_order.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_works_with_no_arguments(self):
+        """deal_id/quote_id are optional -- an order can be created bare."""
+        from ad_seller.interfaces.mcp_server import create_order
+
+        storage = AsyncMock()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = json.loads(await create_order())
+
+        assert result["order_id"].startswith("ORD-")
+        assert result["deal_id"] == ""
+        assert result["quote_id"] is None

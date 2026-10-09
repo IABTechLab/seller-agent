@@ -7,6 +7,7 @@ Connects to the IAB Tech Lab agentic-direct server which implements
 OpenDirect 2.1 specification via MCP (Model Context Protocol).
 """
 
+import asyncio
 from typing import Any, Optional
 
 import httpx
@@ -40,6 +41,13 @@ class OpenDirect21Client:
         self._session: Optional[Any] = None
         self._tools: dict[str, Any] = {}
 
+        # The MCP session is held open by a dedicated background task --
+        # see connect()/_run_mcp_session() for why.
+        self._session_task: Optional[asyncio.Task] = None
+        self._session_ready: Optional[asyncio.Event] = None
+        self._session_done: Optional[asyncio.Event] = None
+        self._session_error: Optional[BaseException] = None
+
     async def __aenter__(self) -> "OpenDirect21Client":
         """Async context manager entry."""
         await self.connect()
@@ -66,29 +74,79 @@ class OpenDirect21Client:
             timeout=30.0,
         )
 
-        # Try MCP connection
+        # The MCP session runs entirely inside one background task: the
+        # streamablehttp_client/ClientSession context managers are entered
+        # AND exited within one unbroken `async with` block, in one task,
+        # start to finish -- the task just blocks on _session_done.wait()
+        # in between. This is deliberate, not incidental: splitting
+        # __aenter__/__aexit__ across separate connect()/disconnect() calls
+        # (the previous shape of this method) breaks anyio's same-task
+        # cancel-scope invariant the moment the connection attempt fails,
+        # and crashes with "Attempted to exit cancel scope in a different
+        # task than it was entered in" -- reproduced with a bare
+        # streamablehttp_client() call against an unreachable URL,
+        # independent of anything else this class does (issue #60 part 2).
+        # Mirrors the already-proven-safe pattern in deals_api_mcp_client.py.
+        self._session_ready = asyncio.Event()
+        self._session_done = asyncio.Event()
+        self._session_error = None
+        self._session_task = asyncio.create_task(self._run_mcp_session())
+        await self._session_ready.wait()
+        # self._session_error set means the MCP attempt failed (or was
+        # cancelled, in which case it was re-raised out of the background
+        # task already) -- self._session stays None and callers fall back
+        # to REST via _call_tool().
+
+    async def _run_mcp_session(self) -> None:
+        """Own the MCP session's full lifetime in this one task.
+
+        Runs until _session_done is set (normal disconnect()) or the
+        connection attempt itself fails, in which case _session_error is
+        recorded and _session_ready is released so connect() doesn't hang.
+        """
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamablehttp_client
+
+        assert self._session_ready is not None
+        assert self._session_done is not None
         try:
-            from mcp import ClientSession
-            from mcp.client.streamable_http import streamablehttp_client
-
-            transport = await streamablehttp_client(self.mcp_url).__aenter__()
-            read_stream, write_stream, _ = transport
-            self._session = ClientSession(read_stream, write_stream)
-            await self._session.__aenter__()
-            await self._session.initialize()
-
-            # Cache available tools
-            tools_result = await self._session.list_tools()
-            self._tools = {tool.name: tool for tool in tools_result.tools}
-        except Exception:
-            # MCP not available, fall back to REST
+            async with streamablehttp_client(self.mcp_url) as (read_stream, write_stream, _):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    tools_result = await session.list_tools()
+                    self._tools = {tool.name: tool for tool in tools_result.tools}
+                    self._session = session
+                    self._session_ready.set()
+                    await self._session_done.wait()
+        except BaseException as exc:
+            self._session_error = exc
+            if not self._session_ready.is_set():
+                self._session_ready.set()
+            # A cancellation means something upstream wants this task to
+            # stop; swallowing it here would hide that from the task's own
+            # cancellation machinery.
+            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                raise
+        finally:
             self._session = None
 
     async def disconnect(self) -> None:
         """Disconnect from the server."""
-        if self._session:
-            await self._session.__aexit__(None, None, None)
-            self._session = None
+        if self._session_task is not None:
+            if self._session_done is not None:
+                self._session_done.set()
+            try:
+                await asyncio.wait_for(self._session_task, timeout=5.0)
+            except (TimeoutError, asyncio.CancelledError):
+                self._session_task.cancel()
+                try:
+                    await self._session_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            except Exception:
+                pass
+            self._session_task = None
+        self._session = None
 
         if self._http_client:
             await self._http_client.aclose()

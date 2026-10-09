@@ -34,10 +34,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch). Same pattern used in test_endpoint_no_flow_kickoff.py.
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
@@ -129,9 +128,9 @@ def client(storage):
             yield httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
-def _catalog_product_ids(n: int = 2) -> list[str]:
+async def _catalog_product_ids(n: int = 2) -> list[str]:
     """Return the first n product ids from the static catalog (as served by GET /products)."""
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
     ids = list(catalog["products"].keys())
     assert len(ids) >= n, "static catalog unexpectedly small"
     return ids[:n]
@@ -199,7 +198,7 @@ class TestCreatePackageResolution:
         assert "prod-nope-2" in detail["message"]
 
     async def test_partial_resolution_returns_warning_and_unresolved_ids(self, client):
-        good_id = _catalog_product_ids(1)[0]
+        good_id = (await _catalog_product_ids(1))[0]
         async with client as c:
             resp = await c.post(
                 "/packages",
@@ -279,7 +278,7 @@ class TestAssemblePackageResolution:
         assert "prod-nope-1" in detail["message"]
 
     async def test_partial_resolution_reports_unresolved_ids(self, client):
-        good_id = _catalog_product_ids(1)[0]
+        good_id = (await _catalog_product_ids(1))[0]
         async with client as c:
             resp = await c.post(
                 "/packages/assemble",
@@ -317,6 +316,7 @@ def _flow_settings(**overrides) -> SimpleNamespace:
         "ad_server_type": "none",
         "seller_organization_id": "test-seller-org",
         "seller_organization_name": "Test Seller",
+        "default_price_floor_cpm": 5.0,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)

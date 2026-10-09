@@ -4,14 +4,42 @@
 """Pytest configuration and fixtures for Ad Seller System tests."""
 
 import os
+import shutil
 import sys
+import tempfile
 
-import pytest
+# --- Per-run throwaway database (must run before any ad_seller import) ------
+#
+# Tests that exercise the API routers reach real persistence through
+# ``ad_seller.storage.factory.get_storage``, which resolves its path from
+# ``Settings.database_url`` -- i.e. from ``DATABASE_URL`` or the developer's
+# ``.env``. Left alone, the suite writes a SQLite file into the working tree
+# and then *reuses* it on the next run, so state written by run N is visible
+# to run N+1. That is not hypothetical: the idempotency short-circuit on
+# POST /api/v1/negotiations/messages replays the cached response for an
+# already-seen key, so the second run of the suite never reaches the mocked
+# ``counter_proposal`` and fails on a ``None`` ``await_args``. CI never sees
+# it because every job starts from a clean checkout.
+#
+# Pointing the whole run at a fresh temporary directory makes the isolation
+# structural: no test has to remember to pick a unique key, and nothing is
+# left in the working tree to leak into the next run. The directory is
+# removed in ``pytest_unconfigure``.
+#
+# This is deliberately module-level rather than a fixture: ``get_settings``
+# is an ``lru_cache`` singleton and ``ad_seller.config.settings`` resolves
+# its ``.env`` path at import time, so the override has to be in place
+# before the first ``ad_seller`` import below.
+_TEST_DB_DIR = tempfile.mkdtemp(prefix="ad-seller-tests-")
+os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(_TEST_DB_DIR, "ad_seller_test.db")
+os.environ["STORAGE_TYPE"] = "sqlite"
 
-from ad_seller.models.buyer_identity import BuyerContext, BuyerIdentity
-from ad_seller.models.core import DealType, PricingModel
-from ad_seller.models.flow_state import ProductDefinition
-from ad_seller.models.pricing_tiers import TieredPricingConfig
+import pytest  # noqa: E402
+
+from ad_seller.models.buyer_identity import BuyerContext, BuyerIdentity  # noqa: E402
+from ad_seller.models.core import DealType, PricingModel  # noqa: E402
+from ad_seller.models.flow_state import ProductDefinition  # noqa: E402
+from ad_seller.models.pricing_tiers import TieredPricingConfig  # noqa: E402
 
 _session_exit_status: int | None = None
 
@@ -23,7 +51,7 @@ def pytest_sessionfinish(session, exitstatus):
 
 
 def pytest_unconfigure(config):
-    """Hard-exit after pytest has finished all reporting.
+    """Remove the per-run database, then hard-exit after all reporting.
 
     Even with ``_telemetry_shim.py`` setting every documented opt-out env
     var at import time, transitive deps (chromadb/posthog/opentelemetry)
@@ -42,6 +70,10 @@ def pytest_unconfigure(config):
     case when output is redirected to a file or CI log), so both
     streams are flushed first.
     """
+    # Must happen before the hard exit below: ``os._exit`` skips ``atexit``,
+    # so a tempfile-registered cleanup would never run.
+    shutil.rmtree(_TEST_DB_DIR, ignore_errors=True)
+
     if _session_exit_status is not None:
         sys.stdout.flush()
         sys.stderr.flush()

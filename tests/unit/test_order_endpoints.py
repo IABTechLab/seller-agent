@@ -11,7 +11,6 @@ import pytest
 
 # Stub broken flow modules
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
@@ -158,6 +157,7 @@ class TestCreateOrder:
         stored = mock_storage._store[f"order:{order_id}"]
         assert stored["order_id"] == order_id
         assert stored["status"] == "draft"
+        assert stored["deal_id"] == ""
 
 
 # =============================================================================

@@ -47,12 +47,15 @@ def init(
 ):
     """Initialize the seller system and set up default products."""
     from ...services import catalog_service
+    from ...services.catalog_service import _run_blocking
 
     console.print(Panel("Initializing Ad Seller System...", title="Setup"))
 
     # Read the default catalog from the single cached service source (EP-3.2)
     # rather than spinning up ProductSetupFlow / an OpenDirect MCP session.
-    products = catalog_service.get_static_product_catalog()["products"]
+    # Bridged via _run_blocking since this Typer command is synchronous but
+    # the catalog accessor is async (applies inventory-type overrides).
+    products = _run_blocking(catalog_service.get_static_product_catalog())["products"]
 
     console.print(f"[green]✓[/green] Organization '{organization_name}' initialized")
     console.print(f"[green]✓[/green] Created {len(products)} default products")
@@ -79,8 +82,9 @@ def init(
 def catalog():
     """View the product catalog."""
     from ...services import catalog_service
+    from ...services.catalog_service import _run_blocking
 
-    products = catalog_service.get_static_product_catalog()["products"]
+    products = _run_blocking(catalog_service.get_static_product_catalog())["products"]
 
     table = Table(title="Product Catalog")
     table.add_column("ID", style="cyan")
@@ -115,9 +119,10 @@ def price(
     """Get pricing for a product based on buyer tier."""
     from ...models.buyer_identity import AccessTier, BuyerContext, BuyerIdentity
     from ...services import catalog_service, quote_service
+    from ...services.catalog_service import _run_blocking
 
     # Product from the single cached catalog source (EP-3.2)
-    products = catalog_service.get_static_product_catalog()["products"]
+    products = _run_blocking(catalog_service.get_static_product_catalog())["products"]
 
     product = products.get(product_id)
     if not product:
@@ -145,17 +150,21 @@ def price(
         is_authenticated=access_tier != AccessTier.PUBLIC,
     )
 
-    # Pricing via the SAME quote_service the REST /pricing route uses.
-    # Unpriced products (no base/floor CPM) surface the honest 422 as a
-    # readable CLI message rather than a traceback.
+    # Pricing via the SAME quote_service the REST /pricing route uses,
+    # which consults the operator rate card before catalog defaults
+    # (issue #69). Unpriced products (no base/floor CPM, and no matching
+    # rate card entry) surface the honest 422 as a readable CLI message
+    # rather than a traceback.
     from fastapi import HTTPException
 
     try:
-        pricing = quote_service.get_pricing(
-            product_id=product_id,
-            product=product,
-            buyer_context=context,
-            volume=volume,
+        pricing = asyncio.run(
+            quote_service.get_pricing(
+                product_id=product_id,
+                product=product,
+                buyer_context=context,
+                volume=volume,
+            )
         )
     except HTTPException as exc:
         console.print(f"[red]{exc.detail}[/red]")
@@ -302,6 +311,12 @@ def create_operator_key(
         "-e",
         help="Days until the key expires (default: never)",
     ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Print only the key, for scripting (e.g. KEY=$(... --quiet))",
+    ),
 ):
     """Mint an OPERATOR-role API key directly in storage (bootstrap).
 
@@ -334,6 +349,12 @@ def create_operator_key(
     except Exception as exc:
         console.print(f"[red]Failed to create operator key: {exc}[/red]")
         raise typer.Exit(1) from exc
+
+    if quiet is True:
+        # Bare key on stdout so callers can capture it without parsing panels.
+        # flush=True: command substitution makes stdout a pipe.
+        print(response.api_key, flush=True)
+        return
 
     console.print(Panel("Operator API key created", title="Bootstrap"))
     console.print(f"Key ID:  [cyan]{response.key_id}[/cyan]")

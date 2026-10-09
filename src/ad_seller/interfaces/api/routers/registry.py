@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from .... import __version__
 from .. import deps
 from ..schemas import DiscoverAgentRequest, UpdateTrustRequest
 
@@ -36,7 +37,7 @@ async def agent_card():
     # ProductSetupFlow per request (which hangs in OpenDirect MCP
     # session.initialize() — see `catalog_service` for context).
     try:
-        inventory_types = set(deps.get_product_catalog()["inventory_types"])
+        inventory_types = set((await deps.get_product_catalog())["inventory_types"])
     except Exception:
         inventory_types = {"display", "video", "ctv", "native", "mobile_app"}
 
@@ -48,7 +49,7 @@ async def agent_card():
             "proposal evaluation, multi-round negotiation, and deal execution."
         ),
         url=settings.seller_agent_url,
-        version="2.4.2",
+        version=__version__,
         provider=AgentProvider(
             name=settings.seller_organization_name,
             url=settings.seller_agent_url,

@@ -11,7 +11,6 @@ import pytest
 
 # Stub broken flow modules
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
@@ -172,6 +171,7 @@ class TestCreateChangeRequest:
             resp = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-minor-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "creative",
                     "reason": "Swap banner creative",
@@ -192,6 +192,7 @@ class TestCreateChangeRequest:
             resp = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-material-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "impressions",
                     "diffs": [{"field": "impressions", "old_value": 5000000, "new_value": 8000000}],
@@ -210,6 +211,7 @@ class TestCreateChangeRequest:
             resp = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-rollback-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "flight_dates",
                     "diffs": [
@@ -230,11 +232,36 @@ class TestCreateChangeRequest:
             resp = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-missing-order-1",
                     "order_id": "ORD-NOPE",
                     "change_type": "creative",
                 },
             )
         assert resp.status_code == 404
+
+    async def test_existing_order_with_null_deal_id_returns_structured_error(
+        self, client, mock_storage
+    ):
+        _seed_order(mock_storage)
+        mock_storage._store["order:ORD-TEST001"]["deal_id"] = None
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/change-requests",
+                json={
+                    "order_id": "ORD-TEST001",
+                    "change_type": "impressions",
+                    "reason": "Increase campaign reach",
+                    "idempotency_key": "idem-null-deal-1",
+                },
+            )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == {
+            "error": "deal_id_required",
+            "message": "Order 'ORD-TEST001' has no deal_id and cannot be changed.",
+        }
+        assert not any(key.startswith("change_request:") for key in mock_storage._store)
 
     async def test_invalid_change_type(self, client, mock_storage):
         _seed_order(mock_storage)
@@ -242,6 +269,7 @@ class TestCreateChangeRequest:
             resp = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-invalid-type-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "banana",
                 },
@@ -255,6 +283,7 @@ class TestCreateChangeRequest:
             resp = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-invalid-state-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "impressions",
                     "diffs": [{"field": "impressions", "new_value": 1000000}],
@@ -276,6 +305,7 @@ class TestCreateChangeRequest:
                 "/api/v1/change-requests",
                 json={
                     "order_id": "ORD-ORPHAN",
+                    "idempotency_key": "idem-orphan-deal-1",
                     "change_type": "impressions",
                     "diffs": [{"field": "impressions", "old_value": 5000000, "new_value": 8000000}],
                     "reason": "Increase campaign reach",
@@ -285,6 +315,109 @@ class TestCreateChangeRequest:
         assert resp.status_code == 404
         assert resp.json()["detail"]["error"] == "deal_not_found"
         assert not any(k.startswith("change_request:") for k in mock_storage._store)
+
+
+class TestChangeRequestIdempotency:
+    async def test_missing_idempotency_key_is_rejected(self, client):
+        resp = await client.post(
+            "/api/v1/change-requests",
+            json={"order_id": "ORD-TEST001", "change_type": "creative"},
+        )
+
+        assert resp.status_code == 422
+
+    async def test_identical_replay_returns_original_change_request(self, client, mock_storage):
+        _seed_order(mock_storage)
+        body = {
+            "idempotency_key": "idem-replay-1",
+            "order_id": "ORD-TEST001",
+            "change_type": "impressions",
+            "diffs": [{"field": "impressions", "old_value": 5_000_000, "new_value": 8_000_000}],
+            "reason": "Increase campaign reach",
+        }
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            first = await client.post("/api/v1/change-requests", json=body)
+            second = await client.post("/api/v1/change-requests", json=body)
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json() == second.json()
+        change_request_keys = [
+            key for key in mock_storage._store if key.startswith("change_request:")
+        ]
+        assert len(change_request_keys) == 1
+
+    async def test_reused_key_with_changed_payload_returns_conflict(self, client, mock_storage):
+        _seed_order(mock_storage)
+        body = {
+            "idempotency_key": "idem-conflict-1",
+            "order_id": "ORD-TEST001",
+            "change_type": "impressions",
+            "reason": "Initial request",
+        }
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            first = await client.post("/api/v1/change-requests", json=body)
+            second = await client.post(
+                "/api/v1/change-requests",
+                json={**body, "reason": "Materially different request"},
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 409
+        assert second.json()["detail"]["error"] == "idempotency_conflict"
+        change_request_keys = [
+            key for key in mock_storage._store if key.startswith("change_request:")
+        ]
+        assert len(change_request_keys) == 1
+
+    async def test_same_key_is_independent_across_orders(self, client, mock_storage):
+        _seed_order(mock_storage, order_id="ORD-A")
+        _seed_order(mock_storage, order_id="ORD-B")
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            first = await client.post(
+                "/api/v1/change-requests",
+                json={
+                    "idempotency_key": "idem-shared",
+                    "order_id": "ORD-A",
+                    "change_type": "creative",
+                },
+            )
+            second = await client.post(
+                "/api/v1/change-requests",
+                json={
+                    "idempotency_key": "idem-shared",
+                    "order_id": "ORD-B",
+                    "change_type": "creative",
+                },
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["change_request_id"] != second.json()["change_request_id"]
+
+    async def test_idempotency_record_uses_24_hour_ttl(self, client, mock_storage):
+        _seed_order(mock_storage)
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/change-requests",
+                json={
+                    "idempotency_key": "idem-ttl-1",
+                    "order_id": "ORD-TEST001",
+                    "change_type": "creative",
+                },
+            )
+
+        assert resp.status_code == 200
+        mock_storage.set.assert_any_await(
+            "idempotency:change-request:ORD-TEST001:idem-ttl-1",
+            {
+                "change_request_id": resp.json()["change_request_id"],
+                "payload_hash": mock_storage._store[
+                    "idempotency:change-request:ORD-TEST001:idem-ttl-1"
+                ]["payload_hash"],
+            },
+            ttl=86400,
+        )
 
 
 # =============================================================================
@@ -306,6 +439,7 @@ class TestListChangeRequests:
             await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-list-a",
                     "order_id": "ORD-A",
                     "change_type": "creative",
                 },
@@ -313,6 +447,7 @@ class TestListChangeRequests:
             await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-list-b",
                     "order_id": "ORD-B",
                     "change_type": "creative",
                 },
@@ -335,6 +470,7 @@ class TestGetChangeRequest:
             create_resp = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-retrieve-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "creative",
                 },
@@ -363,6 +499,7 @@ class TestReviewChangeRequest:
             cr = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-review-approve-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "impressions",
                     "diffs": [{"field": "impressions", "old_value": 5000000, "new_value": 8000000}],
@@ -389,6 +526,7 @@ class TestReviewChangeRequest:
             cr = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-review-reject-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "cancellation",
                     "reason": "Client wants out",
@@ -416,6 +554,7 @@ class TestReviewChangeRequest:
             cr = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-review-approved-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "creative",
                 },
@@ -439,6 +578,7 @@ class TestReviewChangeRequest:
             cr = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-review-invalid-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "impressions",
                     "diffs": [{"field": "impressions", "old_value": 5000000, "new_value": 8000000}],
@@ -469,6 +609,7 @@ class TestApplyChangeRequest:
             cr = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-apply-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "impressions",
                     "diffs": [{"field": "impressions", "old_value": 5000000, "new_value": 8000000}],
@@ -506,6 +647,7 @@ class TestApplyChangeRequest:
             cr = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-apply-unapproved-1",  # gitleaks:allow
                     "order_id": "ORD-TEST001",
                     "change_type": "impressions",
                     "diffs": [{"field": "impressions", "old_value": 5000000, "new_value": 8000000}],
@@ -537,6 +679,7 @@ class TestChangeRequestFlow:
             cr = await client.post(
                 "/api/v1/change-requests",
                 json={
+                    "idempotency_key": "idem-full-flow-1",
                     "order_id": "ORD-TEST001",
                     "change_type": "flight_dates",
                     "diffs": [

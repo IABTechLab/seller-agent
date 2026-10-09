@@ -738,8 +738,7 @@ class TestTrafficTools:
 class TestClassificationHelpers:
     """Tests for linear TV classification in product setup flow.
 
-    These test the static methods directly without importing the flow module
-    (which has a pre-existing broken import in discovery_inquiry_flow.py).
+    These test the static methods directly without importing the flow module.
     """
 
     def test_classify_ad_formats(self):

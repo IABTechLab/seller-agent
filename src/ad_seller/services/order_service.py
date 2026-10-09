@@ -64,7 +64,7 @@ async def create_order(
     machine = OrderStateMachine(order_id=order_id)
 
     order_data = machine.to_dict()
-    order_data["deal_id"] = deal_id
+    order_data["deal_id"] = deal_id or ""
     order_data["quote_id"] = quote_id
     order_data["created_at"] = datetime.utcnow().isoformat() + "Z"
     order_data["metadata"] = metadata or {}
@@ -354,19 +354,26 @@ async def create_change_request(request: Any) -> dict[str, Any]:
             },
         )
 
-    # A non-empty deal_id on the order must still resolve. Empty/None is
-    # allowed (orders may exist before a deal is attached).
-    deal_id = order.get("deal_id") or ""
-    if deal_id:
-        deal = await storage.get_deal(deal_id)
-        if not deal:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error": "deal_not_found",
-                    "message": f"Deal '{deal_id}' not found.",
-                },
-            )
+    deal_id = order.get("deal_id")
+    if not deal_id:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "deal_id_required",
+                "message": f"Order '{request.order_id}' has no deal_id and cannot be changed.",
+            },
+        )
+
+    # A non-empty deal_id on the order must still resolve.
+    deal = await storage.get_deal(deal_id)
+    if not deal:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "deal_not_found",
+                "message": f"Deal '{deal_id}' not found.",
+            },
+        )
 
     # Build diffs
     diffs = [
@@ -380,7 +387,7 @@ async def create_change_request(request: Any) -> dict[str, Any]:
     # Create the change request
     cr = ChangeRequest(
         order_id=request.order_id,
-        deal_id=order.get("deal_id", ""),
+        deal_id=deal_id,
         change_type=change_type,
         severity=severity,
         requested_by=request.requested_by,

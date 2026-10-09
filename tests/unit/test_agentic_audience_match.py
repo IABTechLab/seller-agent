@@ -22,7 +22,6 @@ import pytest
 
 # Stub broken flow modules before importing main, mirroring sibling tests.
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:

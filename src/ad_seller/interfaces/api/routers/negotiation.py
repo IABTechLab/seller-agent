@@ -23,7 +23,12 @@ from iab_agentic_primitives.protocol.negotiation import PRICED_ACTIONS
 from ....services import negotiation_service
 from .. import contract_mappers as cm
 from .. import deps
-from ..schemas import CounterOfferRequest, ProposalRequest, ProposalResponse
+from ..schemas import (
+    CounterOfferRequest,
+    NegotiationStatusResponse,
+    ProposalRequest,
+    ProposalResponse,
+)
 
 router = APIRouter()
 
@@ -35,7 +40,7 @@ async def submit_proposal(
 ):
     """Submit a proposal for review."""
     # Product data from the single cached catalog source (EP-3.3)
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
 
     # EP-5.2: verify the claimed tier against the agent registry and cap at
     # the verified ceiling (blocked agents 403; unverifiable claims floor).
@@ -84,9 +89,45 @@ async def counter_proposal(
     )
 
 
-@router.get("/proposals/{proposal_id}/negotiation", tags=["Negotiation"])
-async def get_negotiation_status(proposal_id: str):
-    """Get full negotiation history for a proposal."""
+@router.get(
+    "/proposals/{proposal_id}/negotiation",
+    response_model=NegotiationStatusResponse,
+    tags=["Negotiation"],
+)
+async def get_negotiation_status(
+    proposal_id: str,
+    api_key_record=Depends(deps._get_optional_api_key_record),
+):
+    """Get the negotiation status for a proposal.
+
+    Information disclosure fix: this route previously had NO auth
+    dependency and no ``response_model``, and answered with whatever the
+    service produced — which included the seller's ``strategy``,
+    ``base_price``, ``floor_price`` and ``limits.max_rounds``. Any caller
+    who knew or guessed a proposal id learned the seller's floor and its
+    remaining concession budget, the two things a negotiating seller must
+    never reveal. The service no longer projects those fields and
+    ``NegotiationStatusResponse`` pins the wire shape.
+
+    Auth now matches the sibling negotiation routes (``POST
+    /proposals/{proposal_id}/counter``, ``POST
+    /api/v1/negotiations/messages``): the caller's API key is resolved and
+    run through the EP-5.2 verified-buyer-context path. A GET carries no
+    body identity to self-assert, so an anonymous caller cannot be verified
+    as a party to the negotiation and is rejected with 401 rather than
+    handed another buyer's negotiation state.
+    """
+    buyer_context = await deps._verified_buyer_context(
+        endpoint="GET /proposals/{proposal_id}/negotiation",
+        api_key_record=api_key_record,
+    )
+    if not buyer_context.is_authenticated:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return await negotiation_service.get_negotiation_status(proposal_id)
 
 
@@ -135,8 +176,17 @@ async def post_negotiation_message(
 
     # The seller keys negotiations by proposal_id; negotiation_id doubles as
     # that key for continuation, and quote-led opens key off the quote_id
-    # (the service resolves the stored quote to its product).
-    proposal_id = message.proposal_id or message.negotiation_id or message.quote_id
+    # (the service resolves the stored quote to its product). Which of those
+    # is the key is resolved against the STORE rather than read off this
+    # message: taking `proposal_id or negotiation_id or quote_id` made the key
+    # depend on the ids a given message happened to carry, so a continuation
+    # leading with a different id resolved to a different record and silently
+    # restarted the negotiation.
+    proposal_id = await negotiation_service.resolve_negotiation_key(
+        proposal_id=message.proposal_id,
+        negotiation_id=message.negotiation_id,
+        quote_id=message.quote_id,
+    )
     if proposal_id is None:  # unreachable: the shared model requires one key
         raise HTTPException(
             status_code=400,
@@ -185,15 +235,21 @@ async def post_negotiation_message(
             proposal_id=proposal_id,
             buyer_price=buyer_price,
             buyer_context=buyer_context,
+            quote_id=message.quote_id,
         )
         response = cm.negotiation_round_to_response(result)
     else:
         # accept / reject — terminal moves off the recorded history; the
         # price engine is not run (it stays untouched). The move is
         # PERSISTED onto the stored negotiation so downstream booking sees
-        # the agreed state.
+        # the agreed state, and an accept indexes the negotiation by its
+        # quote so booking that quote can find the agreed price.
         status_data = await negotiation_service.apply_terminal_action(
-            proposal_id, message.action.value, buyer_price
+            proposal_id,
+            message.action.value,
+            buyer_price,
+            quote_id=message.quote_id,
+            buyer_context=buyer_context,
         )
         response = cm.terminal_round_response(status_data, message.action, buyer_price)
 

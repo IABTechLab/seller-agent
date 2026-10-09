@@ -32,11 +32,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch) before importing main, mirroring the pattern in
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 # test_quote_endpoints.py.
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:

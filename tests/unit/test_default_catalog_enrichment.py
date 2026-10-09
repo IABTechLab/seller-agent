@@ -24,10 +24,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch). Same pattern used across the unit test suite.
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
@@ -248,16 +247,17 @@ class TestEnrichedCatalogOnQuotePath:
 
         assert exc.value.status_code == 422
 
-    def test_pricing_for_unpriced_default_product_is_422(self):
+    async def test_pricing_for_unpriced_default_product_is_422(self, mock_storage):
         """POST /pricing's service path is honest too: 422, not a crash."""
         product = next(p for p in _fresh_products() if p.base_cpm is None and p.floor_cpm is None)
 
-        with pytest.raises(HTTPException) as exc:
-            quote_service.get_pricing(
-                product_id=product.product_id,
-                product=product,
-                buyer_context=self._context(),
-                volume=0,
-            )
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            with pytest.raises(HTTPException) as exc:
+                await quote_service.get_pricing(
+                    product_id=product.product_id,
+                    product=product,
+                    buyer_context=self._context(),
+                    volume=0,
+                )
 
         assert exc.value.status_code == 422

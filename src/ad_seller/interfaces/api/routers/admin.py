@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from .... import __version__
 from .. import deps
 from ..schemas import (
     CreateApiKeyRequest,
@@ -27,7 +28,7 @@ async def root():
     """API root."""
     return {
         "name": "Ad Seller System API",
-        "version": "2.4.2",
+        "version": __version__,
         "docs": "/docs",
     }
 
@@ -215,13 +216,13 @@ async def get_supply_chain():
     per IAB spec. Otherwise returns a default single-node chain.
     Also includes an OpenRTB-compatible schain object.
     """
-    from ....config import get_settings
+    from ....config import get_settings, seller_id_or_default
     from ....models.supply_chain import build_schain_from_sellers_json, load_sellers_json
 
     settings = get_settings()
     seller_domain = getattr(settings, "seller_domain", "demo-publisher.example.com")
     seller_name = getattr(settings, "seller_name", "Demo Publisher")
-    seller_id = getattr(settings, "seller_organization_id", "default")
+    seller_id = seller_id_or_default(settings)
     sellers_json_path = getattr(settings, "sellers_json_path", None)
 
     sellers_json = load_sellers_json(sellers_json_path)
@@ -297,8 +298,16 @@ async def get_supply_chain():
 async def get_rate_card():
     """Get the current rate card (base CPMs by inventory type).
 
-    The rate card drives floor pricing during inventory sync and
-    deal creation. Can be updated via PUT to reflect ad server rate cards.
+    Matching entries override the catalog product's base CPM as the
+    starting price for quotes, from-template bookings, and negotiation
+    anchors (floors still apply) — see ``rate_card_service`` (issue #69).
+    Can be updated via PUT to reflect ad server rate cards.
+
+    ``source: "defaults"`` means no rate card has ever been stored for
+    this seller — the entries below are generic reference values, not an
+    operator-configured card, and they do NOT drive pricing (a stored
+    entry has to match a product's inventory type to take effect).
+    ``source: "stored"`` is the operator's actual card.
     """
     from ....storage.factory import get_storage
 
@@ -306,7 +315,6 @@ async def get_rate_card():
     rate_card = await storage.get("rate_card:current")
 
     if not rate_card:
-        # Return default rate card
         return RateCardResponse(
             entries=[
                 RateCardEntry(inventory_type="display", base_cpm=12.0),
@@ -316,10 +324,15 @@ async def get_rate_card():
                 RateCardEntry(inventory_type="native", base_cpm=10.0),
                 RateCardEntry(inventory_type="audio", base_cpm=15.0),
             ],
-            updated_at="default",
+            updated_at=None,
+            source="defaults",
         )
 
-    return rate_card
+    return RateCardResponse(
+        entries=[RateCardEntry(**e) for e in rate_card.get("entries", [])],
+        updated_at=rate_card.get("updated_at"),
+        source="stored",
+    )
 
 
 @router.put("/api/v1/rate-card", tags=["Pricing"])
@@ -330,8 +343,11 @@ async def update_rate_card(
     """Update the rate card with current base CPMs from ad server.
 
     Publishers should update this when their ad server rate cards change.
-    The pricing engine uses these values as base prices before applying
-    tier discounts and volume adjustments.
+    An entry whose ``inventory_type`` matches a catalog product overrides
+    that product's base CPM as the starting price for quotes,
+    from-template bookings, and negotiation anchors — the product's floor
+    CPM still applies (issue #69; see ``rate_card_service``). Products
+    with no matching entry keep pricing from the catalog, unchanged.
     """
     from ....storage.factory import get_storage
 
@@ -344,7 +360,7 @@ async def update_rate_card(
     }
     await storage.set("rate_card:current", rate_card)
 
-    return RateCardResponse(entries=entries, updated_at=now)
+    return RateCardResponse(entries=entries, updated_at=now, source="stored")
 
 
 # =============================================================================

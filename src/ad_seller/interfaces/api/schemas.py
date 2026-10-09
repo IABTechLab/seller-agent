@@ -35,10 +35,11 @@ from iab_agentic_primitives.protocol import (
 from iab_agentic_primitives.protocol import (
     AvailsStatus as AvailsStatus,  # noqa: PLC0414 — explicit re-export
 )
+from iab_agentic_primitives.protocol import DealBookingResponse
 from iab_agentic_primitives.protocol import (
     ProductAvailsSearch as ProductAvailsSearch,  # noqa: PLC0414 — explicit re-export
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PricingRequest(BaseModel):
@@ -216,6 +217,68 @@ class CounterOfferRequest(BaseModel):
     agent_url: Optional[str] = None
 
 
+class NegotiationRoundView(BaseModel):
+    """A single negotiation round as the counterparty is allowed to see it.
+
+    A whitelist, NOT a dump of the internal ``NegotiationRound``. Two of the
+    internal round fields undo the very redaction ``NegotiationStatusResponse``
+    exists to enforce, so they are excluded here:
+
+    - ``concession_pct`` / ``cumulative_concession_pct``: the engine computes
+      the cumulative figure as ``(base_price - counter) / base_price``, so
+      ``seller_price / (1 - cumulative_concession_pct)`` reconstructs the
+      seller's ``base_price`` EXACTLY. Serializing it hands back the anchor
+      the top level just dropped.
+    - ``rationale``: on a below-floor offer the engine's rationale states the
+      floor price in prose ("Countering at the floor price $X CPM ...").
+
+    Excluding ``rationale`` here is boundary filtering on this read endpoint
+    only; whether the engine should put the floor in rationale text at all is
+    a separate, still-open decision.
+    """
+
+    round_number: int
+    buyer_price: float
+    seller_price: float
+    action: str
+    timestamp: Optional[str] = None
+
+
+class NegotiationStatusResponse(BaseModel):
+    """Buyer-facing negotiation status for ``GET /proposals/{id}/negotiation``.
+
+    Deliberately NOT a dump of the internal ``NegotiationHistory``. The
+    seller's ``strategy``, ``base_price``, ``floor_price`` and
+    ``NegotiationLimits`` (``max_rounds``) are internal guardrails and must
+    never cross the wire — the shared ``Negotiation`` primitive excludes all
+    four for exactly that reason. Pinning the wire shape here also keeps a
+    later addition to the service's history dict from silently re-leaking
+    them.
+
+    ``rounds`` is typed (``NegotiationRoundView``) rather than passed through
+    as raw dicts: the internal round dumps carry ``cumulative_concession_pct``
+    (which reconstructs ``base_price`` exactly) and ``rationale`` (which can
+    state the floor in prose). The service keeps projecting full rounds — its
+    internal consumer (``terminal_round_response``) needs them — and this
+    model drops the unsafe fields at the wire.
+    """
+
+    negotiation_id: str
+    proposal_id: str
+    # Projected by the service once quote-led negotiations record their
+    # quote id on the history; None until then. Declared here so the
+    # response model passes it through instead of silently stripping it.
+    quote_id: Optional[str] = None
+    product_id: str
+    buyer_tier: str
+    status: str
+    total_rounds: int
+    rounds: list[NegotiationRoundView] = []
+    started_at: str
+    completed_at: Optional[str] = None
+    package_id: Optional[str] = None
+
+
 class QuoteBuyerIdentityModel(BaseModel):
     """Buyer identity in a quote request."""
 
@@ -355,6 +418,7 @@ class FieldDiffModel(BaseModel):
 class CreateChangeRequestModel(BaseModel):
     """Request to create a change request for an order."""
 
+    idempotency_key: str = Field(min_length=1)
     order_id: str
     change_type: str
     diffs: list[FieldDiffModel] = []
@@ -403,6 +467,16 @@ class DealFromTemplateResponse(BaseModel):
     activation_instructions: dict[str, str]
     schain: Optional[dict[str, Any]] = None
     created_at: str
+
+
+class DealListResponse(BaseModel):
+    """Page of stored deals in the shared booking-response shape."""
+
+    deals: list[DealBookingResponse]
+    count: int
+    # deal_ids of stored rows that could not be mapped to the wire shape; a
+    # bad row is reported here instead of taking the whole list down.
+    skipped: list[str] = []
 
 
 class DealRejectionDetail(BaseModel):
@@ -511,17 +585,26 @@ class RateCardEntry(BaseModel):
     """Rate card entry mapping inventory type to base CPM."""
 
     inventory_type: str  # display, video, ctv, mobile_app, native, audio
-    base_cpm: float
+    base_cpm: float = Field(gt=0)  # a rate card entry can never price at or below zero
     currency: str = "USD"
     effective_date: Optional[str] = None
     notes: Optional[str] = None
 
 
 class RateCardResponse(BaseModel):
-    """Full rate card for the seller."""
+    """Full rate card for the seller.
+
+    ``source`` distinguishes an operator-stored rate card ("stored") from
+    the generic reference defaults returned when none has ever been set
+    ("defaults") — issue #69: the unset-state response used to return the
+    same shape as a real stored card with no way to tell them apart.
+    ``updated_at`` is ``None`` for the unset ("defaults") case; a stored
+    card always carries the ISO timestamp of its last PUT.
+    """
 
     entries: list[RateCardEntry]
-    updated_at: str
+    updated_at: Optional[str] = None
+    source: str = "stored"
 
 
 class DealPushRequest(BaseModel):

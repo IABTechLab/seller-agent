@@ -14,9 +14,11 @@ matches routes in registration order. In particular
 and handler behavior are otherwise unchanged.
 """
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from iab_agentic_primitives.primitives import DealStatus
 from iab_agentic_primitives.protocol import DealBookingRequest, DealBookingResponse
 
 from ....services import deal_service
@@ -32,6 +34,7 @@ from ..schemas import (
     DealDeprecationRequest,
     DealFromTemplateRequest,
     DealFromTemplateResponse,
+    DealListResponse,
     DealMigrationRequest,
     DealPerformanceResponse,
     DealPushRequest,
@@ -40,7 +43,15 @@ from ..schemas import (
     SSPDealDistributeRequest,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+# Ordered from lowest to highest privilege, mirroring the string values
+# ``BuyerContext.effective_tier`` / ``quote.buyer_tier`` carry on the wire.
+# Used by ``book_deal`` to confirm the authenticated caller's verified tier
+# is at least as high as the tier the referenced quote was priced at.
+_TIER_ORDER = ("public", "seat", "agency", "advertiser")
 
 
 @router.post("/deals", response_model=DealResponse, tags=["Deals"])
@@ -91,16 +102,63 @@ async def book_deal(
     side; matching entries are the cross-system anchor for dispute
     resolution.
 
+    **Authentication (security fix):** every other money-moving path
+    (quotes, proposals, negotiation, template booking) requires a verified
+    buyer via ``deps._verified_buyer_context``; this route was deliberately
+    skipped when that wave landed (July 2026, EP-5.2) because it books at
+    the already-capped quoted price -- price integrity was covered, but the
+    caller's identity was not. An OPTIONAL key was used only to scope the
+    idempotency namespace, so anyone who learned a ``quote_id`` could book
+    it at another buyer's negotiated tier pricing. A verified buyer is now
+    REQUIRED (401 if absent), and the caller must be the buyer the
+    referenced quote was priced for -- both by recorded identity (when the
+    quote's origin is on record via ``QuoteHistoryStore``) and by tier
+    (403 ``buyer_mismatch`` / ``buyer_tier_mismatch`` otherwise). A quote
+    priced at the PUBLIC tier (no identity asserted at quote time) has
+    nothing buyer-specific to steal, so any authenticated buyer may book it.
+
     **Idempotency (FD-12):** the request carries a required
     ``idempotency_key``. A replay with a key already used for an identical
     body returns the same Deal without minting a second one (no duplicate
     side effect); the same key reused with a different body is an
     ``idempotency_conflict`` (HTTP 409). The key is scoped per buyer
-    (FD-12) — API key identity takes priority over the self-asserted
-    ``buyer_identity`` body field, matching the priority order used to
-    resolve buyer identity elsewhere.
+    (FD-12) — the now-required API key identity takes priority, matching
+    the priority order used to resolve buyer identity elsewhere.
     """
     from ....storage.factory import get_storage
+    from ....storage.quote_history import QuoteHistoryStore
+
+    # Security fix: require a verified buyer. Run before anything else --
+    # same rationale as the other price-moving paths (see quotes.py): the
+    # verified identity scopes the idempotency key, and a replay must never
+    # short-circuit past this buyer's own verification.
+    if api_key_record is None:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "authentication_required",
+                "message": "API key required to book a deal.",
+            },
+        )
+
+    buyer_ident = request.buyer_identity
+    context = await deps._verified_buyer_context(
+        endpoint="POST /api/v1/deals",
+        buyer_tier=(
+            "advertiser"
+            if (buyer_ident and buyer_ident.advertiser_id)
+            else "agency"
+            if (buyer_ident and buyer_ident.agency_id)
+            else "seat"
+            if (buyer_ident and buyer_ident.seat_id)
+            else "public"
+        ),
+        agency_id=buyer_ident.agency_id if buyer_ident else None,
+        advertiser_id=buyer_ident.advertiser_id if buyer_ident else None,
+        seat_id=buyer_ident.seat_id if buyer_ident else None,
+        api_key_record=api_key_record,
+        agent_url=None,  # DealBookingRequest carries no agent_url field.
+    )
 
     internal_request = cm.deal_booking_request_to_internal(request)
 
@@ -108,15 +166,58 @@ async def book_deal(
     # response, no duplicate booking (FD-12). Kept at the wire edge so
     # deal_service stays untouched. Defensive against storage backends/
     # mocks that do not implement the generic get/set KV methods.
-    buyer_identity = (
-        api_key_record.identity if api_key_record is not None else request.buyer_identity
-    )
+    buyer_identity = api_key_record.identity
     buyer_scope = cm.idempotency_buyer_scope(buyer_identity)
     idem_storage_key = f"idempotency:deal:{buyer_scope}:{request.idempotency_key}"
     payload_hash = cm.request_payload_hash(
         request.model_dump(mode="json", exclude={"idempotency_key"})
     )
     storage = await get_storage()
+
+    # Ownership + tier verification: reject a valid-but-wrong buyer before
+    # the quote's lifecycle (expiry/status) even enters the picture. A
+    # quote_id that does not exist falls through unchanged to
+    # deal_service.book_deal's own 404 -- there is nothing to check
+    # ownership against.
+    quote = await storage.get_quote(request.quote_id)
+    if quote is not None:
+        try:
+            history_record = await QuoteHistoryStore(storage).get_quote(request.quote_id)
+        except Exception:
+            history_record = None
+        quoted_buyer_id = history_record.get("buyer_id") if history_record else None
+        # A PUBLIC-tier quote (buyer_id "public") asserted no identity at
+        # quote time -- nothing buyer-specific was priced, so there is no
+        # ownership to enforce; only the tier check below applies.
+        if (
+            quoted_buyer_id
+            and quoted_buyer_id != "public"
+            and quoted_buyer_id != context.get_pricing_key()
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "buyer_mismatch",
+                    "message": "This quote was issued to a different buyer.",
+                },
+            )
+
+        quoted_tier = quote.get("buyer_tier", "public")
+        caller_tier = context.effective_tier.value
+        if quoted_tier in _TIER_ORDER and caller_tier in _TIER_ORDER:
+            if _TIER_ORDER.index(caller_tier) < _TIER_ORDER.index(quoted_tier):
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "buyer_tier_mismatch",
+                        "message": (
+                            f"This quote was priced at the '{quoted_tier}' tier; "
+                            f"the authenticated buyer's verified tier is "
+                            f"'{caller_tier}'."
+                        ),
+                    },
+                )
+
     try:
         prior = await storage.get(idem_storage_key)
     except Exception:
@@ -187,6 +288,39 @@ async def agentic_audience_match(request: AgenticAudienceMatchRequest):
     return deal_service.match_agentic_audience(request.audience_ref)
 
 
+@router.get("/api/v1/deals", tags=["Deal Booking"], response_model=DealListResponse)
+async def list_deals(
+    status: DealStatus | None = None,
+    _operator=Depends(deps._require_operator_api_key_record),
+) -> DealListResponse:
+    """List stored deals, optionally filtered by wire status.
+
+    Operator-only: the list spans every buyer's deals. Buyers read their
+    own deal with ``GET /api/v1/deals/{deal_id}``.
+
+    ``status`` is the shared :class:`DealStatus` value the deal carries on
+    the wire (the same value ``GET /api/v1/deals/{deal_id}`` returns), so
+    the filter is applied after mapping each stored record to its
+    response shape.
+
+    Registered ahead of ``/api/v1/deals/{deal_id}``; the two paths differ in
+    length so there is no shadowing, but keeping literal routes together
+    with ``/export`` keeps the EP-8.4 ordering rule easy to audit.
+    """
+    deals: list[DealBookingResponse] = []
+    skipped: list[str] = []
+    for record in await deal_service.list_deals():
+        try:
+            deals.append(cm.internal_deal_to_response(record))
+        except Exception:
+            deal_id = str(record.get("deal_id"))
+            logger.warning("Skipping unserializable stored deal %s", deal_id, exc_info=True)
+            skipped.append(deal_id)
+    if status is not None:
+        deals = [d for d in deals if d.deal.status == status]
+    return DealListResponse(deals=deals, count=len(deals), skipped=skipped)
+
+
 @router.get("/api/v1/deals/export", tags=["Deal Booking"])
 async def export_deals(
     format: str = "generic",
@@ -252,7 +386,7 @@ async def create_deal_from_template(
         )
 
     # Product data from the single cached catalog source (EP-3.3)
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
 
     # Resolve buyer context from API key + body. EP-5.2: the tier is capped
     # at the registry-verified ceiling when an agent_url is presented (the
@@ -422,7 +556,7 @@ async def create_curated_deal(request: CuratedDealRequest):
     enriched with curator identity, fee, and targeting overlay.
     """
     # Product base price from the single cached catalog source (EP-3.3)
-    catalog = deps.get_product_catalog()
+    catalog = await deps.get_product_catalog()
     return await deal_service.create_curated_deal(request, catalog)
 
 

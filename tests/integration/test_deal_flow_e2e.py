@@ -7,9 +7,7 @@ Tests the key flow components with mocked external dependencies:
 - Approval gate integration
 """
 
-import importlib
-import sys
-
+import ad_seller.flows.deal_request_flow as deal_request_flow_module
 from ad_seller.models.buyer_identity import BuyerContext, BuyerIdentity
 from ad_seller.models.core import DealType, PricingModel
 from ad_seller.models.flow_state import (
@@ -17,46 +15,6 @@ from ad_seller.models.flow_state import (
 )
 
 from .conftest import InMemoryStorage, make_settings
-
-
-def _get_deal_request_flow_class():
-    """Import DealRequestFlow directly from its module, bypassing flows/__init__.py
-    which triggers discovery_inquiry_flow (broken with current crewai version)."""
-    mod_name = "ad_seller.flows.deal_request_flow"
-    if mod_name in sys.modules:
-        return sys.modules[mod_name].DealRequestFlow
-
-    # Ensure the parent package 'ad_seller.flows' exists in sys.modules
-    # as a stub so that find_spec / relative imports work, without
-    # executing the __init__.py that pulls in the broken module.
-    parent_name = "ad_seller.flows"
-    original_parent = sys.modules.get(parent_name)
-    installed_stub = False
-    if original_parent is None:
-        import types
-
-        import ad_seller  # noqa: F401
-
-        stub = types.ModuleType(parent_name)
-        stub.__path__ = [str(importlib.resources.files("ad_seller").joinpath("flows"))]
-        stub.__package__ = parent_name
-        sys.modules[parent_name] = stub
-        installed_stub = True
-
-    spec = importlib.util.find_spec(mod_name)
-    if spec is None:
-        raise ImportError(f"Cannot find {mod_name}")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[mod_name] = mod
-    spec.loader.exec_module(mod)
-
-    # Remove the stub so other tests that import ad_seller.flows get the real
-    # module (with ProductSetupFlow etc.) instead of a bare stub.
-    if installed_stub:
-        del sys.modules[parent_name]
-
-    return mod.DealRequestFlow
-
 
 # ============================================================================
 # Pricing Engine
@@ -139,7 +97,7 @@ class TestDealRequestFlowE2E:
 
     def _make_state(self, request_text, buyer_context=None, seller_org="INTEG"):
         """Create a DealRequestState manually and return (module, state)."""
-        mod = sys.modules["ad_seller.flows.deal_request_flow"]
+        mod = deal_request_flow_module
         state = mod.DealRequestState(
             flow_id="test-flow-001",
             flow_type="deal_request",
@@ -152,7 +110,6 @@ class TestDealRequestFlowE2E:
 
     async def _run_steps(self, request_text, buyer_context=None, seller_org="INTEG"):
         """Run the flow steps manually in sequence on a DealRequestState."""
-        _get_deal_request_flow_class()  # ensure module is loaded
         mod, state = self._make_state(request_text, buyer_context, seller_org)
 
         settings = make_settings(seller_organization_id=seller_org)

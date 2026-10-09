@@ -4,6 +4,216 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- MCP `create_order` tool (AI-11), mirroring `POST /api/v1/orders`. An
+  MCP-only flow could previously book and distribute a deal but had no
+  tool to turn it into an order, dead-ending at "distributed." `metadata`
+  is now rejected with `invalid_metadata` when the parsed JSON isn't an
+  object (matching REST, which types it `Optional[dict]`) — a bare
+  string or array previously parsed fine and was stored as-is, only
+  surfacing later as an uncaught `AttributeError` in
+  `apply_change_request`'s `order_meta.update(proposed)`, a 500 with no
+  way to repair the order.
+- `GET /api/v1/deals` lists stored deals (operator key; optional
+  wire-status filter; unserializable rows reported in `skipped`), and
+  `GET /api/v1/deals/export` now reads stored deals instead of an index
+  nothing wrote.
+- `deal.created` is now published from every booking path (quote,
+  template, curated, bulk, migration) with a `source` field; the event
+  is audit-class, so a bus failure falls back to the audit log and the
+  booking still succeeds.
+
+### Changed
+
+- Booking (POST /api/v1/deals) now requires a verified buyer key matching
+  the quote; the MCP deal-from-template tool is operator-gated. Previously
+  anonymous callers could book any quote.
+- The operator rate card now drives pricing: matching entries override
+  catalog base CPM for quotes, bookings, and negotiation anchors (floors
+  still apply); previously it was stored but never read (issue #69).
+- The proposal flow no longer kicks off the proposal-review crew when its
+  result could never be used: with a positive time budget below the new
+  `proposal_crew_min_budget_seconds` (default 120, env
+  `PROPOSAL_CREW_MIN_BUDGET`; 0 restores the previous always-run behavior),
+  the flow goes straight to the deterministic evaluation and logs one INFO
+  line. The crew was measured at ~646s against a 20s default budget, so
+  every default-config proposal burned 16-40 discarded LLM calls in an
+  orphaned worker thread (CrewAI has no cancellation API). Budget <= 0
+  still means "no bound" and always runs the crew; wire answers on the
+  timeout path are unchanged.
+- **A negotiated price now actually books.** Booking looked for an accepted
+  negotiation with `get_negotiation(quote_id)`, which only ever hit for a
+  quote-led negotiation, since that one happens to be stored under the quote
+  id. A proposal-led negotiation is stored under its `prop-` id, so the
+  lookup missed and the deal was booked at the seller's standard price with
+  the negotiation reported as successful. `NegotiationHistory` now retains
+  the `quote_id` that already arrived on `NegotiationMessage` and was being
+  dropped, an accepted negotiation indexes itself as
+  `negotiation_by_quote:{quote_id}`, and booking resolves through that index
+  (falling back to the direct read, so quote-led negotiations recorded before
+  the index existed are still honored). **Behavior change:** bookings that
+  silently ignored an accepted negotiation now honor it, so a booked
+  `final_cpm` can differ from the quoted one — it carries the agreed price
+  and says so in its rationale. An accepted negotiation carrying no agreed
+  price is now refused (`negotiation_price_unresolved`) rather than quietly
+  booked at the un-negotiated quoted price. Relatedly, the negotiation
+  storage key is now resolved against the store instead of being read off
+  whichever ids a given message happened to carry, so a continuation leading
+  with a different id continues the same negotiation rather than silently
+  restarting it at round one.
+
+### Fixed
+
+- MCP `list_packages` no longer crashes (AI-12). It constructed
+  `MediaKitService()` with no arguments, but the class requires
+  `storage`/`pricing_engine`, so every call raised `TypeError`
+  unconditionally. `get_setup_status` had the identical bug at its own
+  media-kit check, silently swallowed by a `try/except`, so setup status
+  always reported `media_kit.configured: false` regardless of the actual
+  package count. Both call sites now go through one `_media_kit_service()`
+  helper (mirrors `interfaces.api.deps`, matching how `_registry_service`
+  and `_api_key_service` already do this) instead of each re-instantiating
+  the service independently.
+- **Information disclosure:** `GET /proposals/{proposal_id}/negotiation`
+  no longer returns the seller's internal negotiation guardrails, and no
+  longer answers unauthenticated callers. The route previously had no auth
+  dependency and no response model, so any caller who knew or guessed a
+  proposal id received `strategy`, `base_price`, `floor_price` and
+  `max_rounds` — the seller's floor price and its remaining concession
+  budget. Operators running an earlier build should assume those values
+  were readable for every negotiation that existed on that build. The four
+  fields are now dropped from the service projection (so no consumer can
+  re-expose them), the response shape is pinned by
+  `NegotiationStatusResponse`, and the route resolves a verified buyer
+  context like its sibling negotiation routes, rejecting anonymous callers
+  with 401. The shared `Negotiation` primitive excludes the same four
+  fields deliberately. The `rounds` array is likewise typed
+  (`NegotiationRoundView`) rather than passed through as raw round dumps:
+  each internal round carries `cumulative_concession_pct`, from which
+  `seller_price / (1 - cumulative_concession_pct)` reconstructs
+  `base_price` exactly, and a `rationale` that can state the floor in
+  prose — both are excluded at the wire. Note that the response is now
+  authentication-scoped but not yet buyer-scoped: an authenticated buyer
+  can still read any proposal's negotiation, because the stored history
+  records no buyer identity to scope against.
+- Scheduled/manual inventory sync (`inventory_sync_scheduler._run_sync`,
+  `POST /packages/sync`) now actually persists what it fetches (AI-9,
+  AI-10) instead of discarding it after only counting items, by
+  delegating to `ProductSetupFlow.sync_from_ad_server`. Synced products
+  no longer fall back to a hardcoded `base_cpm`/`floor_cpm` of `10.0`
+  when an ad-server item carries no `floor_price_cpm` (AI-8) — both
+  fallback sites now read the operator's configured
+  `default_price_floor_cpm`, whose own default is `10.0`, matching the
+  literal it replaces (GAM/FreeWheel items never carry `raw`, so this
+  fallback fires for essentially all of their inventory; a lower
+  default would silently halve real prices and double the impressions
+  `check_avails` claims are available for a fixed budget).
+  Also fixed, found during review: a transient ad-server failure could
+  never silently delete the real synced package layer from the last
+  successful sync — `_finish_sync()`'s prune now only runs on a sync
+  that legitimately reflects the current world (nothing configured, or
+  a real fetch that actually succeeded), not on the mock-fallback path a
+  genuine outage used to take. `_run_sync`/`POST /packages/sync` report
+  `status: "error"` on such a failure instead of a false "success" that
+  left `get_sync_status` showing a healthy, up-to-date sync for a cycle
+  that changed nothing. The `status:ACTIVE` inventory filter, dropped
+  for GAM/FreeWheel when this path was rewritten to delegate to the
+  flow, is restored (archived ad units no longer sync into the live
+  media kit by default) — but not for CSV, whose `filter_str` is a
+  literal substring match against item names and would match zero rows.
+- `GET /products` and `GET /products/{id}` now apply a stored
+  inventory-type override (AI-14). `POST /products/{id}/inventory-type`
+  always round-tripped correctly through storage, but nothing on the
+  read side ever consulted it — both routes served exclusively from the
+  cached static catalog, so an applied override was invisible
+  everywhere. `catalog_service.apply_inventory_type_override` now
+  resolves it, swapping only `inventory_type` — every other declared
+  field (`supported_deal_types`, pricing, targeting) is left exactly as
+  the catalog declares it. An earlier version of this fix recomputed
+  `supported_deal_types` via `infer_deal_types(new_type)`; a maintainer
+  review caught that this mapping is the canonical default for products
+  built from an ad-server/CSV item, not this catalog's independently
+  hand-curated ones, so it could silently grant a deal type the seller
+  never offered. `GET /products` applies overrides via a new
+  batch-efficient helper (one storage probe, not one read per product).
+  Follow-up the same day: a broader review found the override reached
+  only 2 of roughly 15 catalog consumers — critically,
+  `quote_service.create_quote` still priced off the un-overridden type
+  via `rate_card_service.resolve_base_cpm`'s exact-match lookup, so a
+  buyer could see `ctv` on `GET /products` and be quoted the `display`
+  rate: a real mispricing, not just a display inconsistency. Fixed by
+  moving the override application inside
+  `catalog_service.get_static_product_catalog()` itself — the actual
+  lowest-common-ancestor every consumer (REST, MCP, CLI, chat,
+  negotiation, quote/pricing) already calls through — so every one of
+  them now sees the override with no further per-call-site wiring. The
+  catalog accessor is async now (needs storage to check for overrides);
+  the two genuinely-synchronous callers (3 CLI commands, the CrewAI
+  avails tool) bridge via the existing `_run_blocking()` helper.
+- Map internal deal status to the shared wire enum on read; deals
+  created via from-template, bulk, or curated paths no longer 500 on
+  GET (#73). Internal `confirmed` reads as `booked`, internal
+  `deprecated` (migrate/deprecate) reads as `cancelled`, and an
+  internal status with no wire translation now fails with an error
+  naming the status. Bulk-created deals also carry the quote's
+  deal type, product, pricing, and terms so the shared Deal primitive
+  can be built for them at all.
+- The API root (`GET /`) and the agent card
+  (`GET /.well-known/agent.json`) now report the package version from
+  `ad_seller.__version__` instead of a hardcoded literal, so a release
+  bump cannot leave a served surface advertising a stale version. Both
+  had repeated `"2.4.2"` and already survived two bumps unnoticed. A
+  regression test scans `src/` for the literal and fails if it appears
+  outside the top-level `__init__.py`.
+- The test suite now runs against a per-run temporary SQLite database
+  instead of whatever `DATABASE_URL` or a local `.env` points at, so runs
+  no longer share persisted state. Previously the suite wrote a database
+  into the working tree and reused it, which made the first run green and
+  every later run fail: the negotiation idempotency short-circuit replayed
+  the response cached by the earlier run, so the mocked `counter_proposal`
+  was never called and `test_self_asserted_advertiser_identity_is_floored`
+  raised on a `None` `await_args`. CI never caught it because every job
+  starts from a clean checkout.
+- **Information disclosure:** the chat interface and every counter-offer
+  no longer hand the buyer the seller's floor price. Two separate
+  surfaces were disclosing it. (1) On a negotiation reject, the chat
+  interface stated the floor outright in prose — "Our floor for this
+  inventory is $X CPM", formatted from the negotiation's `floor_price` —
+  so the seller told its counterparty its own floor mid-negotiation. The
+  reject is now a walk-away that discloses no number, and it no longer
+  interpolates the engine's reject rationale, whose max-rounds variant
+  read "Maximum N rounds reached" and published the concession budget.
+  (2) `counter_terms` carried `floor_price` (the product's `floor_cpm`)
+  and is returned to the buyer on **every** counter-offer, so the floor
+  crossed the wire on the normal negotiation path rather than on an
+  obscure read. That key is removed; `proposed_price`, `negotiation_id`
+  and the rest of the counter terms are unchanged. Operators running an
+  earlier build should assume their product floors were readable by any
+  buyer who received a counter-offer, and by any buyer who was rejected
+  in chat. A regression test asserts that neither path carries
+  `floor_price`, `base_price`, `strategy` or `max_rounds` as a field
+  name at any nesting depth, so a future addition of a guardrail to
+  either payload fails rather than shipping. (3) The prose leak on the
+  same class is closed with **two rationales**: the negotiation engine's
+  `rationale` used to state the floor, the strategy and the round budget
+  in a sentence (for example "Countering at the floor price $X CPM ...
+  (round 1/5)") which shipped to the buyer as `counter_terms["reason"]`,
+  in the chat counter/final-offer text, and on the REST negotiation
+  responses. The engine now also emits a deliberately constructed
+  `buyer_rationale` that explains the action without stating the
+  seller's price in prose (the structured `seller_price` carries the
+  number unlabeled) and without naming the floor, the strategy, the
+  concession budget or the round limit — and every outbound surface
+  sends only that one. The internal `rationale` is unchanged and stays
+  in logs and the stored negotiation history for audit. Engine pricing
+  arithmetic (concession math, floor clamping, gap-split, acceptance
+  conditions) is untouched.
+
+### Docs
+
+- Correct quote, booking, order, and change-request examples to the current shared wire contract (idempotency keys, Money pricing, envelope responses, auth roles).
+
 ## [2.4.2] — 2026-08-17
 
 ### Added

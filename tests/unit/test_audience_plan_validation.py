@@ -19,12 +19,12 @@ import asyncio
 import logging
 import sys
 from types import ModuleType
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 # Stub broken flow modules before importing other ad_seller bits.
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
@@ -37,6 +37,7 @@ for _mod_name in _broken_flows:
 import httpx  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
 
+from ad_seller.events.bus import InMemoryEventBus  # noqa: E402
 from ad_seller.flows.proposal_handling_flow import (  # noqa: E402
     ProposalHandlingFlow,
     ProposalState,
@@ -52,6 +53,7 @@ from ad_seller.models.audience_capabilities import (  # noqa: E402
     MaxRefsPerRole,
     TaxonomyLockHashes,
 )
+from ad_seller.models.buyer_identity import BuyerIdentity  # noqa: E402
 from ad_seller.models.flow_state import ExecutionStatus  # noqa: E402
 from ad_seller.models.media_kit import (  # noqa: E402
     Package,
@@ -433,7 +435,13 @@ def http_client():
 
     from datetime import datetime, timedelta
 
-    app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    # Booking now requires a verified buyer (security fix). The quote
+    # seeded below is buyer_tier="public", so any authenticated key
+    # satisfies both the auth gate and the tier-consistency check --
+    # these tests exercise audience-plan validation, not auth.
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
+        identity=BuyerIdentity(seat_id="seat-audplan-1")
+    )
     transport = ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://test")
     # Build a minimal in-memory storage for the deal-booking happy path.
@@ -448,6 +456,10 @@ def http_client():
             ),
             "get_deal": staticmethod(lambda did: _async_return(store.get(f"deal:{did}"))),
             "set_deal": staticmethod(lambda did, data: _async_set(store, f"deal:{did}", data)),
+            # Generic KV path: booking resolves a quote's negotiation through
+            # the negotiation_by_quote pointer before reading the record.
+            "get": staticmethod(lambda key: _async_return(store.get(key))),
+            "set": staticmethod(lambda key, value, ttl=None: _async_set(store, key, value)),
             # Booking consults negotiation state; none stored here.
             "get_negotiation": staticmethod(
                 lambda pid: _async_return(store.get(f"negotiation:{pid}"))
@@ -484,7 +496,11 @@ def http_client():
         "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat() + "Z",
         "created_at": datetime.utcnow().isoformat() + "Z",
     }
-    yield c, storage, quote_id
+    # deal.created is audit-class: without a bus, the booking falls back to
+    # writing data/audit_fallback.jsonl. Publish to an in-memory bus instead
+    # so the suite leaves no file behind (_FakeStorage has no ``set``).
+    with patch("ad_seller.events.bus.get_event_bus", AsyncMock(return_value=InMemoryEventBus())):
+        yield c, storage, quote_id
     app.dependency_overrides.clear()
 
 

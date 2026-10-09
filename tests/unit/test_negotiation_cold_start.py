@@ -25,7 +25,7 @@ while the buyer's re-quote-at-agreed-price workaround stays valid.
 import os
 import sys
 from datetime import datetime, timedelta
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,10 +35,9 @@ from fastapi import HTTPException
 # as test_modern_agentic_capabilities.py (no LLM call is ever made here).
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-for-unit-tests")
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch). Same pattern used in test_deal_booking_endpoints.py.
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
@@ -343,6 +342,13 @@ class TestSubmitProposalPersistence:
             patch(
                 "ad_seller.flows.proposal_handling_flow.create_proposal_review_crew",
                 return_value=crew,
+            ),
+            # budget 0 = unlimited: this test pins the CREW path, so the
+            # crew must actually run (the default 20s budget is below
+            # proposal_crew_min_budget_seconds and would skip it).
+            patch(
+                "ad_seller.flows.proposal_handling_flow.get_settings",
+                return_value=SimpleNamespace(proposal_flow_time_budget_seconds=0.0),
             ),
             patch(
                 "ad_seller.flows.proposal_handling_flow.emit_event",

@@ -124,9 +124,11 @@ async def _resume_proposal_flow(request, response):
 
     snapshot = request.flow_state_snapshot
 
-    # Re-hydrate state from snapshot
+    # Re-hydrate state from snapshot. CrewAI 1.15 made ``Flow.state`` a
+    # read-only property; assigning it raises AttributeError (HTTP 500).
+    # ``_state`` is the PrivateAttr the property reads.
     flow = ProposalHandlingFlow()
-    flow.state = ProposalState(**snapshot)
+    flow._state = ProposalState(**(snapshot or {}))
 
     # Apply the human decision
     if response.decision == "approve":

@@ -20,10 +20,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-# Stub broken flow modules (pre-existing @listen() bugs with CrewAI version
-# mismatch). Same pattern used in test_deal_booking_endpoints.py.
+# Stub execution_activation_flow (cancel-scope leak on ad-server
+# connection failure, unresolved -- issue #60 part 2).
 _broken_flows = [
-    "ad_seller.flows.discovery_inquiry_flow",
     "ad_seller.flows.execution_activation_flow",
 ]
 for _mod_name in _broken_flows:
@@ -127,11 +126,11 @@ class TestCatalogService:
         yield
         get_settings.cache_clear()
 
-    def test_catalog_is_cached_with_stable_product_ids(self):
+    async def test_catalog_is_cached_with_stable_product_ids(self):
         """Happy: repeated reads return the SAME catalog object and ids."""
         catalog_service.reset_catalog_cache()
-        first = catalog_service.get_static_product_catalog()
-        second = catalog_service.get_static_product_catalog()
+        first = await catalog_service.get_static_product_catalog()
+        second = await catalog_service.get_static_product_catalog()
 
         assert first is second
         assert len(first["products"]) == len(catalog_service.DEFAULT_PRODUCT_CONFIGS)
@@ -140,7 +139,7 @@ class TestCatalogService:
         }
         catalog_service.reset_catalog_cache()
 
-    def test_reset_preserves_stable_product_ids(self):
+    async def test_reset_preserves_stable_product_ids(self):
         """Ids are deterministic: a cache reset must NOT mint new ids.
 
         Contract change with the deterministic-id fix (issue #34): ids derive
@@ -149,9 +148,9 @@ class TestCatalogService:
         broke follow-up lookups for external integrators.
         """
         catalog_service.reset_catalog_cache()
-        ids_before = set(catalog_service.get_static_product_catalog()["products"])
+        ids_before = set((await catalog_service.get_static_product_catalog())["products"])
         catalog_service.reset_catalog_cache()
-        ids_after = set(catalog_service.get_static_product_catalog()["products"])
+        ids_after = set((await catalog_service.get_static_product_catalog())["products"])
 
         assert ids_before == ids_after
         catalog_service.reset_catalog_cache()
@@ -416,6 +415,75 @@ class TestApprovalService:
             with pytest.raises(HTTPException) as exc:
                 await approval_service.get_approval("apr-missing")
         assert exc.value.status_code == 404
+
+    async def test_resume_after_approve_applies_decision(self, mock_storage):
+        """Happy: resume after approve hydrates snapshot via _state, not flow.state."""
+        from ad_seller.events.models import ApprovalRequest, ApprovalResponse, ApprovalStatus
+
+        req = ApprovalRequest(
+            event_id="evt-1",
+            flow_id="flow-1",
+            flow_type="proposal_handling",
+            gate_name="proposal_decision",
+            proposal_id="prop-1",
+            status=ApprovalStatus.APPROVED,
+            flow_state_snapshot={
+                "proposal_id": "prop-1",
+                "flow_id": "flow-1",
+                "flow_type": "proposal_handling",
+            },
+        )
+        mock_storage._store[f"approval:{req.approval_id}"] = req.model_dump(mode="json")
+        mock_storage._store[f"approval_response:{req.approval_id}"] = ApprovalResponse(
+            approval_id=req.approval_id,
+            decision="approve",
+            decided_by="lab",
+        ).model_dump(mode="json")
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            result = await approval_service.resume_flow(req.approval_id)
+
+        assert result["proposal_id"] == "prop-1"
+        assert result["status"] == "accepted"
+        assert result["recommendation"] == "approve"
+        assert result["resumed_from_approval"] == req.approval_id
+
+    async def test_resume_after_reject_applies_decision(self, mock_storage):
+        """Happy: reject path also resumes without assigning the read-only property."""
+        from ad_seller.events.models import ApprovalRequest, ApprovalResponse, ApprovalStatus
+
+        req = ApprovalRequest(
+            event_id="evt-2",
+            flow_id="flow-2",
+            flow_type="proposal_handling",
+            gate_name="proposal_decision",
+            proposal_id="prop-2",
+            status=ApprovalStatus.REJECTED,
+            flow_state_snapshot={
+                "proposal_id": "prop-2",
+                "flow_id": "flow-2",
+                "flow_type": "proposal_handling",
+            },
+        )
+        mock_storage._store[f"approval:{req.approval_id}"] = req.model_dump(mode="json")
+        mock_storage._store[f"approval_response:{req.approval_id}"] = ApprovalResponse(
+            approval_id=req.approval_id,
+            decision="reject",
+            decided_by="lab",
+        ).model_dump(mode="json")
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            result = await approval_service.resume_flow(req.approval_id)
+
+        assert result["proposal_id"] == "prop-2"
+        assert result["status"] == "rejected"
+        assert result["recommendation"] == "reject"
 
 
 # =============================================================================

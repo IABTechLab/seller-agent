@@ -1,6 +1,6 @@
 # Orders
 
-Orders track the execution lifecycle of a deal. Each order has a formal state machine with 12 states and 20 allowed transitions. See [Order Lifecycle](../state-machines/order-lifecycle.md) for the full state diagram.
+Orders track the execution lifecycle of a deal. Each order has a formal state machine with 12 states and 21 allowed transitions. See [Order Lifecycle](../state-machines/order-lifecycle.md) for the full state diagram.
 
 ## Create an Order
 
@@ -66,7 +66,7 @@ curl http://localhost:8000/api/v1/orders/ORD-A1B2C3D4E5F6
 
 **POST** `/api/v1/orders/{order_id}/transition`
 
-Validates the transition against the state machine rules and records it in the audit log.
+Validates the transition against the state machine rules and records it in the audit log. Requires an **operator** credential — state transitions drive billing-relevant lifecycle (anonymous → 401, buyer key → 403).
 
 ### Request Body
 
@@ -83,6 +83,7 @@ Validates the transition against the state machine rules and records it in the a
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/orders/ORD-A1B2C3D4E5F6/transition \
+  -H "Authorization: Bearer <operator_api_key>" \
   -H "Content-Type: application/json" \
   -d '{
     "to_status": "submitted",

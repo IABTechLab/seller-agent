@@ -189,6 +189,65 @@ def match_agentic_audience(ref: dict[str, Any]) -> dict[str, Any]:
 # =============================================================================
 
 
+async def _emit_deal_created(deal_data: dict[str, Any], source: str) -> None:
+    """Publish ``deal.created`` for a deal just persisted by a booking path.
+
+    Call it after the path's last write (quote marked booked, replaced deal
+    deprecated), so a listener reading storage sees the finished state.
+
+    ``source`` names the path (``quote``, ``template``, ``curated``,
+    ``bulk``, ``migration``) so consumers of the event feed can tell how
+    the deal came to exist.
+    ``deal.created`` is audit-class (``AUDIT_EVENT_TYPES``): on bus failure
+    the event is written to the audit fallback file and the booking still
+    succeeds; if that write also fails the error propagates after the deal
+    is already persisted.
+    """
+    from ..events.helpers import emit_event
+    from ..events.models import EventType
+
+    product = deal_data.get("product") or {}
+    await emit_event(
+        event_type=EventType.DEAL_CREATED,
+        deal_id=deal_data.get("deal_id", ""),
+        payload={
+            "source": source,
+            "deal_type": deal_data.get("deal_type"),
+            "status": deal_data.get("status"),
+            "product_id": product.get("product_id") or deal_data.get("product_id"),
+            "quote_id": deal_data.get("quote_id"),
+        },
+    )
+
+
+async def _resolve_accepted_negotiation(storage: Any, quote_id: str) -> Optional[dict[str, Any]]:
+    """Return the ACCEPTED negotiation about ``quote_id``, or None.
+
+    ``DealBookingRequest`` carries only the quote id, so the quote is the only
+    handle the protocol offers for correlating a booking to a negotiation.
+    An accepted negotiation indexes itself under
+    ``negotiation_by_quote:{quote_id}`` (see
+    ``negotiation_service._persist_negotiation``); that pointer names the key
+    its record is stored under, whichever id the buyer led with.
+
+    The direct read by quote id is retained as a fallback: a quote-led
+    negotiation is itself stored under the quote id, and records written
+    before the index existed have no pointer.
+    """
+    from ..storage.base import negotiation_by_quote_key
+
+    negotiation = None
+    pointer = await storage.get(negotiation_by_quote_key(quote_id))
+    if isinstance(pointer, str) and pointer:
+        negotiation = await storage.get_negotiation(pointer)
+    if not negotiation:
+        negotiation = await storage.get_negotiation(quote_id)
+
+    if isinstance(negotiation, dict) and negotiation.get("status") == "accepted":
+        return negotiation
+    return None
+
+
 async def book_deal(request: Any) -> dict[str, Any]:
     """Book a deal from a previously issued quote (``DealBookingRequestModel``).
 
@@ -238,27 +297,51 @@ async def book_deal(request: Any) -> dict[str, Any]:
             },
         )
 
-    # Honor ACCEPTED negotiation state on this quote: a
-    # quote-led negotiation is keyed by the quote_id; when it concluded
-    # accepted, the booking strikes the AGREED price, not the stale quoted
-    # price. A re-quote at the agreed price (the buyer's historical
-    # workaround) carries no negotiation and books unchanged.
-    negotiation = await storage.get_negotiation(request.quote_id)
-    if negotiation and negotiation.get("status") == "accepted":
+    # Honor ACCEPTED negotiation state on this quote: when a negotiation about
+    # this quote concluded accepted, the booking strikes the AGREED price, not
+    # the stale quoted price. A quote with no accepted negotiation (including a
+    # re-quote at the agreed price, the buyer's historical workaround) books
+    # unchanged.
+    #
+    # Resolution goes through the quote index an accepted negotiation writes
+    # (`negotiation_by_quote:{quote_id}` -> the key its record is stored
+    # under). Passing the quote id straight to get_negotiation only ever
+    # worked for a QUOTE-LED negotiation, which happens to be stored under the
+    # quote id; a proposal-led one is stored under its `prop-` id, so the
+    # lookup missed every time and the agreed price was silently dropped. The
+    # direct read is kept as a fallback so quote-led negotiations recorded
+    # before this index existed are still honored.
+    negotiation = await _resolve_accepted_negotiation(storage, request.quote_id)
+    if negotiation:
         rounds = negotiation.get("rounds") or []
         agreed_cpm = rounds[-1].get("seller_price") if rounds else None
-        if agreed_cpm is not None:
-            quote = {
-                **quote,
-                "pricing": {
-                    **quote["pricing"],
-                    "final_cpm": agreed_cpm,
-                    "rationale": (
-                        f"{quote['pricing'].get('rationale', '')} | Negotiated to "
-                        f"${agreed_cpm:.2f} CPM ({negotiation.get('negotiation_id')})"
-                    ).strip(" |"),
+        if agreed_cpm is None:
+            # A negotiation that concluded accepted with no price is a corrupt
+            # record. Booking it at list price is the worst available outcome —
+            # it is exactly the silent overpayment this whole path exists to
+            # prevent — so refuse instead.
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "negotiation_price_unresolved",
+                    "message": (
+                        f"Negotiation '{negotiation.get('negotiation_id')}' for quote "
+                        f"'{request.quote_id}' is accepted but carries no agreed price. "
+                        "Refusing to book at the un-negotiated quoted price."
+                    ),
                 },
-            }
+            )
+        quote = {
+            **quote,
+            "pricing": {
+                **quote["pricing"],
+                "final_cpm": agreed_cpm,
+                "rationale": (
+                    f"{quote['pricing'].get('rationale', '')} | Negotiated to "
+                    f"${agreed_cpm:.2f} CPM ({negotiation.get('negotiation_id')})"
+                ).strip(" |"),
+            },
+        }
 
     # Pre-flight: if the buyer sent an audience_plan with this booking, validate
     # it against the seller's capability block. Per proposal §5.7 layer 3, any
@@ -341,6 +424,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
     # The snapshot fields land on the persisted record so
     # `honor_audience_plan_snapshot()` can read them at fulfillment time.
     await storage.set_deal(deal_id, deal_data)
+    await _emit_deal_created(deal_data, source="quote")
 
     return deal_data
 
@@ -516,8 +600,8 @@ async def create_deal_from_template(
     from ..storage.factory import get_storage
 
     deal_type_map = _quote_deal_type_map()
-    deal_type_str = request.deal_type.upper()
-    if deal_type_str not in deal_type_map:
+    deal_type_str = _normalize_deal_type_code(request.deal_type)
+    if deal_type_str is None:
         raise HTTPException(
             status_code=400,
             detail={
@@ -546,9 +630,12 @@ async def create_deal_from_template(
             },
         )
 
-    # Calculate price. Honest pricing: base_cpm falling back to floor_cpm;
-    # unpriced products are a 422, never a fabricated price.
-    from . import catalog_service
+    # Calculate price. Base price is the operator rate card's override
+    # when one is stored and matches this product's inventory type
+    # (issue #69), else honest catalog pricing: base_cpm falling back to
+    # floor_cpm; unpriced products with no matching rate card entry are
+    # still a 422, never a fabricated price.
+    from . import rate_card_service
 
     config = TieredPricingConfig(seller_organization_id="default")
     engine = PricingRulesEngine(config)
@@ -556,7 +643,7 @@ async def create_deal_from_template(
 
     decision = engine.calculate_price(
         product_id=request.product_id,
-        base_price=catalog_service.priceable_cpm(product),
+        base_price=await rate_card_service.resolve_base_cpm(product),
         buyer_context=buyer_context,
         deal_type=deal_type_enum,
         volume=request.impressions or 0,
@@ -612,6 +699,7 @@ async def create_deal_from_template(
 
     storage = await get_storage()
     await storage.set_deal(deal_id, deal_data)
+    await _emit_deal_created(deal_data, source="template")
 
     return deal_data
 
@@ -626,16 +714,37 @@ def _quote_deal_type_map():
     }
 
 
+_DEAL_TYPE_ALIASES: dict[str, str] = {
+    "PG": "PG",
+    "PROGRAMMATICGUARANTEED": "PG",
+    "PROGRAMMATIC_GUARANTEED": "PG",
+    "PD": "PD",
+    "PREFERREDDEAL": "PD",
+    "PREFERRED_DEAL": "PD",
+    "PA": "PA",
+    "PRIVATEAUCTION": "PA",
+    "PRIVATE_AUCTION": "PA",
+}
+
+
+def _normalize_deal_type_code(raw: str) -> Optional[str]:
+    """Map any accepted deal-type spelling to its canonical short code.
+
+    Returns ``None`` when ``raw`` matches none of the accepted spellings.
+    """
+    return _DEAL_TYPE_ALIASES.get(raw.upper())
+
+
 def _build_seller_schain() -> dict[str, Any]:
     """Build the seller-side schain object (sellers.json-backed or default)."""
-    from ..config import get_settings
+    from ..config import get_settings, seller_id_or_default
     from ..models.supply_chain import build_schain_from_sellers_json, load_sellers_json
 
     _settings = get_settings()
     _sellers_json_path = getattr(_settings, "sellers_json_path", None)
     _sellers_json = load_sellers_json(_sellers_json_path) if _sellers_json_path else None
     if _sellers_json:
-        _seller_id = getattr(_settings, "seller_organization_id", "default")
+        _seller_id = seller_id_or_default(_settings)
         schain_obj = build_schain_from_sellers_json(_sellers_json, _seller_id)
         return schain_obj.model_dump()
 
@@ -717,6 +826,14 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
                     "deal_id": deal_id,
                     "quote_id": op.quote_id,
                     "status": DealBookingStatus.CONFIRMED.value,
+                    # Carry the booked terms from the quote so the deal is
+                    # readable through GET /api/v1/deals/{deal_id} (the
+                    # shared Deal primitive requires deal_type; issue #73).
+                    "deal_type": quote.get("deal_type"),
+                    "product": quote.get("product", {}),
+                    "pricing": quote.get("pricing", {}),
+                    "terms": quote.get("terms", {}),
+                    "buyer_tier": quote.get("buyer_tier", "public"),
                     "created_at": now.isoformat() + "Z",
                     "notes": op.notes,
                 }
@@ -725,6 +842,7 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
                 # Mark quote as booked
                 quote["status"] = QuoteStatus.BOOKED.value
                 await storage.set_quote(op.quote_id, quote)
+                await _emit_deal_created(deal_data, source="bulk")
 
                 results.append(_result(i, "create", True, deal_id=deal_id))
 
@@ -791,23 +909,24 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
 # =============================================================================
 
 
-async def export_deals(format: str = "generic", status: Optional[str] = None) -> dict[str, Any]:
-    """Export deals in DSP-native format for platform connectors."""
+async def list_deals(status: Optional[str] = None) -> list[dict[str, Any]]:
+    """Return every stored deal, optionally filtered by status.
+
+    Both booking paths persist deals under ``deal:<id>``; the storage
+    backend enumerates them via ``list_deals()`` (a ``deal:*`` key scan).
+    """
     from ..storage.factory import get_storage
 
     storage = await get_storage()
+    deals = await storage.list_deals()
+    if status:
+        deals = [d for d in deals if d.get("status") == status]
+    return deals
 
-    # Collect all deals (scan deal:* keys)
-    all_deals = []
-    # Storage doesn't have a list_deals method, so we track deal IDs
-    deal_index = await storage.get("deal_index") or {"deal_ids": []}
 
-    for deal_id in deal_index.get("deal_ids", []):
-        deal = await storage.get_deal(deal_id)
-        if deal:
-            if status and deal.get("status") != status:
-                continue
-            all_deals.append(deal)
+async def export_deals(format: str = "generic", status: Optional[str] = None) -> dict[str, Any]:
+    """Export deals in DSP-native format for platform connectors."""
+    all_deals = await list_deals(status=status)
 
     if format == "ttd":
         # The Trade Desk format
@@ -1341,6 +1460,7 @@ async def create_curated_deal(request: Any, catalog: dict[str, Any]) -> dict[str
 
     storage = await get_storage()
     await storage.set_deal(deal_id, deal_data)
+    await _emit_deal_created(deal_data, source="curated")
 
     return {
         "deal_id": deal_id,
@@ -1438,6 +1558,7 @@ async def migrate_deal(deal_id: str, request: Any) -> dict[str, Any]:
     old_deal["deprecated_reason"] = request.reason or "Replaced by migration"
     old_deal["replacement_deal_id"] = new_deal_id
     await storage.set_deal(deal_id, old_deal)
+    await _emit_deal_created(new_deal, source="migration")
 
     return {
         "new_deal_id": new_deal_id,
