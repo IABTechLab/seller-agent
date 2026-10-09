@@ -305,7 +305,7 @@ class TestCreateChangeRequest:
                 "/api/v1/change-requests",
                 json={
                     "order_id": "ORD-ORPHAN",
-                    "idempotency_key": "idem-orphan-deal-1",
+                    "idempotency_key": "idem-orphan-deal-1",  # gitleaks:allow
                     "change_type": "impressions",
                     "diffs": [{"field": "impressions", "old_value": 5000000, "new_value": 8000000}],
                     "reason": "Increase campaign reach",
