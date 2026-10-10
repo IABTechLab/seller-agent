@@ -26,16 +26,41 @@
 
 set -euo pipefail
 
+# Load a gitignored .env at repo root if present, so local AWS credentials and
+# the Bedrock endpoint config below can be supplied without exporting them by
+# hand. .env is gitignored and must never be committed.
+_SCRIPT_DIR_EARLY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_REPO_ROOT_EARLY="$(cd "${_SCRIPT_DIR_EARLY}/../../.." && pwd)"
+if [[ -f "${_REPO_ROOT_EARLY}/.env" ]]; then
+  echo ">>> Loading environment from ${_REPO_ROOT_EARLY}/.env"
+  set -a
+  # shellcheck disable=SC1091
+  source "${_REPO_ROOT_EARLY}/.env"
+  set +a
+fi
+
 # ── Defaults ────────────────────────────────────────────────────────
 REGION="${AWS_REGION:-us-west-2}"
 AGENT_NAME="${AGENT_NAME:-}"
 AWS_PROFILE="${AWS_PROFILE:-}"
-LLM_MODEL="${DEFAULT_LLM_MODEL:-bedrock/us.amazon.nova-pro-v1:0}"
+# Default model: current-generation Claude on Bedrock via the Anthropic
+# Messages endpoint (see ANTHROPIC_* below). Replaces the retired Nova Pro.
+LLM_MODEL="${DEFAULT_LLM_MODEL:-us.anthropic.claude-sonnet-5}"
+MEMORY_MODEL="${MEMORY_LLM_MODEL:-us.anthropic.claude-haiku-4-5-20251001-v1:0}"
+# Bedrock's Anthropic-compatible (Messages API) base URL + API key. Setting
+# these routes Claude through CrewAI's native Anthropic provider against
+# Bedrock, so the Converse toolUse/toolResult sanitizer is not applied.
+ANTHROPIC_BASE_URL="${ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL:-https://bedrock-runtime.${REGION}.amazonaws.com/anthropic}"
+BEDROCK_API_KEY="${ANTHROPIC_COMPATIBLE_LLM_API_KEY:-${AWS_BEARER_TOKEN_BEDROCK:-}}"
 DO_TEST=false
 TEST_ONLY=false
 DO_CLEANUP=false
 PROMPT='{"prompt": "list products"}'
-DEPLOY_MODE="chat"
+# Default to deploying all protocol runtimes (HTTP + MCP + A2A) so a plain
+# deploy brings up every integration surface (UI/orchestration over HTTP, tool
+# consumers over MCP, agent-to-agent over A2A), matching the ECS "all protocols
+# up" ergonomics. Use --mode <single> or --protocols <list> to narrow it.
+DEPLOY_MODE="all"
 STORAGE_TYPE="sqlite"
 INVENTORY_TYPE="${AD_SERVER_TYPE:-csv}"
 ENVIRONMENT="${ENVIRONMENT:-staging}"
@@ -44,12 +69,13 @@ TEMPLATE_BUCKET="${TEMPLATE_BUCKET:-}"
 TEMPLATE_PREFIX="${TEMPLATE_PREFIX:-cloudformation}"
 
 # ── Valid modes ─────────────────────────────────────────────────────
-VALID_MODES="all mcp http crew chat"
+VALID_MODES="all mcp http crew chat a2a"
 
 # ── Parse arguments ─────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)       DEPLOY_MODE="$2"; shift 2 ;;
+    --protocols)  PROTOCOLS="$2"; shift 2 ;;
     --storage)    STORAGE_TYPE="$2"; shift 2 ;;
     --inventory)  INVENTORY_TYPE="$2"; shift 2 ;;
     --region)     REGION="$2"; shift 2 ;;
@@ -64,7 +90,9 @@ while [[ $# -gt 0 ]]; do
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
-  --mode MODE           Deployment mode: all|mcp|http|crew|chat (default: chat)
+  --mode MODE           Deployment mode: all|mcp|http|crew|chat|a2a (default: all)
+  --protocols LIST      Comma-list of protocol runtimes to deploy in one run
+                        (e.g. mcp,http,a2a). Takes precedence over --mode.
   --inventory SOURCE    Inventory data source: csv|s3|gam|freewheel (default: csv)
   --storage BACKEND     Deal/order persistence: sqlite|postgres (default: sqlite)
   --region REGION       AWS region (default: us-west-2)
@@ -76,11 +104,12 @@ Options:
   --prompt JSON         Custom invoke payload
 
 Modes:
-  all    Deploy both MCP and HTTP runtimes
-  mcp    Deploy MCP protocol runtime only (staging_aamp_seller_mcp)
-  http   Deploy HTTP protocol runtime only (staging_aamp_seller_http)
+  all    Deploy MCP, HTTP, and A2A runtimes
+  mcp    Deploy MCP protocol runtime only (aamp_seller_mcp)
+  http   Deploy HTTP protocol runtime only (aamp_seller_http)
   crew   Deploy HTTP runtime with ROUTING_MODE=crew default
   chat   Deploy HTTP runtime with ROUTING_MODE=chat default
+  a2a    Deploy inbound A2A JSON-RPC runtime (aamp_seller_a2a)
 
 Inventory (--inventory):
   csv        Local CSV files in data/csv/samples/ (default, no infra needed)
@@ -110,6 +139,17 @@ if ! echo "${VALID_MODES}" | grep -qw "${DEPLOY_MODE}"; then
   exit 1
 fi
 
+# ── Validate --protocols tokens up-front (before any deploy) ─────────
+VALID_PROTOCOLS="mcp http crew chat a2a"
+if [[ -n "${PROTOCOLS:-}" ]]; then
+  for _p in ${PROTOCOLS//,/ }; do
+    if ! echo "${VALID_PROTOCOLS}" | grep -qw "${_p}"; then
+      echo "ERROR: Unknown protocol '${_p}' in --protocols. Must be from: ${VALID_PROTOCOLS}" >&2
+      exit 1
+    fi
+  done
+fi
+
 # ── Validate inventory ──────────────────────────────────────────────
 if [[ "${INVENTORY_TYPE}" != "csv" && "${INVENTORY_TYPE}" != "s3" && "${INVENTORY_TYPE}" != "gam" && "${INVENTORY_TYPE}" != "freewheel" ]]; then
   echo "ERROR: Invalid inventory '${INVENTORY_TYPE}'. Must be: csv|s3|gam|freewheel" >&2
@@ -131,14 +171,25 @@ if [[ -n "${AGENT_NAME}" && "${DEPLOY_MODE}" == "all" ]]; then
   # --mode all with --name: append _mcp/_http suffixes to base name
   MCP_AGENT_NAME="${AGENT_NAME}_mcp"
   HTTP_AGENT_NAME="${AGENT_NAME}_http"
+  A2A_AGENT_NAME="${AGENT_NAME}_a2a"
 elif [[ -n "${AGENT_NAME}" ]]; then
   # Single mode with --name: use name directly for both (only one deploys)
   MCP_AGENT_NAME="${AGENT_NAME}"
   HTTP_AGENT_NAME="${AGENT_NAME}"
+  A2A_AGENT_NAME="${AGENT_NAME}"
 else
   # No --name: use defaults
-  MCP_AGENT_NAME="staging_aamp_seller_mcp"
-  HTTP_AGENT_NAME="staging_aamp_seller_http"
+  MCP_AGENT_NAME="aamp_seller_mcp"
+  HTTP_AGENT_NAME="aamp_seller_http"
+  A2A_AGENT_NAME="aamp_seller_a2a"
+fi
+
+# When --protocols is a comma list AND --name is set, always suffix per
+# protocol so the runtimes get distinct names (mirrors --mode all).
+if [[ -n "${PROTOCOLS:-}" && -n "${AGENT_NAME}" ]]; then
+  MCP_AGENT_NAME="${AGENT_NAME}_mcp"
+  HTTP_AGENT_NAME="${AGENT_NAME}_http"
+  A2A_AGENT_NAME="${AGENT_NAME}_a2a"
 fi
 
 if [[ -n "${AWS_PROFILE}" ]]; then
@@ -475,8 +526,13 @@ deploy_mcp_runtime() {
   # Build env var args — AGENTCORE_MODE tells main.py to run MCP server
   local env_args=(
     --env "AGENTCORE_MODE=mcp"
+    --env "PYTHONPATH=/app/src"
     --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
+    --env "MEMORY_LLM_MODEL=${MEMORY_MODEL}"
+    --env "ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL=${ANTHROPIC_BASE_URL}"
+    --env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}"
+    --env "PYTHONPATH=/app/src"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
     --env "CREW_MEMORY_ENABLED=true"
@@ -557,8 +613,13 @@ deploy_http_runtime() {
   # Build env var args — AGENTCORE_MODE tells main.py to run HTTP server
   local env_args=(
     --env "AGENTCORE_MODE=http"
+    --env "PYTHONPATH=/app/src"
     --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
+    --env "MEMORY_LLM_MODEL=${MEMORY_MODEL}"
+    --env "ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL=${ANTHROPIC_BASE_URL}"
+    --env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}"
+    --env "PYTHONPATH=/app/src"
     --env "ROUTING_MODE=${routing_mode}"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
@@ -593,6 +654,85 @@ deploy_http_runtime() {
   agentcore deploy "${env_args[@]}" --auto-update-on-conflict
 
   echo "✅ HTTP runtime deployed: ${agent_name}"
+}
+
+# -----------------------------------------------------------------------------
+# Deploy the A2A runtime (inbound agent-to-agent JSON-RPC server).
+#
+# AgentCore has no native A2A protocol value, so the A2A server deploys as a
+# plain HTTP-protocol runtime (-p HTTP) whose entrypoint is a2a_main.py and
+# whose AGENTCORE_MODE=a2a selects the A2A Starlette app in main.py.
+# -----------------------------------------------------------------------------
+deploy_a2a_runtime() {
+  local agent_name="${1:-${A2A_AGENT_NAME}}"
+  echo ""
+  echo "============================================="
+  echo "  Deploying A2A Runtime: ${agent_name}"
+  echo "============================================="
+
+  if ! command -v agentcore &>/dev/null; then
+    echo ">>> Installing agentcore CLI..."
+    pip install bedrock-agentcore-starter-toolkit==0.3.4
+  fi
+
+  echo ">>> Configuring A2A runtime..."
+  local configure_args=(
+    -e src/ad_seller/interfaces/agentcore/a2a_main.py
+    -n "${agent_name}"
+    -rf infra/aws/agentcore/requirements.txt
+    -p HTTP
+    -r "${REGION}"
+    --non-interactive
+    --deployment-type container
+  )
+  if [[ "${STORAGE_TYPE}" == "postgres" && -n "${VPC_SECURITY_GROUP}" ]]; then
+    configure_args+=(
+      --vpc
+      --subnets "${VPC_SUBNET_1},${VPC_SUBNET_2}"
+      --security-groups "${VPC_SECURITY_GROUP}"
+    )
+    echo "  VPC mode: SG=${VPC_SECURITY_GROUP}, Subnets=${VPC_SUBNET_1},${VPC_SUBNET_2}"
+  fi
+
+  agentcore configure "${configure_args[@]}"
+
+  local env_args=(
+    --env "AGENTCORE_MODE=a2a"
+    --env "PYTHONPATH=/app/src"
+    --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
+    --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
+    --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
+    --env "DATABASE_URL=sqlite:///:memory:"
+    --env "CREW_MEMORY_ENABLED=true"
+  )
+
+  if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
+    env_args+=(
+      --env "AD_SERVER_TYPE=s3"
+      --env "S3_DATA_BUCKET=${S3_DATA_BUCKET:-${STACK_PREFIX}-seller-data-${REGION}}"
+      --env "S3_DATA_PREFIX=${S3_DATA_PREFIX:-seller-data/}"
+      --env "STORAGE_TYPE=sqlite"
+    )
+  elif [[ "${STORAGE_TYPE}" == "postgres" ]]; then
+    env_args+=(
+      --env "AD_SERVER_TYPE=${INVENTORY_TYPE}"
+      --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
+      --env "STORAGE_TYPE=hybrid"
+      --env "DATABASE_URL=${DB_URL}"
+      --env "REDIS_URL=${REDIS_URL}"
+    )
+  else
+    env_args+=(
+      --env "AD_SERVER_TYPE=${INVENTORY_TYPE}"
+      --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
+      --env "STORAGE_TYPE=sqlite"
+    )
+  fi
+
+  echo ">>> Deploying A2A runtime..."
+  agentcore deploy "${env_args[@]}" --auto-update-on-conflict
+
+  echo "✅ A2A runtime deployed: ${agent_name}"
 }
 
 # =============================================================================
@@ -687,24 +827,47 @@ if [[ "${TEST_ONLY}" == "false" ]]; then
   fi
 
   # Mode dispatch
-  case "${DEPLOY_MODE}" in
-    all)
-      deploy_mcp_runtime
-      deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
-      ;;
-    mcp)
-      deploy_mcp_runtime
-      ;;
-    http)
-      deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
-      ;;
-    crew)
-      deploy_http_runtime "${HTTP_AGENT_NAME}" "crew"
-      ;;
-    chat)
-      deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
-      ;;
-  esac
+  #
+  # --protocols <comma-list> takes precedence over --mode and deploys each
+  # named protocol runtime in turn (e.g. --protocols mcp,http,a2a), matching
+  # the ECS "all protocols up" ergonomics. --mode stays for the single-runtime
+  # (and legacy "all" = mcp+http) path and remains the default.
+  if [[ -n "${PROTOCOLS:-}" ]]; then
+    echo "  Protocols  : ${PROTOCOLS}"
+    for _proto in ${PROTOCOLS//,/ }; do
+      case "${_proto}" in
+        mcp)  deploy_mcp_runtime ;;
+        http) deploy_http_runtime "${HTTP_AGENT_NAME}" "chat" ;;
+        crew) deploy_http_runtime "${HTTP_AGENT_NAME}" "crew" ;;
+        chat) deploy_http_runtime "${HTTP_AGENT_NAME}" "chat" ;;
+        a2a)  deploy_a2a_runtime "${A2A_AGENT_NAME}" ;;
+        *)    echo "ERROR: Unknown protocol '${_proto}' in --protocols" >&2; exit 1 ;;
+      esac
+    done
+  else
+    case "${DEPLOY_MODE}" in
+      all)
+        deploy_mcp_runtime
+        deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
+        deploy_a2a_runtime "${A2A_AGENT_NAME}"
+        ;;
+      mcp)
+        deploy_mcp_runtime
+        ;;
+      http)
+        deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
+        ;;
+      crew)
+        deploy_http_runtime "${HTTP_AGENT_NAME}" "crew"
+        ;;
+      chat)
+        deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
+        ;;
+      a2a)
+        deploy_a2a_runtime "${A2A_AGENT_NAME}"
+        ;;
+    esac
+  fi
 
   echo ""
   echo "✅ Deploy complete (mode=${DEPLOY_MODE}, storage=${STORAGE_TYPE})"

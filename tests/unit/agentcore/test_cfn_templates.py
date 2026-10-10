@@ -25,6 +25,7 @@ CFN_DIR = REPO_ROOT / "infra" / "aws" / "cloudformation"
 
 AGENTCORE_NETWORK = AGENTCORE_DIR / "agentcore-network.yaml"
 MAIN_AGENTCORE = AGENTCORE_DIR / "main-agentcore.yaml"
+AUTH_AGENTCORE = AGENTCORE_DIR / "auth-agentcore.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +286,76 @@ class TestExistingFilesUntouched:
 
     def test_main_yaml_exists(self):
         assert (CFN_DIR / "main.yaml").exists()
+
+
+# ===================================================================
+# auth-agentcore.yaml validation (enterprise-auth-gateway group 1)
+# ===================================================================
+
+
+class TestAuthAgentCoreTemplate:
+    """Validate the seller-owned Cognito auth stack (auth-agentcore.yaml).
+
+    The seller OWNS the shared Cognito pool; buyer references its outputs.
+    Validates: Requirements 2.1, 2.2, 2.3 (Cognito default IdP + outputs contract).
+    """
+
+    @pytest.fixture(autouse=True)
+    def load_template(self):
+        assert AUTH_AGENTCORE.exists(), f"Not found: {AUTH_AGENTCORE}"
+        self.template = load_cfn_template(AUTH_AGENTCORE)
+
+    def test_is_valid_yaml(self):
+        assert self.template is not None
+
+    def test_has_standard_sections(self):
+        for section in ("AWSTemplateFormatVersion", "Description", "Parameters",
+                        "Resources", "Outputs", "Conditions"):
+            assert section in self.template, f"Missing section: {section}"
+
+    # -- Cognito resources --
+    def test_has_user_pool(self):
+        resources = self.template["Resources"]
+        assert "SellerUserPool" in resources
+        assert resources["SellerUserPool"]["Type"] == "AWS::Cognito::UserPool"
+
+    def test_has_resource_server(self):
+        resources = self.template["Resources"]
+        assert "SellerResourceServer" in resources
+        assert (
+            resources["SellerResourceServer"]["Type"]
+            == "AWS::Cognito::UserPoolResourceServer"
+        )
+
+    def test_app_client_is_client_credentials(self):
+        client = self.template["Resources"]["SellerAppClient"]
+        assert client["Type"] == "AWS::Cognito::UserPoolClient"
+        props = client["Properties"]
+        assert props["GenerateSecret"] is True
+        assert "client_credentials" in props["AllowedOAuthFlows"]
+
+    def test_has_domain(self):
+        resources = self.template["Resources"]
+        assert "SellerUserPoolDomain" in resources
+        assert resources["SellerUserPoolDomain"]["Type"] == "AWS::Cognito::UserPoolDomain"
+
+    # -- BYO-IdP gating: every resource is conditioned on DeployCognitoPool --
+    def test_all_resources_condition_gated(self):
+        for name, res in self.template["Resources"].items():
+            assert res.get("Condition") == "DeployCognitoPool", (
+                f"{name} is not gated on DeployCognitoPool (BYO-IdP skip)"
+            )
+
+    # -- Outputs contract (task 1.2) --
+    def test_outputs_contract(self):
+        outputs = self.template["Outputs"]
+        for required in ("UserPoolId", "DiscoveryUrl", "AppClientId", "TokenEndpoint"):
+            assert required in outputs, f"Missing output: {required}"
+
+    def test_no_secret_output(self):
+        """The app-client secret must NEVER be a stack output."""
+        joined = " ".join(self.template["Outputs"].keys()).lower()
+        assert "secret" not in joined, "app-client secret must not be an output"
 
 
 # ===================================================================

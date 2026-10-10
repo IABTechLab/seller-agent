@@ -663,3 +663,81 @@ class TestAtomicWrites:
         rows = list(csv.DictReader(open(deals_csv, newline="", encoding="utf-8")))
         assert len(rows) == 1
         assert rows[0]["status"] == "paused"
+
+
+class TestRowTolerance:
+    """A single malformed row must not collapse the whole catalog.
+
+    Regression for the deployed failure where inventory.csv contained a row
+    with an empty required field: connect() raised, build_csv_product_catalog
+    swallowed it, and every read surface silently served the synthetic default
+    catalog (prod-<hash> ids) instead of the real inv-* ids. The loader now
+    mirrors S3CsvAdServerClient tolerance: default an empty status to ACTIVE
+    and skip (not fail) a row missing id/name.
+    """
+
+    async def test_empty_status_defaults_to_active(self, tmp_path: Path) -> None:
+        rows = [
+            {
+                "id": "inv-good",
+                "name": "Good Slot",
+                "parent_id": "",
+                "status": "",  # empty — must default, not fail
+                "sizes": "300x250",
+                "ad_formats": "banner",
+                "device_types": "1",
+                "inventory_type": "display",
+                "content_categories": "",
+                "floor_price_cpm": "10.00",
+                "currency": "USD",
+                "geo_targets": "US",
+                "description": "d",
+            }
+        ]
+        _make_minimal_inventory(tmp_path, rows)
+        c = CSVAdServerClient(data_dir=str(tmp_path))
+        async with c:  # must NOT raise
+            items = await c.list_inventory()
+        assert [i.id for i in items] == ["inv-good"]
+        assert items[0].status == "ACTIVE"
+
+    async def test_row_missing_name_is_skipped_not_fatal(self, tmp_path: Path) -> None:
+        rows = [
+            {
+                "id": "inv-good",
+                "name": "Good Slot",
+                "parent_id": "",
+                "status": "ACTIVE",
+                "sizes": "300x250",
+                "ad_formats": "banner",
+                "device_types": "1",
+                "inventory_type": "display",
+                "content_categories": "",
+                "floor_price_cpm": "10.00",
+                "currency": "USD",
+                "geo_targets": "US",
+                "description": "d",
+            },
+            {  # malformed: no name — must be skipped, not fatal
+                "id": "inv-bad",
+                "name": "",
+                "parent_id": "",
+                "status": "ACTIVE",
+                "sizes": "",
+                "ad_formats": "",
+                "device_types": "",
+                "inventory_type": "display",
+                "content_categories": "",
+                "floor_price_cpm": "",
+                "currency": "USD",
+                "geo_targets": "US",
+                "description": "d",
+            },
+        ]
+        _make_minimal_inventory(tmp_path, rows)
+        c = CSVAdServerClient(data_dir=str(tmp_path))
+        async with c:  # must NOT raise despite the bad row
+            items = await c.list_inventory()
+        ids = [i.id for i in items]
+        assert ids == ["inv-good"]  # good row kept, bad row skipped
+        assert "inv-bad" not in ids

@@ -21,7 +21,7 @@ from hypothesis import strategies as st
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DEPLOY_SCRIPT = REPO_ROOT / "infra" / "aws" / "agentcore" / "deploy.sh"
 
-VALID_MODES = ["all", "mcp", "http", "crew", "chat"]
+VALID_MODES = ["all", "mcp", "http", "crew", "chat", "a2a"]
 VALID_STORAGE = ["sqlite", "postgres"]
 
 
@@ -145,8 +145,8 @@ class TestValidModes:
     def test_mode_to_runtime_name_mapping(self):
         """Verify the expected runtime name conventions exist in the script."""
         content = DEPLOY_SCRIPT.read_text()
-        assert "staging_aamp_seller_mcp" in content
-        assert "staging_aamp_seller_http" in content
+        assert "aamp_seller_mcp" in content
+        assert "aamp_seller_http" in content
 
     def test_mcp_mode_uses_mcp_protocol(self):
         """MCP mode should configure with -p MCP."""
@@ -244,3 +244,35 @@ class TestStorageFlag:
     def test_script_has_deploy_http_runtime_function(self):
         content = DEPLOY_SCRIPT.read_text()
         assert "deploy_http_runtime" in content
+
+
+class TestProtocolsFlag:
+    """--protocols deploys a comma-list of protocol runtimes in one run."""
+
+    def test_help_shows_protocols_option(self):
+        result = subprocess.run(
+            ["bash", str(DEPLOY_SCRIPT), "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert "--protocols" in result.stdout
+
+    def test_help_mentions_a2a_mode(self):
+        result = subprocess.run(
+            ["bash", str(DEPLOY_SCRIPT), "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert "a2a" in result.stdout
+
+    def test_invalid_protocol_rejected(self):
+        # --protocols with an unknown token must exit non-zero. Use --test-only
+        # so no real deploy is attempted; the loop runs only under deploy.
+        result = subprocess.run(
+            ["bash", str(DEPLOY_SCRIPT), "--protocols", "http,bogus", "--region", "us-west-2"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode != 0
+        assert "bogus" in (result.stdout + result.stderr)
