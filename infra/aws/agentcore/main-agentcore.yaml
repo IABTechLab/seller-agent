@@ -86,7 +86,7 @@ Resources:
       - NetworkStack
       - StorageStack
     Properties:
-      TemplateURL: ./agentcore-network.yaml
+      TemplateURL: ./network-agentcore.yaml
       Parameters:
         Environment: !Ref Environment
         VpcId: !GetAtt NetworkStack.Outputs.VpcId
