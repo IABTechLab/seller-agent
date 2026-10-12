@@ -240,7 +240,7 @@ async def list_packages(
     audience_taxonomy_version: Optional[str] = None,
     api_key_record=Depends(deps._get_optional_api_key_record),
 ):
-    """List packages with tier-gated view.
+    """List packages with a public view unless a validated API key is present.
 
     Audience filter (proposal §5.7):
 
@@ -267,7 +267,7 @@ async def list_packages(
 
     service = await deps._get_media_kit_service()
 
-    if api_key_record is None and buyer_tier == "public":
+    if api_key_record is None:
         packages = await service.list_packages_public(
             layer=pkg_layer, audience_filter=audience_filter
         )
@@ -293,10 +293,10 @@ async def get_package(
     advertiser_id: Optional[str] = None,
     api_key_record=Depends(deps._get_optional_api_key_record),
 ):
-    """Get a single package with tier-gated view."""
+    """Get a public package view unless a validated API key is present."""
     service = await deps._get_media_kit_service()
 
-    if api_key_record is None and buyer_tier == "public":
+    if api_key_record is None:
         package = await service.get_package_public(package_id)
     else:
         context = deps._build_buyer_context(
