@@ -294,6 +294,9 @@ def _flow_settings(**overrides) -> SimpleNamespace:
         "ad_server_type": "none",
         "seller_organization_id": "test-seller-org",
         "seller_organization_name": "Test Seller",
+        # AI-8 added this to real Settings after this fixture was written;
+        # _estimate_base_cpm() reads it unconditionally.
+        "default_price_floor_cpm": 10.0,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)

@@ -25,7 +25,7 @@ while the buyer's re-quote-at-agreed-price workaround stays valid.
 import os
 import sys
 from datetime import datetime, timedelta
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -342,6 +342,13 @@ class TestSubmitProposalPersistence:
             patch(
                 "ad_seller.flows.proposal_handling_flow.create_proposal_review_crew",
                 return_value=crew,
+            ),
+            # budget 0 = unlimited: this test pins the CREW path, so the
+            # crew must actually run (the default 20s budget is below
+            # proposal_crew_min_budget_seconds and would skip it).
+            patch(
+                "ad_seller.flows.proposal_handling_flow.get_settings",
+                return_value=SimpleNamespace(proposal_flow_time_budget_seconds=0.0),
             ),
             patch(
                 "ad_seller.flows.proposal_handling_flow.emit_event",

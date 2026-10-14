@@ -174,10 +174,11 @@ from .schemas import *  # noqa: E402,F401,F403
 # patchable name, and endpoint code resolves the catalog through it at
 # call time (see deps.get_product_catalog).
 #
-# AI-6: this no longer CACHES the catalog itself — a synced ad server's
-# catalog must be read live from storage on every call (see
-# catalog_service.get_static_product_catalog), and caching the dict here
-# would silently pin it to whatever the first call happened to return.
+# This no longer CACHES the catalog itself — two reasons, both requiring a
+# live read on every call rather than a dict pinned to whatever the first
+# call returned: AI-6, a synced ad server's catalog must be read live from
+# storage (see catalog_service.get_static_product_catalog); the AI-14
+# follow-up, an inventory-type override must be reflected live too.
 # `_STATIC_PRODUCT_CATALOG` is kept only as the legacy test-reset signal:
 # setting it to None forces one `catalog_service.reset_catalog_cache()`
 # call, which existing test fixtures rely on for a deterministic rebuild

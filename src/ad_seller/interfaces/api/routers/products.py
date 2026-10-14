@@ -48,6 +48,11 @@ async def list_products(
     spins up an OpenDirect MCP session that hangs in `session.initialize()`.
     Buyers filter client-side over the returned Product records (there is
     deliberately no POST /products/search on the shared catalog surface).
+
+    Any stored inventory-type override (AI-14) is applied automatically —
+    ``deps.get_product_catalog()`` itself now returns the catalog with
+    overrides already applied, so every consumer sees one consistent view,
+    not just this route and ``get_product``.
     """
     catalog = await deps.get_product_catalog()
     return cm.products_to_list_response(
@@ -158,7 +163,9 @@ async def get_product(product_id: str) -> Product:
     """Get a specific product (shared Product primitive, no wrapper).
 
     Reads from the cached static catalog instead of running ProductSetupFlow
-    per request (see `list_products` for rationale).
+    per request (see `list_products` for rationale). Any stored
+    inventory-type override (AI-14) is applied automatically by
+    ``deps.get_product_catalog()``.
     """
     catalog = await deps.get_product_catalog()
     product = catalog["products"].get(product_id)

@@ -19,7 +19,7 @@ import asyncio
 import logging
 import sys
 from types import ModuleType
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -37,6 +37,7 @@ for _mod_name in _broken_flows:
 import httpx  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
 
+from ad_seller.events.bus import InMemoryEventBus  # noqa: E402
 from ad_seller.flows.proposal_handling_flow import (  # noqa: E402
     ProposalHandlingFlow,
     ProposalState,
@@ -455,6 +456,10 @@ def http_client():
             ),
             "get_deal": staticmethod(lambda did: _async_return(store.get(f"deal:{did}"))),
             "set_deal": staticmethod(lambda did, data: _async_set(store, f"deal:{did}", data)),
+            # Generic KV path: booking resolves a quote's negotiation through
+            # the negotiation_by_quote pointer before reading the record.
+            "get": staticmethod(lambda key: _async_return(store.get(key))),
+            "set": staticmethod(lambda key, value, ttl=None: _async_set(store, key, value)),
             # Booking consults negotiation state; none stored here.
             "get_negotiation": staticmethod(
                 lambda pid: _async_return(store.get(f"negotiation:{pid}"))
@@ -491,7 +496,11 @@ def http_client():
         "expires_at": (datetime.utcnow() + timedelta(hours=24)).isoformat() + "Z",
         "created_at": datetime.utcnow().isoformat() + "Z",
     }
-    yield c, storage, quote_id
+    # deal.created is audit-class: without a bus, the booking falls back to
+    # writing data/audit_fallback.jsonl. Publish to an in-memory bus instead
+    # so the suite leaves no file behind (_FakeStorage has no ``set``).
+    with patch("ad_seller.events.bus.get_event_bus", AsyncMock(return_value=InMemoryEventBus())):
+        yield c, storage, quote_id
     app.dependency_overrides.clear()
 
 

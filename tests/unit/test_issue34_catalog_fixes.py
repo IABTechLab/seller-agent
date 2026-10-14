@@ -316,6 +316,7 @@ def _flow_settings(**overrides) -> SimpleNamespace:
         "ad_server_type": "none",
         "seller_organization_id": "test-seller-org",
         "seller_organization_name": "Test Seller",
+        "default_price_floor_cpm": 5.0,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
