@@ -415,37 +415,178 @@ def build_static_product_catalog() -> dict[str, Any]:
     }
 
 
+def _real_ad_server_configured(settings: Any) -> bool:
+    """True when a real (non-CSV) ad server is configured (AI-6).
+
+    Mirrors ``ProductSetupFlow.sync_from_ad_server``'s own "is this a real
+    ad server, not the mock/dev fallback" condition, minus the CSV case
+    (``_csv_mode_active`` handles that separately).
+    """
+    return bool(
+        settings.gam_network_code
+        or settings.freewheel_sh_mcp_url
+        or settings.ad_server_type == "s3"
+    )
+
+
+async def persist_synced_product(product: Any) -> None:
+    """Persist a product built from a real ad-server sync (AI-6).
+
+    Stored under a dedicated ``synced_product:{id}`` key, deliberately
+    NOT the generic ``product:{id}`` key ``negotiation_service`` and
+    ``media_kit_service`` already write/read for an unrelated reason (a
+    per-product snapshot at proposal time, in a narrower shape via
+    ``serialize_product``, so a later cold lookup doesn't 404). Reusing
+    that key would make :func:`build_synced_product_catalog` treat an
+    incidental negotiation snapshot of a STATIC-catalog product as
+    evidence a real ad-server sync had happened, and ``ProductDefinition
+    (**data)`` would likely fail to reconstruct from the narrower
+    snapshot shape anyway.
+    """
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    await storage.set(f"synced_product:{product.product_id}", product.model_dump(mode="json"))
+
+
+async def prune_stale_synced_products(seen_product_ids: set[str]) -> None:
+    """Delete synced products not re-seeded by the current sync run (AI-6).
+
+    Mirrors ``ProductSetupFlow._prune_stale_synced_packages`` (issue #34):
+    only products actually returned by the ad server on this run survive,
+    so a product removed from the ad server stops being served instead of
+    lingering forever as phantom inventory.
+    """
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    for key in await storage.keys("synced_product:*"):
+        product_id = key.removeprefix("synced_product:")
+        if product_id not in seen_product_ids:
+            await storage.delete(key)
+            logger.info("Pruned stale synced product: %s", product_id)
+
+
+_SYNCED_CATALOG_COMPLETED_KEY = "synced_catalog:completed"
+
+
+async def mark_synced_catalog_completed() -> None:
+    """Record that a real ad-server sync has completed at least once (AI-6).
+
+    A zero-item sync is a real, successful sync — the seller's ad server
+    genuinely has no (matching) inventory right now — and must be told
+    apart from "no sync has ever run": both leave zero ``synced_product:*``
+    keys, but only the latter should fall back to the static demo catalog.
+    Set once a real sync's item loop completes, even with zero items;
+    never cleared (a seller who has synced once stays in "trust storage,
+    not the static fallback" mode from then on).
+    """
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    await storage.set(_SYNCED_CATALOG_COMPLETED_KEY, True)
+
+
+async def build_synced_product_catalog() -> Optional[dict[str, Any]]:
+    """Build the catalog from persisted ad-server-synced products (AI-6).
+
+    Returns ``None`` only when no real ad-server sync has ever run — no
+    ``synced_product:*`` keys exist AND no sync has ever completed — so
+    the caller falls back to the static default catalog — the same
+    "honest, never fabricated" fallback CSV mode already uses on a read
+    failure.
+
+    Either signal alone is enough evidence of a real sync:
+    - ``synced_product:*`` keys may exist even mid-sync, before
+      ``mark_synced_catalog_completed`` runs (each item is persisted as
+      it's processed, in a loop that precedes the completion marker —
+      see ``ProductSetupFlow.sync_from_ad_server``), including the case
+      where a sync crashed partway through.
+    - the completion marker may be set with zero keys when a *completed*
+      sync genuinely found no inventory — a real, honest result that
+      must be served as an empty catalog (``products: {}``), not mistaken
+      for "never synced" and backfilled with stale demo products.
+    """
+    from ..models.flow_state import ProductDefinition
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    keys = await storage.keys("synced_product:*")
+    if not keys and not await storage.exists(_SYNCED_CATALOG_COMPLETED_KEY):
+        return None
+
+    products: dict[str, Any] = {}
+    for key in keys:
+        data = await storage.get(key)
+        if not data:
+            continue
+        product_def = ProductDefinition(**data)
+        products[product_def.product_id] = product_def
+
+    return {
+        "products": products,
+        "inventory_types": sorted({p.inventory_type for p in products.values()}),
+    }
+
+
 async def get_static_product_catalog() -> dict[str, Any]:
     """Return the seller's product catalog without running the flow.
 
     In CSV mode (``AD_SERVER_TYPE=csv``) the catalog is built from the CSV
-    inventory; in every other mode it is the static default catalog
-    (byte-identical to the pre-CSV-wiring behavior).
+    inventory, cached once per process (issue #34).
 
-    The underlying product list is cached — repeated reads return stable
-    product_ids (issue #34) — but any stored inventory-type override is
-    applied fresh on every call via :func:`apply_inventory_type_overrides_batch`.
-    This is now the ONE place every consumer (REST, MCP, CLI, chat,
-    negotiation, quote/pricing) sees an override applied. Previously only
-    two REST routes applied it themselves, so `GET /products` could show
-    an overridden type while `POST /quotes` priced off the original one —
-    a real mispricing, not just a display inconsistency (AI-14 follow-up).
-    The cache itself is never mutated: when nothing is overridden, the
-    identical cached dict is returned (no allocation, and `is` identity
-    across calls is preserved); when something is, a shallow copy with
-    the overridden products substituted is returned instead.
+    When a real ad server (GAM/FreeWheel/S3) is configured AND has been
+    synced at least once, the catalog reflects those real, persisted
+    products (AI-6) — read fresh from storage on EVERY call, never
+    cached, so every worker process agrees immediately after a sync
+    (matching how packages already work) instead of only whichever
+    worker happened to run the sync seeing it. Storage reads are cheap
+    local I/O, not a live ad-server call, so this doesn't reintroduce the
+    per-request hang risk that CSV-only caching was built to avoid.
+
+    Otherwise (no ad server configured, or configured but never yet
+    synced) the static default catalog is served, cached once, exactly
+    as before.
+
+    Whichever source produced the catalog dict, any stored inventory-type
+    override is applied fresh on every call via
+    :func:`apply_inventory_type_overrides_batch` (AI-14 follow-up). This is
+    the ONE place every consumer (REST, MCP, CLI, chat, negotiation,
+    quote/pricing) sees an override applied — previously only two REST
+    routes applied it themselves, so `GET /products` could show an
+    overridden type while `POST /quotes` priced off the original one, a
+    real mispricing, not just a display inconsistency. A cached source
+    (CSV or static) is never mutated: when nothing is overridden, the
+    identical cached dict is returned (no allocation, `is` identity
+    preserved); when something is, a shallow copy with the overridden
+    products substituted is returned instead. The synced-from-real-ad-server
+    source is never cached in the first place, so overrides apply there the
+    same way.
     """
     global _CATALOG_CACHE
-    if _CATALOG_CACHE is None:
-        if _csv_mode_active():
-            _CATALOG_CACHE = build_csv_product_catalog()
-        else:
-            _CATALOG_CACHE = build_static_product_catalog()
 
-    products = await apply_inventory_type_overrides_batch(_CATALOG_CACHE["products"])
-    if products is _CATALOG_CACHE["products"]:
-        return _CATALOG_CACHE
-    return {**_CATALOG_CACHE, "products": products}
+    if _csv_mode_active():
+        if _CATALOG_CACHE is None:
+            _CATALOG_CACHE = build_csv_product_catalog()
+        catalog = _CATALOG_CACHE
+    else:
+        from ..config import get_settings
+
+        synced = None
+        if _real_ad_server_configured(get_settings()):
+            synced = await build_synced_product_catalog()
+
+        if synced is not None:
+            catalog = synced
+        else:
+            if _CATALOG_CACHE is None:
+                _CATALOG_CACHE = build_static_product_catalog()
+            catalog = _CATALOG_CACHE
+
+    products = await apply_inventory_type_overrides_batch(catalog["products"])
+    if products is catalog["products"]:
+        return catalog
+    return {**catalog, "products": products}
 
 
 def reset_catalog_cache() -> None:

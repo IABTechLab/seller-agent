@@ -79,11 +79,20 @@ class GAMRestClient:
                 scopes=["https://www.googleapis.com/auth/admanager"],
             )
 
-            # Build the GAM API service
+            # Build the GAM API service. Ad Manager self-hosts its own
+            # discovery document (admanager.googleapis.com/$discovery/rest)
+            # rather than registering with the generic, centrally-indexed
+            # discovery service googleapiclient.discovery.build() queries
+            # by default (and it isn't in the locally bundled discovery
+            # docs either) -- without an explicit discoveryServiceUrl this
+            # raises UnknownApiNameOrVersion for every real connection
+            # attempt, silently degrading every GAM sync to mock data.
             self._service = build(
                 "admanager",
                 "v1",
                 credentials=self._credentials,
+                discoveryServiceUrl="https://admanager.googleapis.com/$discovery/rest?version=v1",
+                static_discovery=False,
                 cache_discovery=False,
             )
         except ImportError:
