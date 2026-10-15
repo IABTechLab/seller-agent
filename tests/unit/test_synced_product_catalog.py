@@ -389,3 +389,86 @@ class TestSyncPersistsAndPrunesProducts:
             "a real sync that found zero inventory must serve an empty catalog, "
             "not fall back to the static demo products"
         )
+
+
+class TestMidSyncCrashRollsBackPartialWrites:
+    """A sync that crashes partway through persisting items must leave
+    storage exactly as the last successful sync left it (AI-6 follow-up).
+
+    Defect: ``persist_synced_product``/``_upsert_synced_package`` write
+    straight to storage one item at a time inside the loop. An exception
+    partway through left every item already written in THIS run
+    permanently in storage, even though the sync is reported as failed
+    and the code's own docstring claims a failure "never silently
+    changes" the synced layer. Found live: synced A+B cleanly, then a
+    sync that persists C and crashes before D: A and B survived as
+    expected, but C leaked in anyway.
+    """
+
+    async def test_item_persisted_before_a_later_crash_is_rolled_back(self, storage):
+        settings = _flow_settings()
+        client_a = _FakeAdServerClient(
+            [_FakeInventoryItem("A", "Product A"), _FakeInventoryItem("B", "Product B")]
+        )
+        await _run_sync(storage, settings, client_a)
+
+        client_b = _FakeAdServerClient(
+            [
+                _FakeInventoryItem("C", "Product C"),
+                _FakeInventoryItem("D", "Product D"),
+                _FakeInventoryItem("E", "Product E"),
+            ]
+        )
+        real_persist = catalog_service.persist_synced_product
+
+        async def flaky_persist(product):
+            if product.product_id == "D":
+                raise RuntimeError("simulated crash persisting D")
+            await real_persist(product)
+
+        with patch("ad_seller.services.catalog_service.persist_synced_product", flaky_persist):
+            await _run_sync(storage, settings, client_b)
+
+        assert await storage.exists("synced_product:A")
+        assert await storage.exists("synced_product:B")
+        assert not await storage.exists("synced_product:C"), (
+            "C was persisted by the crashed run before D failed -- it must be "
+            "rolled back, not left behind despite the sync being reported as failed"
+        )
+        assert not await storage.exists("synced_product:D")
+        assert not await storage.exists("synced_product:E")
+
+    async def test_resynced_existing_item_restores_its_prior_value_on_rollback(self, storage):
+        """Rollback must restore, not blindly delete, an id that already
+        existed -- a re-synced item can share an id with one a previous
+        successful sync already persisted."""
+        settings = _flow_settings()
+        client_a = _FakeAdServerClient(
+            [_FakeInventoryItem("A", "Product A", {"floor_price_cpm": 8.0})]
+        )
+        await _run_sync(storage, settings, client_a)
+        original = await storage.get("synced_product:A")
+        assert original["floor_cpm"] == pytest.approx(8.0 * 0.85)
+
+        client_b = _FakeAdServerClient(
+            [
+                _FakeInventoryItem("A", "Product A", {"floor_price_cpm": 99.0}),
+                _FakeInventoryItem("D", "Product D"),
+            ]
+        )
+        real_persist = catalog_service.persist_synced_product
+
+        async def flaky_persist(product):
+            if product.product_id == "D":
+                raise RuntimeError("simulated crash persisting D")
+            await real_persist(product)
+
+        with patch("ad_seller.services.catalog_service.persist_synced_product", flaky_persist):
+            await _run_sync(storage, settings, client_b)
+
+        restored = await storage.get("synced_product:A")
+        assert restored == original, (
+            "A existed before this crashed run and must be restored to its "
+            "prior value, not deleted or left with the crashed run's new value"
+        )
+        assert not await storage.exists("synced_product:D")

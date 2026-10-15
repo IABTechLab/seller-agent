@@ -182,47 +182,87 @@ class ProductSetupFlow(Flow[ProductSetupState]):
                 product_from_inventory_item,
             )
 
-            for item in items:
-                product_def = product_from_inventory_item(item)
-                self.state.products[product_def.product_id] = product_def
-                # Persist so GET /products reflects real ad-server inventory
-                # for non-CSV ad servers too (AI-6) -- state.products alone
-                # is per-flow-instance and never outlives this request.
-                await persist_synced_product(product_def)
+            # Persist every product, but roll back precisely on any
+            # mid-loop failure (AI-6 follow-up): persist_synced_product
+            # writes straight to storage per item, so without this, an
+            # exception on item N left items 1..N-1 of THIS run already
+            # committed even though the sync is reported as failed --
+            # contradicting the "a transient failure never silently
+            # changes the synced layer" invariant above. Capturing each
+            # key's PRIOR value (not just blindly deleting it) matters
+            # because a re-synced item can share an id with one already
+            # persisted by an earlier successful sync; rollback must
+            # restore that old value, not erase still-valid data.
+            persisted: list[tuple[str, Optional[dict[str, Any]]]] = []
+            try:
+                for item in items:
+                    product_def = product_from_inventory_item(item)
+                    key = f"synced_product:{product_def.product_id}"
+                    prior = await storage.get(key)
+                    self.state.products[product_def.product_id] = product_def
+                    # Persist so GET /products reflects real ad-server inventory
+                    # for non-CSV ad servers too (AI-6) -- state.products alone
+                    # is per-flow-instance and never outlives this request.
+                    await persist_synced_product(product_def)
+                    persisted.append((product_def.product_id, prior))
+            except Exception:
+                for product_id, prior in persisted:
+                    key = f"synced_product:{product_id}"
+                    if prior is None:
+                        await storage.delete(key)
+                    else:
+                        await storage.set(key, prior)
+                    self.state.products.pop(product_id, None)
+                raise
 
             logger.info("Created %d products from ad server inventory", len(self.state.products))
 
-            for inv_type, inv_items in grouped.items():
-                ad_formats = self._classify_ad_formats_from_type(inv_type)
-                device_types = self._classify_device_types_from_type(inv_type)
-                base_cpm = self._estimate_base_cpm(inv_type)
+            # Same rollback discipline for packages -- identical risk,
+            # same fix shape.
+            upserted: list[tuple[str, Optional[dict[str, Any]]]] = []
+            try:
+                for inv_type, inv_items in grouped.items():
+                    ad_formats = self._classify_ad_formats_from_type(inv_type)
+                    device_types = self._classify_device_types_from_type(inv_type)
+                    base_cpm = self._estimate_base_cpm(inv_type)
 
-                package = Package(
-                    package_id=self._synced_package_id(client.ad_server_type.value, inv_type),
-                    name=f"{inv_type.replace('_', ' ').title()} - Synced",
-                    description=f"Synced {inv_type} inventory ({len(inv_items)} ad units)",
-                    layer=PackageLayer.SYNCED,
-                    status=PackageStatus.ACTIVE,
-                    placements=[
-                        PackagePlacement(
-                            product_id=item.id,
-                            product_name=item.name,
-                            ad_formats=ad_formats,
-                            device_types=device_types,
-                        )
-                        for item in inv_items
-                    ],
-                    ad_formats=ad_formats,
-                    device_types=device_types,
-                    cat=["IAB1"],
-                    cattax=2,
-                    base_price=base_cpm,
-                    floor_price=round(base_cpm * 0.7, 2),
-                    ad_server_source=client.ad_server_type.value,
-                    is_featured=inv_type == "ctv",
-                )
+                    package = Package(
+                        package_id=self._synced_package_id(client.ad_server_type.value, inv_type),
+                        name=f"{inv_type.replace('_', ' ').title()} - Synced",
+                        description=f"Synced {inv_type} inventory ({len(inv_items)} ad units)",
+                        layer=PackageLayer.SYNCED,
+                        status=PackageStatus.ACTIVE,
+                        placements=[
+                            PackagePlacement(
+                                product_id=item.id,
+                                product_name=item.name,
+                                ad_formats=ad_formats,
+                                device_types=device_types,
+                            )
+                            for item in inv_items
+                        ],
+                        ad_formats=ad_formats,
+                        device_types=device_types,
+                        cat=["IAB1"],
+                        cattax=2,
+                        base_price=base_cpm,
+                        floor_price=round(base_cpm * 0.7, 2),
+                        ad_server_source=client.ad_server_type.value,
+                        is_featured=inv_type == "ctv",
+                    )
 
-                await self._upsert_synced_package(storage, package)
+                    prior_package = await storage.get_package(package.package_id)
+                    await self._upsert_synced_package(storage, package)
+                    upserted.append((package.package_id, prior_package))
+            except Exception:
+                for package_id, prior_package in upserted:
+                    if prior_package is None:
+                        await storage.delete_package(package_id)
+                    else:
+                        await storage.set_package(package_id, prior_package)
+                    if package_id in self.state.synced_segments:
+                        self.state.synced_segments.remove(package_id)
+                raise
 
             logger.info("Synced %d packages from ad server", len(grouped))
 
