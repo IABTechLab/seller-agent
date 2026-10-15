@@ -237,9 +237,9 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             self.state.ad_server_sync_failed = True
             return
 
-        await self._finish_sync()
+        await self._finish_sync(real_sync_completed=True)
 
-    async def _finish_sync(self) -> None:
+    async def _finish_sync(self, real_sync_completed: bool = False) -> None:
         """Terminal step of every sync path: prune the stale synced layer.
 
         Runs unconditionally, including on the mock/fallback path (no ad
@@ -249,13 +249,25 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         the honest static-default fallback rather than serving
         increasingly stale synced products forever, and the next
         successful sync immediately re-populates it.
+
+        ``real_sync_completed`` is only ever True from the real ad-server
+        success path, never the mock path -- a zero-item real sync is a
+        genuine "no inventory right now" result that must be served as an
+        honestly empty catalog, not mistaken for "never synced" (AI-6
+        follow-up); the mock path has no such distinction to make, since
+        it never persists ``synced_product:*`` entries at all.
         """
-        from ..services.catalog_service import prune_stale_synced_products
+        from ..services.catalog_service import (
+            mark_synced_catalog_completed,
+            prune_stale_synced_products,
+        )
         from ..storage.factory import get_storage
 
         storage = await get_storage()
         await self._prune_stale_synced_packages(storage)
         await prune_stale_synced_products(set(self.state.products.keys()))
+        if real_sync_completed:
+            await mark_synced_catalog_completed()
 
     async def _create_mock_synced_packages(self) -> None:
         """Create mock Layer 1 packages for development without ad server creds."""

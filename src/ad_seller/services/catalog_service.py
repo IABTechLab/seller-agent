@@ -467,20 +467,52 @@ async def prune_stale_synced_products(seen_product_ids: set[str]) -> None:
             logger.info("Pruned stale synced product: %s", product_id)
 
 
+_SYNCED_CATALOG_COMPLETED_KEY = "synced_catalog:completed"
+
+
+async def mark_synced_catalog_completed() -> None:
+    """Record that a real ad-server sync has completed at least once (AI-6).
+
+    A zero-item sync is a real, successful sync — the seller's ad server
+    genuinely has no (matching) inventory right now — and must be told
+    apart from "no sync has ever run": both leave zero ``synced_product:*``
+    keys, but only the latter should fall back to the static demo catalog.
+    Set once a real sync's item loop completes, even with zero items;
+    never cleared (a seller who has synced once stays in "trust storage,
+    not the static fallback" mode from then on).
+    """
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    await storage.set(_SYNCED_CATALOG_COMPLETED_KEY, True)
+
+
 async def build_synced_product_catalog() -> Optional[dict[str, Any]]:
     """Build the catalog from persisted ad-server-synced products (AI-6).
 
-    Returns ``None`` when nothing has been synced yet (no ad-server sync
-    has ever run), so the caller falls back to the static default catalog
-    — the same "honest, never fabricated" fallback CSV mode already uses
-    on a read failure.
+    Returns ``None`` only when no real ad-server sync has ever run — no
+    ``synced_product:*`` keys exist AND no sync has ever completed — so
+    the caller falls back to the static default catalog — the same
+    "honest, never fabricated" fallback CSV mode already uses on a read
+    failure.
+
+    Either signal alone is enough evidence of a real sync:
+    - ``synced_product:*`` keys may exist even mid-sync, before
+      ``mark_synced_catalog_completed`` runs (each item is persisted as
+      it's processed, in a loop that precedes the completion marker —
+      see ``ProductSetupFlow.sync_from_ad_server``), including the case
+      where a sync crashed partway through.
+    - the completion marker may be set with zero keys when a *completed*
+      sync genuinely found no inventory — a real, honest result that
+      must be served as an empty catalog (``products: {}``), not mistaken
+      for "never synced" and backfilled with stale demo products.
     """
     from ..models.flow_state import ProductDefinition
     from ..storage.factory import get_storage
 
     storage = await get_storage()
     keys = await storage.keys("synced_product:*")
-    if not keys:
+    if not keys and not await storage.exists(_SYNCED_CATALOG_COMPLETED_KEY):
         return None
 
     products: dict[str, Any] = {}
@@ -490,9 +522,6 @@ async def build_synced_product_catalog() -> Optional[dict[str, Any]]:
             continue
         product_def = ProductDefinition(**data)
         products[product_def.product_id] = product_def
-
-    if not products:
-        return None
 
     return {
         "products": products,

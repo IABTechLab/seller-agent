@@ -358,3 +358,34 @@ class TestSyncPersistsAndPrunesProducts:
             catalog = await catalog_service.get_static_product_catalog()
 
         assert set(catalog["products"]) == {"gam-999"}
+
+    async def test_resync_with_zero_items_serves_an_honestly_empty_catalog(self, storage):
+        """A real sync finding zero inventory must not resurrect demo products.
+
+        Regression test: a zero-item sync is a genuine, successful result
+        (the ad server really has nothing matching right now), not the
+        absence of a sync. Both leave zero ``synced_product:*`` keys, so
+        without a separate "a real sync has completed" marker, the catalog
+        builder couldn't tell the two apart and silently fell back to the
+        13-product static demo catalog -- fake inventory reappearing in
+        place of an honest empty one.
+        """
+        settings = _flow_settings()
+        client_a = _FakeAdServerClient([_FakeInventoryItem("gam-999", "Pre-Roll Video Unit")])
+        await _run_sync(storage, settings, client_a)
+
+        client_b = _FakeAdServerClient([])
+        await _run_sync(storage, settings, client_b)
+
+        assert not await storage.exists("synced_product:gam-999")
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.config.get_settings", return_value=settings),
+        ):
+            catalog = await catalog_service.get_static_product_catalog()
+
+        assert catalog["products"] == {}, (
+            "a real sync that found zero inventory must serve an empty catalog, "
+            "not fall back to the static demo products"
+        )
