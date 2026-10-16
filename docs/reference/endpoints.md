@@ -6,7 +6,7 @@
 Routes registered on the FastAPI application
 (`ad_seller.interfaces.api.main:app`), enumerated from the router table.
 
-**Total: 89 endpoints**
+**Total: 98 endpoints**
 
 | Method | Path | Handler |
 | --- | --- | --- |
@@ -40,6 +40,12 @@ Routes registered on the FastAPI application
 | `POST` | `/api/v1/inventory-sync/trigger` | `trigger_inventory_sync` |
 | `GET` | `/api/v1/inventory-sync/watermark` | `get_sync_watermark` |
 | `POST` | `/api/v1/negotiations/messages` | `post_negotiation_message` |
+| `POST` | `/api/v1/op-deals` | `create_op_deal` |
+| `GET` | `/api/v1/op-deals/{deal_id}` | `get_op_deal` |
+| `POST` | `/api/v1/op-gam/ad-unit` | `map_gam_ad_unit` |
+| `POST` | `/api/v1/op-gam/line-item` | `map_gam_line_item` |
+| `POST` | `/api/v1/op-quotes` | `create_op_quote` |
+| `GET` | `/api/v1/op-quotes/{quote_id}` | `get_op_quote` |
 | `GET` | `/api/v1/orders` | `list_orders` |
 | `POST` | `/api/v1/orders` | `create_order` |
 | `GET` | `/api/v1/orders/report` | `get_orders_report` |
@@ -75,6 +81,9 @@ Routes registered on the FastAPI application
 | `GET` | `/media-kit/packages` | `list_media_kit_packages` |
 | `GET` | `/media-kit/packages/{package_id}` | `get_media_kit_package` |
 | `POST` | `/media-kit/search` | `search_media_kit` |
+| `GET` | `/op-products` | `list_op_products` |
+| `GET` | `/op-products/{product_id}` | `get_op_product` |
+| `GET` | `/op-proposals/standard` | `get_op_standard_proposal` |
 | `GET` | `/packages` | `list_packages` |
 | `POST` | `/packages` | `create_package` |
 | `POST` | `/packages/assemble` | `assemble_package` |
