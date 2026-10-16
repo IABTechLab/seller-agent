@@ -50,6 +50,7 @@ Known limitations:
     is not supported; all deals are assumed USD.
 """
 
+import asyncio
 import logging
 import uuid
 from typing import Any, Optional
@@ -140,6 +141,7 @@ class DspSeatMatch(BaseModel):
     """
 
     dsp_id: int
+    requested_seat_id: str = ""
     extended_seat_id: str = ""
     buyer_name: str = ""
     status: str = ""
@@ -250,6 +252,10 @@ class IndexExchangeSSPClient(RESTSSPClient):
         returned; a deleted/paused trading desk is never a valid dsp_id to
         create a new deal against.
 
+        Issues one request per seat ID and tags each match with the seat ID
+        it was queried for (requested_seat_id), so callers never have to
+        infer the owning seat from the response's extendedSeatID.
+
         Returns an empty list if none matched, or more than one DspSeatMatch
         if the seat ID(s) collide across multiple DSPs — callers must decide
         how to handle that (e.g. gate on human approval) rather than
@@ -259,22 +265,27 @@ class IndexExchangeSSPClient(RESTSSPClient):
             return []
 
         http = self._ensure_connected()
-        resp = await http.get(
-            f"{_API_BASE_PATH}/v1/dsps/-/seats",
-            params={"seatIDs": ",".join(seat_ids)},
-        )
-        resp.raise_for_status()
 
-        return [
-            DspSeatMatch(
-                dsp_id=seat["dspID"],
-                extended_seat_id=seat.get("extendedSeatID", ""),
-                buyer_name=seat.get("name", ""),
-                status=seat.get("status", ""),
+        async def _lookup(seat_id: str) -> list[DspSeatMatch]:
+            resp = await http.get(
+                f"{_API_BASE_PATH}/v1/dsps/-/seats",
+                params={"seatIDs": seat_id},
             )
-            for seat in resp.json().get("seats", [])
-            if seat.get("status") == "A"
-        ]
+            resp.raise_for_status()
+            return [
+                DspSeatMatch(
+                    dsp_id=seat["dspID"],
+                    requested_seat_id=seat_id,
+                    extended_seat_id=seat.get("extendedSeatID", ""),
+                    buyer_name=seat.get("name", ""),
+                    status=seat.get("status", ""),
+                )
+                for seat in resp.json().get("seats", [])
+                if seat.get("status") == "A"
+            ]
+
+        per_seat = await asyncio.gather(*(_lookup(s) for s in seat_ids))
+        return [match for matches in per_seat for match in matches]
 
     async def clone_deal(
         self,

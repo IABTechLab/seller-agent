@@ -1029,11 +1029,11 @@ async def _resolve_dsp_id_or_pending_approval(
     matches = await resolver(seat_ids)
 
     # A deal carries a single dspID, so it must be valid for every seat.
-    dsps_by_seat: dict[str, set[int]] = {s.casefold(): set() for s in seat_ids}
+    dsps_by_seat: dict[str, set[int]] = {s: set() for s in seat_ids}
     for m in matches:
-        dsps_by_seat.setdefault(m.extended_seat_id.casefold(), set()).add(m.dsp_id)
+        dsps_by_seat.setdefault(m.requested_seat_id, set()).add(m.dsp_id)
 
-    unmatched = [s for s in seat_ids if not dsps_by_seat[s.casefold()]]
+    unmatched = [s for s in seat_ids if not dsps_by_seat[s]]
     if unmatched:
         raise HTTPException(
             status_code=400,
@@ -1043,9 +1043,9 @@ async def _resolve_dsp_id_or_pending_approval(
             },
         )
 
-    distinct_dsp_ids = sorted(set.intersection(*(dsps_by_seat[s.casefold()] for s in seat_ids)))
+    distinct_dsp_ids = sorted(set.intersection(*(dsps_by_seat[s] for s in seat_ids)))
     if not distinct_dsp_ids:
-        mapping = {s: sorted(dsps_by_seat[s.casefold()]) for s in seat_ids}
+        mapping = {s: sorted(dsps_by_seat[s]) for s in seat_ids}
         raise HTTPException(
             status_code=400,
             detail={

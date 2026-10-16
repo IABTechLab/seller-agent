@@ -70,7 +70,7 @@ class TestResolveDspIdOrPendingApproval:
     async def test_single_match_sets_dsp_id(self):
         ssp = MagicMock()
         ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
-            return_value=[DspSeatMatch(dsp_id=17, extended_seat_id="acc-100522", status="A")]
+            return_value=[DspSeatMatch(dsp_id=17, requested_seat_id="acc-100522", status="A")]
         )
         request = _create_request()
 
@@ -96,8 +96,8 @@ class TestResolveDspIdOrPendingApproval:
         ssp = MagicMock()
         ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
             return_value=[
-                DspSeatMatch(dsp_id=17, extended_seat_id="seat-a", status="A"),
-                DspSeatMatch(dsp_id=52, extended_seat_id="seat-b", status="A"),
+                DspSeatMatch(dsp_id=17, requested_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=52, requested_seat_id="seat-b", status="A"),
             ]
         )
         request = _create_request(buyer_seat_ids=["seat-a", "seat-b"])
@@ -114,7 +114,7 @@ class TestResolveDspIdOrPendingApproval:
     async def test_one_seat_unmatched_raises_400(self):
         ssp = MagicMock()
         ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
-            return_value=[DspSeatMatch(dsp_id=17, extended_seat_id="seat-a", status="A")]
+            return_value=[DspSeatMatch(dsp_id=17, requested_seat_id="seat-a", status="A")]
         )
         request = _create_request(buyer_seat_ids=["seat-a", "seat-b"])
 
@@ -130,9 +130,9 @@ class TestResolveDspIdOrPendingApproval:
         ssp = MagicMock()
         ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
             return_value=[
-                DspSeatMatch(dsp_id=17, extended_seat_id="seat-a", status="A"),
-                DspSeatMatch(dsp_id=52, extended_seat_id="seat-a", status="A"),
-                DspSeatMatch(dsp_id=17, extended_seat_id="seat-b", status="A"),
+                DspSeatMatch(dsp_id=17, requested_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=52, requested_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=17, requested_seat_id="seat-b", status="A"),
             ]
         )
         request = _create_request(buyer_seat_ids=["seat-a", "seat-b"])
@@ -143,10 +143,17 @@ class TestResolveDspIdOrPendingApproval:
         assert request.dsp_id == 17
 
     @pytest.mark.asyncio
-    async def test_seat_id_matching_is_case_insensitive(self):
+    async def test_match_resolves_when_extended_seat_id_differs_from_requested(self):
         ssp = MagicMock()
         ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
-            return_value=[DspSeatMatch(dsp_id=17, extended_seat_id="ACC-100522", status="A")]
+            return_value=[
+                DspSeatMatch(
+                    dsp_id=17,
+                    requested_seat_id="acc-100522",
+                    extended_seat_id="ACC-100522-NORMALIZED",
+                    status="A",
+                )
+            ]
         )
         request = _create_request(buyer_seat_ids=["acc-100522"])
 
@@ -160,11 +167,11 @@ class TestResolveDspIdOrPendingApproval:
         ssp.ssp_type = SSPType.INDEX_EXCHANGE
         ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
             return_value=[
-                DspSeatMatch(dsp_id=17, extended_seat_id="seat-a", status="A"),
-                DspSeatMatch(dsp_id=52, extended_seat_id="seat-a", status="A"),
-                DspSeatMatch(dsp_id=99, extended_seat_id="seat-a", status="A"),
-                DspSeatMatch(dsp_id=17, extended_seat_id="seat-b", status="A"),
-                DspSeatMatch(dsp_id=52, extended_seat_id="seat-b", status="A"),
+                DspSeatMatch(dsp_id=17, requested_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=52, requested_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=99, requested_seat_id="seat-a", status="A"),
+                DspSeatMatch(dsp_id=17, requested_seat_id="seat-b", status="A"),
+                DspSeatMatch(dsp_id=52, requested_seat_id="seat-b", status="A"),
             ]
         )
         request = _create_request(buyer_seat_ids=["seat-a", "seat-b"])
@@ -191,8 +198,8 @@ class TestResolveDspIdOrPendingApproval:
         ssp.ssp_type = SSPType.INDEX_EXCHANGE
         ssp.resolve_dsp_ids_for_seat_ids = AsyncMock(
             return_value=[
-                DspSeatMatch(dsp_id=17, extended_seat_id="acc-100522", status="A"),
-                DspSeatMatch(dsp_id=52, extended_seat_id="acc-100522", status="A"),
+                DspSeatMatch(dsp_id=17, requested_seat_id="acc-100522", status="A"),
+                DspSeatMatch(dsp_id=52, requested_seat_id="acc-100522", status="A"),
             ]
         )
         request = _create_request()
