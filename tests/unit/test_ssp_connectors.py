@@ -334,6 +334,7 @@ class TestIndexExchangeClient:
         assert call_args[1]["params"] == {"seatIDs": "acc-100522"}
         assert len(matches) == 1
         assert matches[0].dsp_id == 17
+        assert matches[0].requested_seat_id == "acc-100522"
         assert matches[0].extended_seat_id == "acc-100522"
         assert matches[0].status == "A"
 
@@ -397,15 +398,38 @@ class TestIndexExchangeClient:
         mock_http.get.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_resolve_dsp_ids_joins_multiple_seat_ids(self):
+    async def test_resolve_dsp_ids_queries_each_seat_separately(self):
         client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
-        mock_http.get.return_value = _mock_response({"seats": []})
+
+        async def _get(_path, params):
+            dsp = {"acc-1": 17, "acc-2": 52}[params["seatIDs"]]
+            return _mock_response(
+                {
+                    "seats": [
+                        {
+                            "seatID": 1,
+                            "extendedSeatID": params["seatIDs"].upper(),
+                            "status": "A",
+                            "dspID": dsp,
+                        }
+                    ]
+                }
+            )
+
+        mock_http.get.side_effect = _get
         client._http = mock_http
 
-        await client.resolve_dsp_ids_for_seat_ids(["acc-1", "acc-2"])
+        matches = await client.resolve_dsp_ids_for_seat_ids(["acc-1", "acc-2"])
 
-        assert mock_http.get.call_args[1]["params"] == {"seatIDs": "acc-1,acc-2"}
+        assert [c[1]["params"] for c in mock_http.get.call_args_list] == [
+            {"seatIDs": "acc-1"},
+            {"seatIDs": "acc-2"},
+        ]
+        assert {(m.requested_seat_id, m.dsp_id) for m in matches} == {
+            ("acc-1", 17),
+            ("acc-2", 52),
+        }
 
     # --- clone_deal() ---
 
