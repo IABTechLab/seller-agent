@@ -18,6 +18,7 @@ from . import (  # noqa: F401
     media_kit,
     negotiation,
     openproposal,
+    openproposal_negotiation,
     orders,
     products,
     quotes,
@@ -42,4 +43,5 @@ ALL_ROUTERS = [
     orders.router,
     change_requests.router,
     openproposal.router,
+    openproposal_negotiation.router,
 ]

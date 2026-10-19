@@ -6,7 +6,7 @@
 Routes registered on the FastAPI application
 (`ad_seller.interfaces.api.main:app`), enumerated from the router table.
 
-**Total: 94 endpoints**
+**Total: 98 endpoints**
 
 | Method | Path | Handler |
 | --- | --- | --- |
@@ -45,6 +45,10 @@ Routes registered on the FastAPI application
 | `GET` | `/api/v1/op-gam/line-item/field-map` | `get_gam_line_item_field_map` |
 | `POST` | `/api/v1/op-gam/line-items` | `map_gam_line_items` |
 | `POST` | `/api/v1/op-many-to-one/proposal` | `build_many_to_one_proposal` |
+| `POST` | `/api/v1/op-negotiations` | `open_op_negotiation` |
+| `GET` | `/api/v1/op-negotiations/{negotiation_id}` | `get_op_negotiation` |
+| `POST` | `/api/v1/op-negotiations/{negotiation_id}/commit` | `commit_op_negotiation` |
+| `POST` | `/api/v1/op-negotiations/{negotiation_id}/messages` | `post_op_negotiation_message` |
 | `GET` | `/api/v1/orders` | `list_orders` |
 | `POST` | `/api/v1/orders` | `create_order` |
 | `GET` | `/api/v1/orders/report` | `get_orders_report` |

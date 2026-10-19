@@ -513,3 +513,103 @@ class ManyToOneLineItemReport(BaseModel):
 class ManyToOneProposalResponse(BaseModel):
     proposal: Proposal
     report: Optional[list[ManyToOneLineItemReport]] = None
+
+
+class NegotiationActor(str, Enum):
+    BUYER = "buyer"
+    SELLER = "seller"
+
+
+class NegotiationHistoryAction(str, Enum):
+    """``negotiation_history[].action`` values from spec section 4.1."""
+
+    PROPOSED = "proposed"
+    COUNTERED = "countered"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    WITHDRAWN = "withdrawn"
+
+
+class NegotiationHistoryEntry(BaseModel):
+    """One ``negotiation_history[]`` entry (spec 4.1). Append-only."""
+
+    version: int
+    actor: NegotiationActor
+    action: NegotiationHistoryAction
+    fields_changed: list[str] = Field(default_factory=list)
+    at: str
+    ext: Optional[dict[str, Any]] = Field(
+        default=None, description="Rate and final-offer flag; the spec entry carries no values."
+    )
+
+
+class NegotiationThreadState(str, Enum):
+    OPEN = "open"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    WITHDRAWN = "withdrawn"
+    COMMITTED = "committed"
+
+
+class OPNegotiationCommitment(BaseModel):
+    basis: str = Field(default="units", pattern="^units$", description="Only units is supported.")
+    amount: int = Field(gt=0, description="Impressions.")
+    flight_start: Optional[str] = Field(default=None, description="ISO date, e.g. 2026-11-01.")
+    flight_end: Optional[str] = Field(default=None, description="ISO date, e.g. 2026-11-30.")
+
+
+class OPNegotiationOpenRequest(BaseModel):
+    """Ask for a price on one line item (a ``requestable`` counter, spec 3)."""
+
+    idempotency_key: str = Field(min_length=1)
+    proposal_id: str
+    version: int = Field(
+        default=1, ge=1, description="The proposal version the buyer is looking at."
+    )
+    line_item_id: str = Field(description="A seller-agent product id.")
+    transaction_mechanism: TransactionMechanism = TransactionMechanism.PREFERRED_DEAL
+    commitment: OPNegotiationCommitment
+    requested_rate: float = Field(
+        gt=0,
+        description="Proposed extension: the CPM the buyer asks for. The spec has no field yet.",
+    )
+    buyer_identity: Optional[dict[str, Optional[str]]] = Field(
+        default=None, description="seat_id, agency_id, advertiser_id."
+    )
+
+
+class OPNegotiationMessageAction(str, Enum):
+    COUNTER = "counter"
+    ACCEPT = "accept"
+    DECLINE = "decline"
+    WITHDRAW = "withdraw"
+
+
+class OPNegotiationMessageRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1)
+    version: int = Field(ge=1, description="Must equal the thread's current version.")
+    action: OPNegotiationMessageAction
+    requested_rate: Optional[float] = Field(default=None, gt=0, description="Required for counter.")
+
+
+class OPNegotiationCommitRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1)
+    version: int = Field(ge=1, description="Must equal the thread's current version.")
+
+
+class OPAssent(BaseModel):
+    buyer_at: Optional[str] = None
+    seller_at: Optional[str] = None
+    version: Optional[int] = None
+
+
+class OPNegotiationThread(BaseModel):
+    """An OpenProposal view of one line item's negotiation."""
+
+    negotiation_id: str
+    proposal_id: str
+    version: int
+    state: NegotiationThreadState
+    line_item: LineItem
+    negotiation_history: list[NegotiationHistoryEntry]
+    assent: Optional[OPAssent] = None
