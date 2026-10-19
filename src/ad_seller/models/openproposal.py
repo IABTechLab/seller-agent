@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""OpenProposal 3.0 (draft 1) objects and the GAM payloads mapped into them.
+"""OpenProposal 3.0 (draft 1) line items and the GAM payloads mapped into them.
 
 Field names follow ``spec/openproposal-3.0.md`` in IABTechLab/OpenProposal.
 """
@@ -10,20 +10,6 @@ from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
-class ProposalType(str, Enum):
-    STANDARD = "standard"
-    CUSTOM = "custom"
-
-
-class ProposalStatus(str, Enum):
-    DRAFT = "draft"
-    PUBLISHED = "published"
-    UNDER_REVIEW = "under_review"
-    AGREED = "agreed"
-    WITHDRAWN = "withdrawn"
-    EXPIRED = "expired"
 
 
 class LineItemStatus(str, Enum):
@@ -66,12 +52,54 @@ class Source(str, Enum):
     """Where a mapped field's value came from."""
 
     AD_SERVER = "ad_server"
-    SELLER_CATALOG = "seller_catalog"
     SELLER_CONFIG = "seller_config"
-    QUOTE = "quote"
-    BOOKED_DEAL = "booked_deal"
     INFERRED = "inferred"
     NOT_AVAILABLE = "not_available"
+
+
+class FieldStatus(str, Enum):
+    """How a GAM field lands in OpenProposal."""
+
+    MAPPED = "mapped"
+    TRANSFORMED = "transformed"
+    LOSSY = "lossy"
+    NO_HOME = "no_home"
+    NOT_APPLICABLE = "not_applicable"
+    UNKNOWN = "unknown"
+
+
+class Problem(str, Enum):
+    """Kinds of problem raised when a GAM line item becomes an OpenProposal line item."""
+
+    LIFECYCLE = "lifecycle_mismatch"
+    COMMERCIAL_TERMS = "commercial_terms_missing"
+    CHOICE_SPACE = "choice_space_lost"
+    LOSSY_ENUM = "lossy_enum"
+    TARGETING = "targeting_without_op_field"
+    DELIVERY_SETTINGS = "delivery_settings_without_op_field"
+    DELIVERY_DATA = "delivery_data_without_op_field"
+    ID_TRANSLATION = "id_translation_needed"
+    CARDINALITY = "many_to_one"
+    IDENTITY = "idempotency_and_correlation"
+    DATETIME = "date_time_semantics"
+    GOAL_SEMANTICS = "goal_semantics"
+    FORMATS = "format_registry_gap"
+
+
+class FieldRule(BaseModel):
+    """One row of the GAM → OpenProposal field map."""
+
+    gam_field: str
+    op_field: Optional[str] = None
+    status: FieldStatus
+    problem: Optional[Problem] = None
+    note: str = ""
+
+
+class FieldReportEntry(FieldRule):
+    """A field rule applied to one payload, with the GAM value it saw."""
+
+    value: Any = None
 
 
 class Selectable(BaseModel):
@@ -249,29 +277,6 @@ class LineItem(BaseModel):
 LINE_ITEM_FIELDS: tuple[str, ...] = tuple(f for f in LineItem.model_fields if f != "ext")
 
 
-class Proposal(BaseModel):
-    """OpenProposal proposal (spec section 4) holding its line items."""
-
-    model_config = ConfigDict(use_enum_values=True)
-
-    proposal_id: str
-    version: int = 1
-    seller_id: str
-    seller_name: str
-    type: ProposalType = ProposalType.STANDARD
-    status: ProposalStatus = ProposalStatus.PUBLISHED
-    valid_from: Optional[str] = None
-    valid_until: Optional[str] = None
-    brief_ref: Optional[str] = None
-    description: str
-    specifications: Optional[str] = None
-    best_for: list[str] = Field(default_factory=list)
-    not_suitable_for: list[str] = Field(default_factory=list)
-    seasonality_notes: Optional[str] = None
-    negotiation_history: list[dict[str, Any]] = Field(default_factory=list)
-    line_items: list[LineItem] = Field(default_factory=list)
-
-
 class MappedLineItem(BaseModel):
     """A mapped line item plus where each field came from and what could not map."""
 
@@ -285,13 +290,16 @@ class MappedLineItem(BaseModel):
     )
     unmapped_source_fields: list[str] = Field(
         default_factory=list,
-        description="Source fields with no OpenProposal home.",
+        description="GAM fields with no OpenProposal home.",
     )
-
-
-class MappedProposal(BaseModel):
-    proposal: Proposal
-    line_items: list[MappedLineItem]
+    field_report: list[FieldReportEntry] = Field(
+        default_factory=list,
+        description="Every GAM field present on the payload and where it went.",
+    )
+    problems: list[Problem] = Field(
+        default_factory=list,
+        description="Problem categories this line item raises.",
+    )
 
 
 class GAMSizeIn(BaseModel):
@@ -333,7 +341,10 @@ class GAMMapAdUnitRequest(BaseModel):
 
 
 class GAMLineItemIn(BaseModel):
-    """A GAM ``LineItem`` as returned by ``LineItemService`` (camelCase, API v202608)."""
+    """A GAM ``LineItem`` as returned by ``LineItemService`` (camelCase, API v202608).
+
+    Fields not declared here are accepted and reported in ``field_report``.
+    """
 
     model_config = ConfigDict(extra="allow")
 
@@ -346,12 +357,18 @@ class GAMLineItemIn(BaseModel):
     reservationStatus: Optional[str] = None
     costType: str = "CPM"
     costPerUnit: Optional[dict[str, Any]] = None
+    discountType: Optional[str] = None
+    discount: Optional[float] = None
+    contractedUnitsBought: Optional[int] = None
     budget: Optional[dict[str, Any]] = None
     primaryGoal: Optional[dict[str, Any]] = None
     startDateTime: Optional[dict[str, Any]] = None
     endDateTime: Optional[dict[str, Any]] = None
     unlimitedEndDateTime: bool = False
     environmentType: str = "BROWSER"
+    allowedFormats: list[str] = Field(default_factory=list)
+    videoMaxDuration: Optional[int] = None
+    reserveAtCreation: Optional[bool] = None
     creativePlaceholders: list[dict[str, Any]] = Field(default_factory=list)
     targeting: dict[str, Any] = Field(default_factory=dict)
     frequencyCaps: list[dict[str, Any]] = Field(default_factory=list)
@@ -367,6 +384,9 @@ class GAMOrderIn(BaseModel):
     currencyCode: Optional[str] = None
     isProgrammatic: bool = False
     poNumber: Optional[str] = None
+    externalOrderId: Optional[int | str] = None
+    advertiserId: Optional[int | str] = None
+    agencyId: Optional[int | str] = None
 
 
 class GAMMapLineItemRequest(BaseModel):
@@ -375,47 +395,121 @@ class GAMMapLineItemRequest(BaseModel):
     network_code: Optional[str] = None
 
 
-class OPBuyerIdentity(BaseModel):
-    seat_id: Optional[str] = None
-    agency_id: Optional[str] = None
-    advertiser_id: Optional[str] = None
-
-
-class OPComposeCommitment(BaseModel):
-    basis: str = Field(default="units", pattern="^units$", description="Only units is supported.")
-    amount: int = Field(gt=0, description="Impressions.")
-    flight_start: Optional[str] = Field(default=None, description="ISO date, e.g. 2026-11-01.")
-    flight_end: Optional[str] = Field(default=None, description="ISO date, e.g. 2026-11-30.")
-
-
-class OPQuoteRequest(BaseModel):
-    """Compose a line item: pick the mechanism, size the commitment, get a price."""
-
-    idempotency_key: str = Field(min_length=1)
-    line_item_id: str = Field(description="A line_item_id from GET /op-products.")
-    transaction_mechanism: TransactionMechanism = TransactionMechanism.PREFERRED_DEAL
-    commitment: OPComposeCommitment
-    requested_rate: Optional[float] = Field(
-        default=None, gt=0, description="Optional target CPM in the line item's currency."
+class GAMMapLineItemsRequest(BaseModel):
+    line_items: list[GAMLineItemIn]
+    orders: list[GAMOrderIn] = Field(
+        default_factory=list, description="Parent orders, matched to line items by orderId."
     )
-    buyer_identity: Optional[OPBuyerIdentity] = None
-    agent_url: Optional[str] = None
+    network_code: Optional[str] = None
 
 
-class OPQuote(BaseModel):
-    quote_id: str
-    line_item: LineItem
+class GAMBatchResult(BaseModel):
+    gam_line_item_id: str
+    mapped: Optional[MappedLineItem] = None
+    line_item: Optional[LineItem] = None
+    error: Optional[str] = None
 
 
-class OPDealRequest(BaseModel):
-    """Commit to a composed line item (books the quote)."""
+class GAMBatchSummary(BaseModel):
+    total: int
+    mapped: int
+    unmappable_by_type: dict[str, int] = Field(
+        description="Line items rejected because their GAM type is not a sale."
+    )
+    problems: dict[str, int] = Field(description="Line items affected, per problem category.")
+    field_status_counts: dict[str, int] = Field(
+        description="GAM field occurrences by how they landed in OpenProposal."
+    )
+    gap_counts: dict[str, int] = Field(description="Line items with a gap, per OpenProposal field.")
 
-    idempotency_key: str = Field(min_length=1)
-    quote_id: str = Field(description="The quote_id returned by POST /api/v1/op-quotes.")
-    buyer_identity: Optional[OPBuyerIdentity] = None
-    notes: Optional[str] = None
+
+class GAMMapLineItemsResponse(BaseModel):
+    summary: GAMBatchSummary
+    results: list[GAMBatchResult]
 
 
-class OPDeal(BaseModel):
-    deal_id: str
-    line_item: LineItem
+class Proposal(BaseModel):
+    """OpenProposal proposal (spec section 4) holding its line items."""
+
+    model_config = ConfigDict(use_enum_values=True)
+
+    proposal_id: str
+    version: int = 1
+    seller_id: str
+    seller_name: str
+    type: str = "standard"
+    status: str = "draft"
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    description: str
+    line_items: list[LineItem] = Field(default_factory=list)
+
+
+class SourceObject(BaseModel):
+    """One ad-server object (ad unit, site section, zone…) that feeds a line item.
+
+    For GAM, pass the raw ``AdUnit`` as ``gam_ad_unit``; id, name, formats and
+    channel are read from it. Other ad servers use the generic fields.
+    """
+
+    id: Optional[str] = None
+    role: Optional[str] = Field(default=None, description="ad_unit, site_section, zone…")
+    name: Optional[str] = None
+    domains: list[str] = Field(default_factory=list)
+    apps: list[dict[str, Any]] = Field(default_factory=list)
+    formats: list[str] = Field(
+        default_factory=list, description="OpenProposal format ids, e.g. ctv/instream-15s."
+    )
+    channel: Optional[Channel] = None
+    gam_ad_unit: Optional[GAMAdUnitIn] = None
+
+
+class ManyToOneLineItemIn(BaseModel):
+    """One line item built from one or more objects in ONE ad server."""
+
+    line_item_id: str
+    serving_platform: str = Field(description="gam, freewheel, kevel…")
+    namespace: Optional[str] = Field(
+        default=None, description="Ad server account, e.g. network:21700000."
+    )
+    channel: Optional[Channel] = None
+    objects: list[SourceObject] = Field(min_length=1)
+    included: Optional[list[str]] = Field(
+        default=None, description="Object ids in the default selection. Defaults to the first."
+    )
+    option_pricing: dict[str, dict[str, float]] = Field(
+        default_factory=dict,
+        description='Per-object price deltas, e.g. {"21780019": {"delta_cpm": 2.0}}.',
+    )
+    pricing: Optional[PricingEntry] = Field(
+        default=None, description="From the seller's rate card; ad servers hold no list price."
+    )
+    availability: Optional[Availability] = Field(
+        default=None,
+        description="ONE ad-server forecast for the default selection. Never a sum of per-object forecasts.",
+    )
+    serving_mode: Optional[str] = None
+
+
+class ManyToOneProposalRequest(BaseModel):
+    proposal_id: str
+    seller_id: str
+    seller_name: str
+    type: str = "standard"
+    description: str
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    line_items: list[ManyToOneLineItemIn] = Field(min_length=1)
+
+
+class ManyToOneLineItemReport(BaseModel):
+    line_item_id: str
+    serving_platform: str
+    source_objects: int
+    provenance: dict[str, Source]
+    gaps: list[str] = Field(default_factory=list)
+
+
+class ManyToOneProposalResponse(BaseModel):
+    proposal: Proposal
+    report: Optional[list[ManyToOneLineItemReport]] = None
