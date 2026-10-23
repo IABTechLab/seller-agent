@@ -2875,7 +2875,7 @@
           "Approvals"
         ],
         "summary": "List Pending Approvals",
-        "description": "List all pending approval requests. Requires authentication.",
+        "description": "List all pending approval requests. Requires an operator credential.",
         "operationId": "list_pending_approvals_approvals_get",
         "parameters": [
           {
@@ -2939,7 +2939,7 @@
           "Approvals"
         ],
         "summary": "Get Approval",
-        "description": "Get a specific approval request and its response (if any).\n\nRequires authentication.",
+        "description": "Get a specific approval request and its response (if any).\n\nRequires an operator credential.",
         "operationId": "get_approval_approvals__approval_id__get",
         "parameters": [
           {
@@ -3012,7 +3012,7 @@
           "Approvals"
         ],
         "summary": "Decide Approval",
-        "description": "Submit a human decision for a pending approval. Requires authentication.\n\nThe verified principal from the authenticated API key is stamped into\nthe audit record; ``body.decided_by`` is kept as a display label only.",
+        "description": "Submit a human decision for a pending approval. Requires an operator credential.\n\nThe verified principal from the authenticated API key is stamped into\nthe audit record; ``body.decided_by`` is kept as a display label only.",
         "operationId": "decide_approval_approvals__approval_id__decide_post",
         "parameters": [
           {
@@ -3095,7 +3095,7 @@
           "Approvals"
         ],
         "summary": "Resume Flow",
-        "description": "Resume a flow after an approval decision has been submitted.\n\nRequires authentication. Loads the flow state snapshot, applies the\ndecision, and returns the final result without re-running expensive\ncrew evaluations.",
+        "description": "Resume a flow after an approval decision has been submitted.\n\nRequires an operator credential. Loads the flow state snapshot, applies the\ndecision, and returns the final result without re-running expensive\ncrew evaluations.",
         "operationId": "resume_flow_approvals__approval_id__resume_post",
         "parameters": [
           {
@@ -10421,8 +10421,11 @@
           "targeting": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
               },
               {
                 "type": "null"

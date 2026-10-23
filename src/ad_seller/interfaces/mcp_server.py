@@ -1000,6 +1000,10 @@ async def transition_order(order_id: str, new_status: str, reason: str = "") -> 
 @mcp.tool()
 async def list_pending_approvals() -> str:
     """List pending approval requests waiting for human decision."""
+    denied = await _deny_unless_operator()
+    if denied:
+        return denied
+
     from ..services import approval_service
 
     return await _service_json(approval_service.list_pending_approvals())

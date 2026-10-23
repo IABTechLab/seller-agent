@@ -103,6 +103,7 @@ class ApprovalStatus(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     TIMED_OUT = "timed_out"
+    CONSUMED = "consumed"  # approved and already acted on (terminal)
 
 
 class ApprovalRequest(BaseModel):

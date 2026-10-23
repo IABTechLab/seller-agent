@@ -198,7 +198,7 @@ class Settings(BaseSettings):
     magnite_api_url: Optional[str] = None
     magnite_api_key: Optional[str] = None
     # Index Exchange SSP (REST API)
-    index_exchange_api_url: str = "https://app.indexexchange.com/"
+    index_exchange_api_url: Optional[str] = None
     # Keycloak JWT bearer token — not a static API key. Tokens expire and must
     # be refreshed via the client-credentials grant (not yet automated here).
     index_exchange_api_key: Optional[str] = None

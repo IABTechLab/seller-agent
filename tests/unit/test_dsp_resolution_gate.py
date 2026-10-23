@@ -15,7 +15,7 @@ from fastapi import HTTPException
 
 from ad_seller.clients.ssp_base import SSPDealCreateRequest, SSPDealType, SSPType
 from ad_seller.clients.ssp_index_exchange import DspSeatMatch
-from ad_seller.events.models import ApprovalRequest, ApprovalResponse
+from ad_seller.events.models import ApprovalRequest, ApprovalResponse, ApprovalStatus
 from ad_seller.services.approval_service import _resume_ssp_distribution
 from ad_seller.services.deal_service import _resolve_dsp_id_or_pending_approval
 
@@ -244,6 +244,15 @@ class TestResolveDspIdOrPendingApproval:
         )
 
 
+def _storage():
+    store: dict = {}
+    storage = AsyncMock()
+    storage.get = AsyncMock(side_effect=lambda k: store.get(k))
+    storage.set = AsyncMock(side_effect=lambda k, v, ttl=None: store.__setitem__(k, v))
+    storage._store = store
+    return storage
+
+
 class TestResumeSSPDistribution:
     def _approval_request(self, **overrides):
         defaults = dict(
@@ -253,6 +262,7 @@ class TestResumeSSPDistribution:
             flow_type="ssp_distribution",
             gate_name="dsp_resolution",
             deal_id="deal-1",
+            context={"candidates": [{"dsp_id": 52}, {"dsp_id": 85}]},
             flow_state_snapshot={
                 "ssp_name": "index_exchange",
                 "create_request": _create_request().model_dump(mode="json"),
@@ -260,6 +270,24 @@ class TestResumeSSPDistribution:
         )
         defaults.update(overrides)
         return ApprovalRequest(**defaults)
+
+    def _mock_registry(self, created_deal=None, create_side_effect=None):
+        mock_ssp = AsyncMock()
+        mock_ssp.create_deal = AsyncMock(return_value=created_deal, side_effect=create_side_effect)
+        mock_ssp.__aenter__ = AsyncMock(return_value=mock_ssp)
+        mock_ssp.__aexit__ = AsyncMock(return_value=False)
+        mock_registry = MagicMock()
+        mock_registry.get_client.return_value = mock_ssp
+        return mock_registry, mock_ssp
+
+    def _created_deal(self):
+        created_deal = MagicMock()
+        created_deal.deal_id = "EXT-DEAL-001"
+        created_deal.ssp_name = "Index Exchange"
+        created_deal.ssp_type = SSPType.INDEX_EXCHANGE
+        created_deal.status = MagicMock(value="active")
+        created_deal.model_dump.return_value = {"deal_id": "EXT-DEAL-001"}
+        return created_deal
 
     @pytest.mark.asyncio
     async def test_reject_returns_without_creating_deal(self):
@@ -309,10 +337,14 @@ class TestResumeSSPDistribution:
 
         mock_registry = MagicMock()
         mock_registry.get_client.return_value = mock_ssp
+        storage = _storage()
 
-        with patch(
-            "ad_seller.clients.ssp_factory.build_ssp_registry",
-            return_value=mock_registry,
+        with (
+            patch(
+                "ad_seller.clients.ssp_factory.build_ssp_registry",
+                return_value=mock_registry,
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
         ):
             result = await _resume_ssp_distribution(request, response)
 
@@ -322,3 +354,75 @@ class TestResumeSSPDistribution:
         assert create_request_arg.external_deal_id == "EXT-DEAL-001"
         assert result["resumed_from_approval"] == "apr-999"
         assert result["deal_id"] == "EXT-DEAL-001"
+
+    @pytest.mark.asyncio
+    async def test_approve_with_selected_dsp_id_outside_candidates_raises_400(self):
+        request = self._approval_request()
+        response = ApprovalResponse(
+            approval_id="apr-999", decision="approve", modifications={"selected_dsp_id": 999}
+        )
+        registry, ssp = self._mock_registry()
+
+        with patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry):
+            with pytest.raises(HTTPException) as exc_info:
+                await _resume_ssp_distribution(request, response)
+
+        assert exc_info.value.status_code == 400
+        assert "candidate" in exc_info.value.detail
+        ssp.create_deal.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_approve_marks_approval_consumed(self):
+        request = self._approval_request(status=ApprovalStatus.APPROVED)
+        response = ApprovalResponse(
+            approval_id="apr-999", decision="approve", modifications={"selected_dsp_id": 52}
+        )
+        registry, _ = self._mock_registry(self._created_deal())
+        storage = _storage()
+
+        with (
+            patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        ):
+            await _resume_ssp_distribution(request, response)
+
+        assert storage._store["approval:apr-999"]["status"] == "consumed"
+
+    @pytest.mark.asyncio
+    async def test_second_resume_returns_409_and_does_not_create_deal_again(self):
+        request = self._approval_request(status=ApprovalStatus.APPROVED)
+        response = ApprovalResponse(
+            approval_id="apr-999", decision="approve", modifications={"selected_dsp_id": 52}
+        )
+        registry, ssp = self._mock_registry(self._created_deal())
+        storage = _storage()
+
+        with (
+            patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        ):
+            await _resume_ssp_distribution(request, response)
+            consumed = ApprovalRequest(**storage._store["approval:apr-999"])
+            with pytest.raises(HTTPException) as exc_info:
+                await _resume_ssp_distribution(consumed, response)
+
+        assert exc_info.value.status_code == 409
+        assert ssp.create_deal.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_failed_create_deal_restores_approved_status_for_retry(self):
+        request = self._approval_request(status=ApprovalStatus.APPROVED)
+        response = ApprovalResponse(
+            approval_id="apr-999", decision="approve", modifications={"selected_dsp_id": 52}
+        )
+        registry, _ = self._mock_registry(create_side_effect=RuntimeError("IX down"))
+        storage = _storage()
+
+        with (
+            patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        ):
+            with pytest.raises(RuntimeError):
+                await _resume_ssp_distribution(request, response)
+
+        assert storage._store["approval:apr-999"]["status"] == "approved"
