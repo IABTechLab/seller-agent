@@ -26,6 +26,13 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Changed
 
+- Index Exchange SSP connector rewritten against the real `/v3/deals` API
+  (create, get, list, update, clone, troubleshoot, seat-ID to DSP
+  resolution). Seat IDs that resolve to several DSPs pause for operator
+  approval instead of guessing; approvals, their listing and resume are
+  operator-only, and a resumed approval is consumed so it cannot create the
+  deal twice. `INDEX_EXCHANGE_API_URL` has no default, so an unconfigured
+  deployment never calls production.
 - Booking (POST /api/v1/deals) now requires a verified buyer key matching
   the quote; the MCP deal-from-template tool is operator-gated. Previously
   anonymous callers could book any quote.
