@@ -555,15 +555,15 @@ class TestIndexExchangeClient:
 
     @pytest.mark.parametrize("status", [SSPDealStatus.CREATED, SSPDealStatus.ARCHIVED])
     @pytest.mark.asyncio
-    async def test_list_deals_sends_no_status_param_when_unmapped(self, status):
+    async def test_list_deals_rejects_status_index_cannot_filter_on(self, status):
         client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         mock_http = AsyncMock()
-        mock_http.get.return_value = _mock_response({"totalCount": 0, "deals": []})
         client._http = mock_http
 
-        await client.list_deals(status=status)
+        with pytest.raises(ValueError, match="no '.*' deal status"):
+            await client.list_deals(status=status)
 
-        assert "status" not in mock_http.get.call_args[1]["params"]
+        mock_http.get.assert_not_called()
 
     # --- update_deal() ---
 
@@ -581,6 +581,29 @@ class TestIndexExchangeClient:
         assert mock_http.patch.call_args[0][0] == "/api/deals/v3/deals/987654"
         assert mock_http.patch.call_args[1]["json"] == {"status": "paused"}
         assert mock_http.patch.call_args[1]["headers"] == {"If-Match": '"etag-123"'}
+
+    @pytest.mark.asyncio
+    async def test_update_deal_uses_caller_held_etag_without_refetching(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
+        mock_http = AsyncMock()
+        mock_http.patch.return_value = _mock_response(_ix_response(status="paused"))
+        client._http = mock_http
+
+        await client.update_deal("987654", {"status": "paused"}, etag='"held-etag"')
+
+        mock_http.get.assert_not_called()
+        assert mock_http.patch.call_args[1]["headers"] == {"If-Match": '"held-etag"'}
+
+    @pytest.mark.asyncio
+    async def test_get_deal_exposes_etag_for_later_update(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
+        mock_http = AsyncMock()
+        mock_http.get.return_value = _mock_response(_ix_response(), headers={"ETag": '"etag-9"'})
+        client._http = mock_http
+
+        deal = await client.get_deal("987654")
+
+        assert deal.raw["_etag"] == '"etag-9"'
 
     @pytest.mark.asyncio
     async def test_update_deal_raises_without_etag(self):
@@ -613,7 +636,8 @@ class TestIndexExchangeClient:
         client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         deal = client._parse_deal(_ix_response())
 
-        assert deal.deal_id == "IX-DEAL-001"
+        assert deal.deal_id == "987654"
+        assert deal.external_deal_id == "IX-DEAL-001"
         assert deal.cpm == 15.0
         assert deal.start_date == "2026-01-01"
         assert deal.end_date == "2026-12-31"
@@ -635,6 +659,11 @@ class TestIndexExchangeClient:
         client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
         deal = client._parse_deal(_ix_response(status=status_str))
         assert deal.status == expected
+
+    def test_parse_deal_unknown_status_maps_to_error(self):
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com")
+        deal = client._parse_deal(_ix_response(status="archived"))
+        assert deal.status == SSPDealStatus.ERROR
 
     def test_status_map_has_no_archived_or_pending(self):
         from ad_seller.clients.ssp_index_exchange import _IX_STATUS_MAP
@@ -865,3 +894,9 @@ class TestSSPRegistry:
         registry = SSPRegistry()
         with pytest.raises(KeyError):
             registry.get_client("nonexistent")
+
+
+def test_index_exchange_api_url_has_no_default():
+    from ad_seller.config.settings import Settings
+
+    assert Settings.model_fields["index_exchange_api_url"].default is None

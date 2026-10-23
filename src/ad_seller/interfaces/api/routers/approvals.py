@@ -5,16 +5,18 @@
 
 These are privileged control-plane endpoints: submitting a decision here
 finalizes (or rejects/counters) a gated deal. They therefore REQUIRE a
-valid API-key credential (EP-4.5). The approver identity written to the
-audit trail is the VERIFIED principal derived from that credential —
-``body.decided_by`` is retained only as a free-text display label.
+valid OPERATOR API-key credential (EP-4.5): approval requests snapshot
+deal pricing and resume can create the deal, so buyer keys are rejected.
+The approver identity written to the audit trail is the VERIFIED principal
+derived from that credential — ``body.decided_by`` is retained only as a
+free-text display label.
 """
 
 from fastapi import APIRouter, Depends
 
 from ....auth.dependencies import (
     principal_from_api_key,
-    require_api_key_record,
+    require_operator_key,
 )
 from ....models.api_key import ApiKeyRecord
 from ....services import approval_service
@@ -25,20 +27,20 @@ router = APIRouter()
 
 @router.get("/approvals", tags=["Approvals"])
 async def list_pending_approvals(
-    _principal: ApiKeyRecord = Depends(require_api_key_record),
+    _principal: ApiKeyRecord = Depends(require_operator_key),
 ):
-    """List all pending approval requests. Requires authentication."""
+    """List all pending approval requests. Requires an operator credential."""
     return await approval_service.list_pending_approvals()
 
 
 @router.get("/approvals/{approval_id}", tags=["Approvals"])
 async def get_approval(
     approval_id: str,
-    _principal: ApiKeyRecord = Depends(require_api_key_record),
+    _principal: ApiKeyRecord = Depends(require_operator_key),
 ):
     """Get a specific approval request and its response (if any).
 
-    Requires authentication.
+    Requires an operator credential.
     """
     return await approval_service.get_approval(approval_id)
 
@@ -47,9 +49,9 @@ async def get_approval(
 async def decide_approval(
     approval_id: str,
     body: ApprovalDecisionRequest,
-    principal: ApiKeyRecord = Depends(require_api_key_record),
+    principal: ApiKeyRecord = Depends(require_operator_key),
 ):
-    """Submit a human decision for a pending approval. Requires authentication.
+    """Submit a human decision for a pending approval. Requires an operator credential.
 
     The verified principal from the authenticated API key is stamped into
     the audit record; ``body.decided_by`` is kept as a display label only.
@@ -67,11 +69,11 @@ async def decide_approval(
 @router.post("/approvals/{approval_id}/resume", tags=["Approvals"])
 async def resume_flow(
     approval_id: str,
-    _principal: ApiKeyRecord = Depends(require_api_key_record),
+    _principal: ApiKeyRecord = Depends(require_operator_key),
 ):
     """Resume a flow after an approval decision has been submitted.
 
-    Requires authentication. Loads the flow state snapshot, applies the
+    Requires an operator credential. Loads the flow state snapshot, applies the
     decision, and returns the final result without re-running expensive
     crew evaluations.
     """

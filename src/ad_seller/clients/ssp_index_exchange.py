@@ -123,7 +123,7 @@ _IX_STATUS_MAP = {
 }
 
 # GET /v3/deals `status` filter values — Index has no equivalent for CREATED or
-# ARCHIVED, so those send no status filter (unfiltered list).
+# ARCHIVED, so list_deals() rejects those instead of returning an unfiltered list.
 _IX_LIST_STATUS_MAP = {
     SSPDealStatus.ACTIVE: "active",
     SSPDealStatus.PAUSED: "paused",
@@ -320,7 +320,9 @@ class IndexExchangeSSPClient(RESTSSPClient):
             targeting=source.targeting,
             impressions_goal=source.impressions_goal,
             buyer_seat_ids=direct_config.get("seatIDs", []),
-            external_deal_id=_generate_clone_external_deal_id(source.deal_id),
+            external_deal_id=_generate_clone_external_deal_id(
+                source.external_deal_id or source.deal_id
+            ),
             account_id=account.get("accountID"),
             dsp_id=direct_config.get("dspID") or marketplace_config.get("dspID"),
         )
@@ -339,7 +341,11 @@ class IndexExchangeSSPClient(RESTSSPClient):
 
         resp = await http.get(f"{_API_BASE_PATH}{_DEALS_PATH}/{deal_id}")
         resp.raise_for_status()
-        return self._parse_deal(resp.json())
+        deal = self._parse_deal(resp.json())
+        etag = resp.headers.get("ETag")
+        if etag and deal.raw is not None:
+            deal.raw["_etag"] = etag
+        return deal
 
     async def list_deals(
         self,
@@ -351,8 +357,13 @@ class IndexExchangeSSPClient(RESTSSPClient):
         http = self._ensure_connected()
 
         params: dict[str, Any] = {"pageOffset": 0, "pageSize": limit}
-        ix_status = _IX_LIST_STATUS_MAP.get(status) if status else None
-        if ix_status:
+        if status:
+            ix_status = _IX_LIST_STATUS_MAP.get(status)
+            if ix_status is None:
+                raise ValueError(
+                    f"Index Exchange has no '{status.value}' deal status to filter on; "
+                    f"supported: {sorted(s.value for s in _IX_LIST_STATUS_MAP)}"
+                )
             params["status"] = ix_status
 
         resp = await http.get(f"{_API_BASE_PATH}{_DEALS_PATH}", params=params)
@@ -365,20 +376,25 @@ class IndexExchangeSSPClient(RESTSSPClient):
         self,
         deal_id: str,
         updates: dict[str, Any],
+        etag: Optional[str] = None,
     ) -> SSPDeal:
         """Update a deal on Index Exchange via PATCH /v3/deals/{internalDealID}.
 
         deal_id must be the internalDealID (not externalDealID). Index requires
-        an If-Match header carrying the deal's current ETag, obtained via a
-        preceding GET. `updates["status"]`, if present, must be "active" or
-        "paused" (not "ACTIVE"/"PAUSED") — expired/auto-paused are system-set
-        and cannot be patched.
+        an If-Match header carrying the deal's ETag. Pass the `etag` captured
+        when the caller read the deal (get_deal() stores it in `raw["_etag"]`)
+        to get lost-update protection; without one, the current ETag is
+        fetched immediately before the PATCH, which cannot detect concurrent
+        edits. `updates["status"]`, if present, must be "active" or "paused"
+        (not "ACTIVE"/"PAUSED") — expired/auto-paused are system-set and
+        cannot be patched.
         """
         http = self._ensure_connected()
 
-        get_resp = await http.get(f"{_API_BASE_PATH}{_DEALS_PATH}/{deal_id}")
-        get_resp.raise_for_status()
-        etag = get_resp.headers.get("ETag")
+        if not etag:
+            get_resp = await http.get(f"{_API_BASE_PATH}{_DEALS_PATH}/{deal_id}")
+            get_resp.raise_for_status()
+            etag = get_resp.headers.get("ETag")
         if not etag:
             raise ValueError(
                 f"Index Exchange did not return an ETag for deal {deal_id}; cannot PATCH"
@@ -479,10 +495,11 @@ class IndexExchangeSSPClient(RESTSSPClient):
             deal_type = SSPDealType.AUCTION_PACKAGE
 
         return SSPDeal(
-            deal_id=str(raw.get("externalDealID", "unknown")),
+            deal_id=str(raw.get("internalDealID", raw.get("externalDealID", "unknown"))),
+            external_deal_id=raw.get("externalDealID"),
             name=raw.get("name"),
             deal_type=deal_type,
-            status=_IX_STATUS_MAP.get(status_str, SSPDealStatus.CREATED),
+            status=_IX_STATUS_MAP.get(status_str, SSPDealStatus.ERROR),
             advertiser=labels.get("advertiser"),
             cpm=raw.get("floor"),
             currency="USD",

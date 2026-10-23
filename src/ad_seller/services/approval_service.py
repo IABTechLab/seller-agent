@@ -116,6 +116,14 @@ async def resume_flow(approval_id: str) -> dict[str, Any]:
     )
 
 
+async def _set_approval_status(request, status) -> None:
+    from ..storage.factory import get_storage
+
+    request.status = status
+    storage = await get_storage()
+    await storage.set(f"approval:{request.approval_id}", request.model_dump(mode="json"))
+
+
 async def _resume_ssp_distribution(request, response):
     """Resume an SSP distribution after a dsp_resolution approval decision.
 
@@ -127,6 +135,13 @@ async def _resume_ssp_distribution(request, response):
     """
     from ..clients.ssp_base import SSPDealCreateRequest
     from ..clients.ssp_factory import build_ssp_registry
+    from ..events.models import ApprovalStatus
+
+    if request.status == ApprovalStatus.CONSUMED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Approval {request.approval_id} has already been resumed",
+        )
 
     if response.decision != "approve":
         return {
@@ -140,6 +155,16 @@ async def _resume_ssp_distribution(request, response):
         raise HTTPException(
             status_code=400,
             detail='Approving a dsp_resolution gate requires modifications={"selected_dsp_id": <id>}',
+        )
+
+    candidate_dsp_ids = {str(c.get("dsp_id")) for c in request.context.get("candidates", [])}
+    if str(selected_dsp_id) not in candidate_dsp_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"selected_dsp_id {selected_dsp_id} is not one of the candidate DSPs "
+                f"for this approval: {sorted(candidate_dsp_ids)}"
+            ),
         )
 
     snapshot = request.flow_state_snapshot
@@ -156,8 +181,16 @@ async def _resume_ssp_distribution(request, response):
     registry = build_ssp_registry()
     ssp = registry.get_client(snapshot["ssp_name"])
 
-    async with ssp:
-        result = await ssp.create_deal(create_request)
+    # Mark the approval consumed before creating the deal so a repeated resume
+    # cannot create it twice; restore it if creation fails so the call can be retried.
+    # Storage has no compare-and-set, so two truly simultaneous resumes can still race.
+    await _set_approval_status(request, ApprovalStatus.CONSUMED)
+    try:
+        async with ssp:
+            result = await ssp.create_deal(create_request)
+    except Exception:
+        await _set_approval_status(request, ApprovalStatus.APPROVED)
+        raise
 
     return {
         "deal_id": result.deal_id,
