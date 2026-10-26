@@ -426,3 +426,70 @@ class TestResumeSSPDistribution:
                 await _resume_ssp_distribution(request, response)
 
         assert storage._store["approval:apr-999"]["status"] == "approved"
+
+
+class TestResumeSSPDistributionHardening:
+    _approval_request = TestResumeSSPDistribution._approval_request
+    _mock_registry = TestResumeSSPDistribution._mock_registry
+    _created_deal = TestResumeSSPDistribution._created_deal
+
+    async def _resume(self, modifications, create_side_effect=None):
+        request = self._approval_request(status=ApprovalStatus.APPROVED)
+        response = ApprovalResponse(
+            approval_id="apr-999", decision="approve", modifications=modifications
+        )
+        registry, ssp = self._mock_registry(
+            self._created_deal(), create_side_effect=create_side_effect
+        )
+        storage = _storage()
+        with (
+            patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        ):
+            try:
+                result = await _resume_ssp_distribution(request, response)
+            finally:
+                self.storage = storage
+        return result, ssp
+
+    @pytest.mark.asyncio
+    async def test_modifications_cannot_override_dsp_or_external_deal_id(self):
+        _, ssp = await self._resume(
+            {"selected_dsp_id": 52, "dsp_id": 999, "external_deal_id": "OTHER"}
+        )
+        sent = ssp.create_deal.call_args.args[0]
+        assert sent.dsp_id == 52
+        assert sent.external_deal_id == "EXT-DEAL-001"
+
+    @pytest.mark.asyncio
+    async def test_allowed_modifications_are_applied(self):
+        _, ssp = await self._resume({"selected_dsp_id": 52, "cpm": 7.5, "account_id": 4242})
+        sent = ssp.create_deal.call_args.args[0]
+        assert (sent.cpm, sent.account_id) == (7.5, 4242)
+
+    @pytest.mark.asyncio
+    async def test_invalid_modification_value_returns_400_without_creating(self):
+        request = self._approval_request(status=ApprovalStatus.APPROVED)
+        response = ApprovalResponse(
+            approval_id="apr-999",
+            decision="approve",
+            modifications={"selected_dsp_id": 52, "cpm": "not-a-number"},
+        )
+        registry, ssp = self._mock_registry(self._created_deal())
+        with patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry):
+            with pytest.raises(HTTPException) as exc_info:
+                await _resume_ssp_distribution(request, response)
+        assert exc_info.value.status_code == 400
+        ssp.create_deal.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_outcome_unknown_leaves_approval_consumed(self):
+        from ad_seller.clients.ssp_base import SSPDealOutcomeUnknownError
+
+        with pytest.raises(HTTPException) as exc_info:
+            await self._resume(
+                {"selected_dsp_id": 52},
+                create_side_effect=SSPDealOutcomeUnknownError("check Index"),
+            )
+        assert exc_info.value.status_code == 502
+        assert self.storage._store["approval:apr-999"]["status"] == "consumed"

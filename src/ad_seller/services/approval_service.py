@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,21 @@ async def _set_approval_status(request, status) -> None:
     await storage.set(f"approval:{request.approval_id}", request.model_dump(mode="json"))
 
 
+_DECISION_TIME_FIELDS = frozenset(
+    {
+        "name",
+        "cpm",
+        "account_id",
+        "advertiser",
+        "targeting",
+        "start_date",
+        "end_date",
+        "impressions_goal",
+        "buyer_seat_ids",
+    }
+)
+
+
 async def _resume_ssp_distribution(request, response):
     """Resume an SSP distribution after a dsp_resolution approval decision.
 
@@ -133,7 +149,7 @@ async def _resume_ssp_distribution(request, response):
     waiting on a dsp_id. On approval, the human's selected_dsp_id
     (response.modifications) is applied and create_deal() finally runs.
     """
-    from ..clients.ssp_base import SSPDealCreateRequest
+    from ..clients.ssp_base import SSPDealCreateRequest, SSPDealOutcomeUnknownError
     from ..clients.ssp_factory import build_ssp_registry
     from ..events.models import ApprovalStatus
 
@@ -168,15 +184,21 @@ async def _resume_ssp_distribution(request, response):
         )
 
     snapshot = request.flow_state_snapshot
-    create_request = SSPDealCreateRequest(**snapshot["create_request"])
-    create_request.dsp_id = selected_dsp_id
-
-    # Any other create_request field the human supplies at decision time
-    # (e.g. account_id, name, targeting) — fields the SSP needs that
-    # distribute_deal_via_ssp never had a value for when the gate fired.
-    for field, value in response.modifications.items():
-        if field != "selected_dsp_id" and hasattr(create_request, field):
-            setattr(create_request, field, value)
+    # Only fields the SSP needs that distribute_deal_via_ssp had no value for when
+    # the gate fired may be supplied at decision time; dsp_id comes from selected_dsp_id.
+    supplied = {
+        field: value
+        for field, value in response.modifications.items()
+        if field in _DECISION_TIME_FIELDS
+    }
+    try:
+        create_request = SSPDealCreateRequest.model_validate(
+            {**snapshot["create_request"], **supplied, "dsp_id": selected_dsp_id}
+        )
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid modifications: {exc.errors(include_url=False)}"
+        ) from exc
 
     registry = build_ssp_registry()
     ssp = registry.get_client(snapshot["ssp_name"])
@@ -188,6 +210,9 @@ async def _resume_ssp_distribution(request, response):
     try:
         async with ssp:
             result = await ssp.create_deal(create_request)
+    except SSPDealOutcomeUnknownError as exc:
+        # The deal may exist in the SSP; leave the approval consumed so a retry cannot duplicate it.
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception:
         await _set_approval_status(request, ApprovalStatus.APPROVED)
         raise

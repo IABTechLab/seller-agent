@@ -25,6 +25,11 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
+
+class SSPDealOutcomeUnknownError(Exception):
+    """create_deal may or may not have created the deal and this could not be confirmed."""
+
+
 # =============================================================================
 # SSP result models
 # =============================================================================
@@ -111,7 +116,7 @@ class SSPDealCreateRequest(BaseModel):
     end_date: Optional[str] = None
     # Shape varies by SSP: a flat dict (e.g. PubMatic) or a structured array of
     # targeting objects (e.g. Index Exchange's {targetingType, keyName, sets}).
-    targeting: Optional[list[dict[str, Any]]] = None
+    targeting: Optional[dict[str, Any] | list[dict[str, Any]]] = None
     impressions_goal: Optional[int] = None
     buyer_seat_ids: list[str] = []
     # For clone operations

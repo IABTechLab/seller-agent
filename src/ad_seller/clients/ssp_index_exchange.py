@@ -55,11 +55,13 @@ import logging
 import uuid
 from typing import Any, Optional
 
+import httpx
 from pydantic import BaseModel
 
 from .ssp_base import (
     SSPDeal,
     SSPDealCreateRequest,
+    SSPDealOutcomeUnknownError,
     SSPDealStatus,
     SSPDealType,
     SSPTroubleshootResult,
@@ -95,6 +97,20 @@ def _generate_clone_external_deal_id(source_external_deal_id: str) -> str:
     suffix = f"-clone-{uuid.uuid4().hex[:8]}"
     base = source_external_deal_id[: _EXTERNAL_DEAL_ID_MAX_LEN - len(suffix)]
     return f"{base}{suffix}"
+
+
+# Bounds for the post-failure externalDealID lookup; `search` is a substring match.
+_LOOKUP_PAGE_SIZE = 100
+_LOOKUP_MAX_PAGES = 5
+
+
+def _may_have_reached_index(exc: Exception) -> bool:
+    """True if a failed POST may have been processed by Index (so a retry could duplicate)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)):
+        return False
+    return isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
 
 
 def _ix_deal_config(deal_type: SSPDealType) -> tuple[int, str, bool]:
@@ -239,9 +255,63 @@ class IndexExchangeSSPClient(RESTSSPClient):
         if request.targeting:
             body["targeting"] = request.targeting
 
-        resp = await http.post(f"{_API_BASE_PATH}{_DEALS_PATH}", json=body)
-        resp.raise_for_status()
+        try:
+            resp = await http.post(f"{_API_BASE_PATH}{_DEALS_PATH}", json=body)
+            resp.raise_for_status()
+        except Exception as exc:
+            if not _may_have_reached_index(exc):
+                raise
+            existing = await self._find_deal_by_external_id(
+                request.external_deal_id, request.account_id, exc
+            )
+            if existing is None:
+                raise
+            logger.warning(
+                "Index Exchange create_deal failed (%s) but deal %s exists; returning it",
+                exc,
+                request.external_deal_id,
+            )
+            return existing
         return self._parse_deal(resp.json())
+
+    async def _find_deal_by_external_id(
+        self, external_deal_id: str, account_id: int, create_error: Exception
+    ) -> Optional[SSPDeal]:
+        """Look up a deal by exact externalDealID after an ambiguous create failure.
+
+        GET /v3/deals `search` matches loosely, so results are filtered to an exact
+        externalDealID match. Raises SSPDealOutcomeUnknownError if the lookup fails.
+        """
+        http = self._ensure_connected()
+        try:
+            for page_offset in range(_LOOKUP_MAX_PAGES):
+                resp = await http.get(
+                    f"{_API_BASE_PATH}{_DEALS_PATH}",
+                    params={
+                        "search": external_deal_id,
+                        "accountIDs": account_id,
+                        "pageOffset": page_offset,
+                        "pageSize": _LOOKUP_PAGE_SIZE,
+                    },
+                )
+                resp.raise_for_status()
+                raw_deals = resp.json().get("deals", [])
+                for raw in raw_deals:
+                    if raw.get("externalDealID") == external_deal_id:
+                        return self._parse_deal(raw)
+                if len(raw_deals) < _LOOKUP_PAGE_SIZE:
+                    return None
+        except Exception as lookup_exc:
+            raise SSPDealOutcomeUnknownError(
+                f"Index Exchange create_deal for externalDealID {external_deal_id} failed "
+                f"({create_error}) and the follow-up lookup failed ({lookup_exc}); "
+                "check Index Exchange before retrying"
+            ) from create_error
+        raise SSPDealOutcomeUnknownError(
+            f"Index Exchange create_deal for externalDealID {external_deal_id} failed "
+            f"({create_error}) and the follow-up lookup found no exact match within "
+            f"{_LOOKUP_MAX_PAGES} pages; check Index Exchange before retrying"
+        ) from create_error
 
     async def resolve_dsp_ids_for_seat_ids(self, seat_ids: list[str]) -> list[DspSeatMatch]:
         """Resolve dspID(s) for the given buyer seat IDs.

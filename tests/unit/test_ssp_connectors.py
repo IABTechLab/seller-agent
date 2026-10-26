@@ -20,6 +20,7 @@ from ad_seller.clients.ssp_base import (
     SSPClient,
     SSPDeal,
     SSPDealCreateRequest,
+    SSPDealOutcomeUnknownError,
     SSPDealStatus,
     SSPDealType,
     SSPRegistry,
@@ -753,6 +754,124 @@ class TestIndexExchangeClient:
         assert result.health_score == 0
 
 
+class TestIndexExchangeCreateDealAmbiguousFailure:
+    """A POST that may have reached Index must not be blindly retried."""
+
+    @staticmethod
+    def _client(handler) -> IndexExchangeSSPClient:
+        client = IndexExchangeSSPClient(base_url="https://app.indexexchange.com", api_key="k")
+        client._http = httpx.AsyncClient(
+            base_url="https://app.indexexchange.com", transport=httpx.MockTransport(handler)
+        )
+        return client
+
+    @pytest.mark.asyncio
+    async def test_timeout_after_post_returns_deal_already_created(self):
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            if request.method == "POST":
+                raise httpx.ReadTimeout("lost response", request=request)
+            return httpx.Response(
+                200,
+                json={
+                    "deals": [
+                        _ix_response(externalDealID="EXT-DEAL-001-OTHER"),
+                        _ix_response(externalDealID="EXT-DEAL-001"),
+                    ]
+                },
+            )
+
+        client = self._client(handler)
+        result = await client.create_deal(_valid_create_request())
+
+        assert result.external_deal_id == "EXT-DEAL-001"
+        assert [c.method for c in calls] == ["POST", "GET"]
+        assert calls[1].url.params["search"] == "EXT-DEAL-001"
+        assert calls[1].url.params["accountIDs"] == "12345"
+
+    @pytest.mark.asyncio
+    async def test_lookup_pages_past_substring_matches_to_find_exact_deal(self):
+        pages = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST":
+                raise httpx.ReadTimeout("lost response", request=request)
+            offset = int(request.url.params["pageOffset"])
+            pages.append(offset)
+            if offset == 0:
+                decoys = [_ix_response(externalDealID=f"EXT-DEAL-001-{i}") for i in range(100)]
+                return httpx.Response(200, json={"deals": decoys})
+            return httpx.Response(
+                200, json={"deals": [_ix_response(externalDealID="EXT-DEAL-001")]}
+            )
+
+        result = await self._client(handler).create_deal(_valid_create_request())
+
+        assert result.external_deal_id == "EXT-DEAL-001"
+        assert pages == [0, 1]
+
+    @pytest.mark.asyncio
+    async def test_lookup_without_exact_match_within_page_cap_is_outcome_unknown(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST":
+                raise httpx.ReadTimeout("lost response", request=request)
+            decoys = [_ix_response(externalDealID=f"EXT-DEAL-001-{i}") for i in range(100)]
+            return httpx.Response(200, json={"deals": decoys})
+
+        with pytest.raises(SSPDealOutcomeUnknownError):
+            await self._client(handler).create_deal(_valid_create_request())
+
+    @pytest.mark.asyncio
+    async def test_timeout_after_post_reraises_when_deal_absent(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST":
+                raise httpx.ReadTimeout("lost response", request=request)
+            return httpx.Response(200, json={"deals": [_ix_response(externalDealID="NOPE")]})
+
+        with pytest.raises(httpx.ReadTimeout):
+            await self._client(handler).create_deal(_valid_create_request())
+
+    @pytest.mark.asyncio
+    async def test_5xx_then_failed_lookup_raises_outcome_unknown(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={})
+
+        with pytest.raises(SSPDealOutcomeUnknownError):
+            await self._client(handler).create_deal(_valid_create_request())
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [400, 409, 422])
+    async def test_4xx_does_not_look_up_or_swallow(self, status):
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.method)
+            return httpx.Response(status, json={})
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await self._client(handler).create_deal(_valid_create_request())
+        assert calls == ["POST"]
+
+    @pytest.mark.asyncio
+    async def test_connect_error_does_not_look_up(self):
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.method)
+            raise httpx.ConnectError("refused", request=request)
+
+        with pytest.raises(httpx.ConnectError):
+            await self._client(handler).create_deal(_valid_create_request())
+        assert calls == ["POST"]
+
+    def test_create_request_accepts_dict_and_list_targeting(self):
+        assert _valid_create_request(targeting={"geo": ["US"]}).targeting == {"geo": ["US"]}
+        listed = [{"targetingType": "standard", "keyName": "domain", "sets": []}]
+        assert _valid_create_request(targeting=listed).targeting == listed
+
+
 # =========================================================================
 # SSP Error handling
 # =========================================================================
@@ -786,7 +905,7 @@ class TestSSPErrors:
         )
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server Error", request=MagicMock(), response=MagicMock(status_code=500)
+            "Bad Request", request=MagicMock(), response=MagicMock(status_code=400)
         )
         mock_http = AsyncMock()
         mock_http.post.return_value = mock_response
