@@ -10421,6 +10421,10 @@
           "targeting": {
             "anyOf": [
               {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
                 "items": {
                   "additionalProperties": true,
                   "type": "object"

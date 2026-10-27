@@ -453,13 +453,29 @@ class TestResumeSSPDistributionHardening:
         return result, ssp
 
     @pytest.mark.asyncio
-    async def test_modifications_cannot_override_dsp_or_external_deal_id(self):
-        _, ssp = await self._resume(
-            {"selected_dsp_id": 52, "dsp_id": 999, "external_deal_id": "OTHER"}
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"dsp_id": 999},
+            {"external_deal_id": "OTHER"},
+            {"cmp": 99},
+            {"buyer_seat_ids": ["seat-solo"]},
+        ],
+    )
+    async def test_disallowed_or_unknown_modification_keys_return_400(self, extra):
+        request = self._approval_request(status=ApprovalStatus.APPROVED)
+        response = ApprovalResponse(
+            approval_id="apr-999",
+            decision="approve",
+            modifications={"selected_dsp_id": 52, **extra},
         )
-        sent = ssp.create_deal.call_args.args[0]
-        assert sent.dsp_id == 52
-        assert sent.external_deal_id == "EXT-DEAL-001"
+        registry, ssp = self._mock_registry(self._created_deal())
+        with patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry):
+            with pytest.raises(HTTPException) as exc_info:
+                await _resume_ssp_distribution(request, response)
+        assert exc_info.value.status_code == 400
+        assert next(iter(extra)) in exc_info.value.detail
+        ssp.create_deal.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_allowed_modifications_are_applied(self):
@@ -492,4 +508,151 @@ class TestResumeSSPDistributionHardening:
                 create_side_effect=SSPDealOutcomeUnknownError("check Index"),
             )
         assert exc_info.value.status_code == 502
+        assert self.storage._store["approval:apr-999"]["status"] == "outcome_unknown"
+
+    async def _resume_unknown(self, find_result=None, find_side_effect=None):
+        request = self._approval_request(status=ApprovalStatus.OUTCOME_UNKNOWN)
+        response = ApprovalResponse(
+            approval_id="apr-999", decision="approve", modifications={"selected_dsp_id": 52}
+        )
+        registry, ssp = self._mock_registry(self._created_deal())
+        ssp.find_deal_by_external_id = AsyncMock(
+            return_value=find_result, side_effect=find_side_effect
+        )
+        storage = _storage()
+        self.storage = storage
+        with (
+            patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        ):
+            result = await _resume_ssp_distribution(request, response)
+        return result, ssp
+
+    @pytest.mark.asyncio
+    async def test_resuming_outcome_unknown_returns_existing_deal_without_posting(self):
+        result, ssp = await self._resume_unknown(find_result=self._created_deal())
+
+        assert result["deal_id"] == "EXT-DEAL-001"
+        ssp.create_deal.assert_not_called()
+        ssp.find_deal_by_external_id.assert_awaited_once_with("EXT-DEAL-001", 12345)
         assert self.storage._store["approval:apr-999"]["status"] == "consumed"
+
+    @pytest.mark.asyncio
+    async def test_resuming_outcome_unknown_with_absent_deal_restores_approved(self):
+        with pytest.raises(HTTPException) as exc_info:
+            await self._resume_unknown(find_result=None)
+
+        assert exc_info.value.status_code == 409
+        assert "Resume again" in exc_info.value.detail
+        assert self.storage._store["approval:apr-999"]["status"] == "approved"
+
+    @pytest.mark.asyncio
+    async def test_resuming_outcome_unknown_with_failed_lookup_stays_unknown(self):
+        from ad_seller.clients.ssp_base import SSPDealOutcomeUnknownError
+
+        with pytest.raises(HTTPException) as exc_info:
+            await self._resume_unknown(find_side_effect=SSPDealOutcomeUnknownError("still down"))
+
+        assert exc_info.value.status_code == 502
+        assert "approval:apr-999" not in self.storage._store
+
+
+class TestDecideTimeValidation:
+    """A bad dsp_resolution decision is rejected while the approval is still pending."""
+
+    def _stored_request(self, storage):
+        request = TestResumeSSPDistribution._approval_request(None, status=ApprovalStatus.PENDING)
+        storage._store["approval:apr-999"] = request.model_dump(mode="json")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "modifications",
+        [
+            {"selected_dsp_id": 999},
+            {"selected_dsp_id": 52, "cpm": "not-a-number"},
+            {"selected_dsp_id": 52, "cmp": 99},
+            {},
+        ],
+    )
+    async def test_bad_decision_returns_400_and_stays_pending(self, modifications):
+        from ad_seller.services.approval_service import decide_approval
+
+        storage = _storage()
+        self._stored_request(storage)
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            with pytest.raises(HTTPException) as exc_info:
+                await decide_approval("apr-999", "approve", modifications=modifications)
+
+        assert exc_info.value.status_code == 400
+        assert storage._store["approval:apr-999"]["status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_valid_decision_is_accepted(self):
+        from ad_seller.services.approval_service import decide_approval
+
+        storage = _storage()
+        self._stored_request(storage)
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            result = await decide_approval(
+                "apr-999", "approve", modifications={"selected_dsp_id": 52, "cpm": 9.5}
+            )
+
+        assert result["decision"] == "approve"
+
+
+class TestDirectDistributeOutcomeUnknown:
+    @pytest.mark.asyncio
+    async def test_outcome_unknown_maps_to_502(self):
+        from types import SimpleNamespace
+
+        from ad_seller.clients.ssp_base import SSPDealOutcomeUnknownError
+        from ad_seller.services import deal_service
+
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.create_deal = AsyncMock(side_effect=SSPDealOutcomeUnknownError("check Index"))
+        ssp_registry = MagicMock()
+        ssp_registry.list_ssps.return_value = ["index_exchange"]
+        ssp_registry.get_client.return_value = client
+        storage = AsyncMock()
+        storage.get_deal = AsyncMock(return_value=None)
+        request = SimpleNamespace(
+            deal_id="deal-1",
+            deal_type="PMP",
+            name="n",
+            advertiser=None,
+            cpm=1.0,
+            buyer_seat_ids=None,
+            account_id=1,
+            start_date=None,
+            end_date=None,
+            targeting={"geo": ["US"]},
+            ssp_name="index_exchange",
+            inventory_type=None,
+        )
+
+        with (
+            patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=ssp_registry),
+            patch("ad_seller.clients.deal_sync_factory.build_deal_sync_registry"),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch.object(
+                deal_service, "_resolve_dsp_id_or_pending_approval", AsyncMock(return_value=None)
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await deal_service.distribute_deal_via_ssp(request)
+
+        assert exc_info.value.status_code == 502
+        assert exc_info.value.detail["error"] == "outcome_unknown"
+        assert client.create_deal.call_args.args[0].targeting == {"geo": ["US"]}
+
+
+def test_distribute_request_schema_accepts_dict_and_list_targeting():
+    from ad_seller.interfaces.api.schemas import SSPDealDistributeRequest
+
+    assert SSPDealDistributeRequest(deal_id="d", targeting={"geo": ["US"]}).targeting == {
+        "geo": ["US"]
+    }
+    listed = [{"targetingType": "standard", "keyName": "domain", "sets": []}]
+    assert SSPDealDistributeRequest(deal_id="d", targeting=listed).targeting == listed

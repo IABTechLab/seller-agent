@@ -793,7 +793,7 @@ async def distribute_deal_via_ssp(
     inventory_type: str = "",
     name: str = "",
     account_id: int = 0,
-    targeting: list[dict[str, Any]] | None = None,
+    targeting: dict[str, Any] | list[dict[str, Any]] | None = None,
 ) -> str:
     """Distribute a deal through configured SSP(s).
     Routes based on ssp_name or inventory_type routing rules.

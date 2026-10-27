@@ -261,9 +261,15 @@ class IndexExchangeSSPClient(RESTSSPClient):
         except Exception as exc:
             if not _may_have_reached_index(exc):
                 raise
-            existing = await self._find_deal_by_external_id(
-                request.external_deal_id, request.account_id, exc
-            )
+            try:
+                existing = await self.find_deal_by_external_id(
+                    request.external_deal_id, request.account_id
+                )
+            except SSPDealOutcomeUnknownError as lookup_exc:
+                raise SSPDealOutcomeUnknownError(
+                    f"Index Exchange create_deal for externalDealID "
+                    f"{request.external_deal_id} failed ({exc}); {lookup_exc}"
+                ) from exc
             if existing is None:
                 raise
             logger.warning(
@@ -274,13 +280,14 @@ class IndexExchangeSSPClient(RESTSSPClient):
             return existing
         return self._parse_deal(resp.json())
 
-    async def _find_deal_by_external_id(
-        self, external_deal_id: str, account_id: int, create_error: Exception
+    async def find_deal_by_external_id(
+        self, external_deal_id: str, account_id: int
     ) -> Optional[SSPDeal]:
-        """Look up a deal by exact externalDealID after an ambiguous create failure.
+        """Look up a deal by exact externalDealID, or None if it does not exist.
 
         GET /v3/deals `search` matches loosely, so results are filtered to an exact
-        externalDealID match. Raises SSPDealOutcomeUnknownError if the lookup fails.
+        externalDealID match and paged. Raises SSPDealOutcomeUnknownError if the
+        lookup fails or finds no exact match within the page cap.
         """
         http = self._ensure_connected()
         try:
@@ -303,15 +310,13 @@ class IndexExchangeSSPClient(RESTSSPClient):
                     return None
         except Exception as lookup_exc:
             raise SSPDealOutcomeUnknownError(
-                f"Index Exchange create_deal for externalDealID {external_deal_id} failed "
-                f"({create_error}) and the follow-up lookup failed ({lookup_exc}); "
+                f"the lookup for externalDealID {external_deal_id} failed ({lookup_exc}); "
                 "check Index Exchange before retrying"
-            ) from create_error
+            ) from lookup_exc
         raise SSPDealOutcomeUnknownError(
-            f"Index Exchange create_deal for externalDealID {external_deal_id} failed "
-            f"({create_error}) and the follow-up lookup found no exact match within "
+            f"the lookup for externalDealID {external_deal_id} found no exact match within "
             f"{_LOOKUP_MAX_PAGES} pages; check Index Exchange before retrying"
-        ) from create_error
+        )
 
     async def resolve_dsp_ids_for_seat_ids(self, seat_ids: list[str]) -> list[DspSeatMatch]:
         """Resolve dspID(s) for the given buyer seat IDs.
