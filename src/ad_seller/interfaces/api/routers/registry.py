@@ -55,10 +55,11 @@ async def agent_card():
             url=settings.seller_agent_url,
         ),
         capabilities=AgentCapabilities(
-            # Advertise only protocols with a served inbound surface. A2A is
-            # documented as a design (docs/api/a2a.md) but has no server yet;
-            # re-add "a2a" when an inbound A2A endpoint actually exists.
-            protocols=["opendirect21"],
+            # Advertise protocols with a served inbound surface. The A2A
+            # inbound server now exists (interfaces/agentcore/a2a_main.py,
+            # AGENTCORE_MODE=a2a), so "a2a" is advertised again alongside the
+            # OpenDirect REST surface.
+            protocols=["opendirect21", "a2a"],
             streaming=False,
             push_notifications=False,
         ),
