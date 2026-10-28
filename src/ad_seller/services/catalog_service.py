@@ -364,10 +364,13 @@ def build_csv_product_catalog() -> dict[str, Any]:
 
     data_dir = get_settings().csv_data_dir
 
+    # limit=None: serve every row. The adapter default (100) silently
+    # dropped the rest, while the sync (which reads every row) still built
+    # packages that pointed at them.
     async def _load() -> list[Any]:
         client = CSVAdServerClient(data_dir=data_dir)
         async with client:
-            return await client.list_inventory()
+            return await client.list_inventory(limit=None)
 
     try:
         items = _run_blocking(_load())

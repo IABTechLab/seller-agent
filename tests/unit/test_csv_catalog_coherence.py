@@ -203,6 +203,22 @@ class TestCsvCatalogService:
         second_ids = set((await catalog_service.get_static_product_catalog())["products"])
         assert first_ids == second_ids == CSV_IDS
 
+    async def test_csv_catalog_serves_every_row_past_the_adapter_default(self, csv_mode):
+        """The adapter's default limit is 100; the catalog must not inherit
+        it, or rows past 100 404 while the sync still packages them."""
+        rows = [
+            f"inv-bulk-{i:03d},Bulk Display {i:03d},,ACTIVE,300x250,banner,2,display,"
+            "IAB1,10.00,USD,US,Bulk row"
+            for i in range(150)
+        ]
+        (csv_mode / "inventory.csv").write_text(CSV_HEADER + "\n" + "\n".join(rows) + "\n")
+        _reset_caches()
+
+        catalog = await catalog_service.get_static_product_catalog()
+
+        assert len(catalog["products"]) == 150
+        assert "inv-bulk-149" in catalog["products"]
+
 
 # =============================================================================
 # Non-CSV modes pinned byte-identical
