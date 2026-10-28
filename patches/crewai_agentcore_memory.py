@@ -119,7 +119,9 @@ def _patch_storage_backend():
         if "llm" not in kwargs or kwargs.get("llm") == "gpt-4o-mini":
             bedrock_model = os.environ.get(
                 "MEMORY_LLM_MODEL",
-                os.environ.get("DEFAULT_LLM_MODEL", "bedrock/us.amazon.nova-lite-v1:0"),
+                os.environ.get(
+                    "DEFAULT_LLM_MODEL", "bedrock/us.anthropic.claude-haiku-4-5-v1:0"
+                ),
             )
             kwargs["llm"] = bedrock_model
         try:

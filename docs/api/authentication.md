@@ -168,6 +168,32 @@ When a buyer agent provides its `agent_url`, the seller looks up the agent in it
 
 The effective tier is the **minimum** of the API key tier and the agent trust tier. A `preferred` agent with a `seat`-level API key gets `seat` access. A `public` API key with an `approved` agent gets `public` access.
 
+### Cross-Org JWT Edge vs. Tier Composition (AgentCore)
+
+On a deployed AgentCore runtime, authentication has **two independent layers**
+that must not be conflated:
+
+1. **The edge (authN).** The runtime's CUSTOM_JWT authorizer validates a Cognito
+   `client_credentials` bearer token against `allowedClients` (the buyer's app
+   client id) + `allowedScopes` (`seller-agent/invoke`). This is a binary
+   admit/reject at the front door — it proves the caller is a provisioned buyer,
+   nothing more. A missing/expired/wrong-scope token is rejected before any app
+   code runs.
+2. **The tier engine (authZ).** Once admitted, the seller still computes the
+   **effective tier** exactly as above — `min(API-key tier, registry trust
+   ceiling)`, floored to `public` for unknown agents, `403` for blocked. The JWT
+   proves identity at the edge; it does **not** grant a pricing tier.
+
+So the JWT edge and the API-key/registry tier engine **compose**: the JWT gates
+entry, the tier engine gates data visibility. A buyer with a valid JWT but an
+unknown registry identity still sees only `public` pricing. The claim→tier seam
+(deriving the tier from the verified JWT `client_id`/`scope` instead of a
+self-declared `buyer_tier`) is a planned defense-in-depth follow-up; today the
+tier is still driven by the API-key identity + registry trust, with the JWT
+serving as the edge authenticator. See
+[Agent Discovery → Discovery on AgentCore](agent-discovery.md#discovery-on-agentcore-registry-based)
+and [AgentCore Deployment → Register + Authenticate](../guides/agentcore-deployment.md#register--authenticate-cross-org).
+
 ### Managing Trust
 
 Registry mutations require an operator credential:

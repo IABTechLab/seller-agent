@@ -26,17 +26,58 @@
 
 set -euo pipefail
 
+# Load a gitignored .env at repo root if present, so local AWS credentials and
+# the Bedrock endpoint config below can be supplied without exporting them by
+# hand. .env is gitignored and must never be committed.
+_SCRIPT_DIR_EARLY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_REPO_ROOT_EARLY="$(cd "${_SCRIPT_DIR_EARLY}/../../.." && pwd)"
+if [[ -f "${_REPO_ROOT_EARLY}/.env" ]]; then
+  echo ">>> Loading environment from ${_REPO_ROOT_EARLY}/.env"
+  set -a
+  # shellcheck disable=SC1091
+  source "${_REPO_ROOT_EARLY}/.env"
+  set +a
+fi
+
 # ── Defaults ────────────────────────────────────────────────────────
 REGION="${AWS_REGION:-us-west-2}"
 AGENT_NAME="${AGENT_NAME:-}"
 AWS_PROFILE="${AWS_PROFILE:-}"
-LLM_MODEL="${DEFAULT_LLM_MODEL:-bedrock/us.amazon.nova-pro-v1:0}"
+# Default model: current-generation Claude on Bedrock via the Anthropic
+# Messages endpoint (see ANTHROPIC_* below). Replaces the retired Nova Pro.
+LLM_MODEL="${DEFAULT_LLM_MODEL:-us.anthropic.claude-sonnet-5}"
+MEMORY_MODEL="${MEMORY_LLM_MODEL:-us.anthropic.claude-haiku-4-5-20251001-v1:0}"
+# Bedrock's Anthropic-compatible (Messages API) base URL + API key. Setting
+# these routes Claude through CrewAI's native Anthropic provider against
+# Bedrock, so the Converse toolUse/toolResult sanitizer is not applied.
+ANTHROPIC_BASE_URL="${ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL:-https://bedrock-runtime.${REGION}.amazonaws.com/anthropic}"
+BEDROCK_API_KEY="${ANTHROPIC_COMPATIBLE_LLM_API_KEY:-${AWS_BEARER_TOKEN_BEDROCK:-}}"
 DO_TEST=false
 TEST_ONLY=false
 DO_CLEANUP=false
 PROMPT='{"prompt": "list products"}'
-DEPLOY_MODE="chat"
+# Default to deploying all protocol runtimes (HTTP + MCP + A2A) so a plain
+# deploy brings up every integration surface (UI/orchestration over HTTP, tool
+# consumers over MCP, agent-to-agent over A2A), matching the ECS "all protocols
+# up" ergonomics. Use --mode <single> or --protocols <list> to narrow it.
+DEPLOY_MODE="all"
 STORAGE_TYPE="sqlite"
+# Req 13: the custom header AgentCore forwards to the runtime carrying the
+# Cognito-verified buyer tier. A live probe (2026-09-19) proved the CUSTOM_JWT
+# authorizer strips the inbound bearer, so the tier reaches the container ONLY
+# when this header is allowlisted at `agentcore configure` time. The claim→tier
+# seam (interfaces/agentcore/claims.py) reads it and maps scope → AccessTier.
+TIER_HEADER="X-Amzn-Bedrock-AgentCore-Runtime-Custom-Tier"
+# Per-runtime CUSTOM_JWT auth is applied BY DEFAULT (cross-org is the primary
+# target). --no-auth reverts to the legacy SigV4/PUBLIC deploy (Req 5.4).
+DEPLOY_AUTH=true
+# Req 13: --auth-update forces the auth CFN template to be re-applied even when
+# the stack already exists (default reuse path skips it). Needed to roll out the
+# per-tier app clients/scopes onto an already-deployed stack.
+AUTH_UPDATE=false
+IDP_DISCOVERY_URL="${IDP_DISCOVERY_URL:-}"
+IDP_ALLOWED_CLIENTS="${IDP_ALLOWED_CLIENTS:-}"
+IDP_ALLOWED_SCOPES="${IDP_ALLOWED_SCOPES:-}"
 INVENTORY_TYPE="${AD_SERVER_TYPE:-csv}"
 ENVIRONMENT="${ENVIRONMENT:-staging}"
 STACK_PREFIX="${STACK_PREFIX:-ad-seller-${ENVIRONMENT}}"
@@ -44,14 +85,21 @@ TEMPLATE_BUCKET="${TEMPLATE_BUCKET:-}"
 TEMPLATE_PREFIX="${TEMPLATE_PREFIX:-cloudformation}"
 
 # ── Valid modes ─────────────────────────────────────────────────────
-VALID_MODES="all mcp http crew chat"
+VALID_MODES="all mcp http crew chat a2a"
 
 # ── Parse arguments ─────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)       DEPLOY_MODE="$2"; shift 2 ;;
+    --protocols)  PROTOCOLS="$2"; shift 2 ;;
     --storage)    STORAGE_TYPE="$2"; shift 2 ;;
     --inventory)  INVENTORY_TYPE="$2"; shift 2 ;;
+    --auth)               DEPLOY_AUTH=true; shift ;;
+    --no-auth)            DEPLOY_AUTH=false; shift ;;
+    --auth-update)        DEPLOY_AUTH=true; AUTH_UPDATE=true; shift ;;
+    --idp-discovery-url)  IDP_DISCOVERY_URL="$2"; shift 2 ;;
+    --idp-allowed-clients) IDP_ALLOWED_CLIENTS="$2"; shift 2 ;;
+    --idp-allowed-scopes)  IDP_ALLOWED_SCOPES="$2"; shift 2 ;;
     --region)     REGION="$2"; shift 2 ;;
     --name)       AGENT_NAME="$2"; shift 2 ;;
     --profile)    AWS_PROFILE="$2"; shift 2 ;;
@@ -64,9 +112,21 @@ while [[ $# -gt 0 ]]; do
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
-  --mode MODE           Deployment mode: all|mcp|http|crew|chat (default: chat)
+  --mode MODE           Deployment mode: all|mcp|http|crew|chat|a2a (default: all)
+  --protocols LIST      Comma-list of protocol runtimes to deploy in one run
+                        (e.g. mcp,http,a2a). Takes precedence over --mode.
   --inventory SOURCE    Inventory data source: csv|s3|gam|freewheel (default: csv)
   --storage BACKEND     Deal/order persistence: sqlite|postgres (default: sqlite)
+  --no-auth             Opt OUT of per-runtime CUSTOM_JWT auth (legacy SigV4/PUBLIC,
+                        same-account/dev). Auth is applied BY DEFAULT (cross-org).
+  --auth-update         Force re-apply of the auth CFN template even if the stack
+                        exists (rolls out per-tier scopes/clients, Req 13).
+  --auth                Explicitly enable Cognito CUSTOM_JWT auth (this is the default;
+                        kept for clarity / to override an env-set opt-out)
+  --idp-discovery-url URL   BYO-IdP: use this OIDC discovery URL instead of the
+                        shipped Cognito stack (skips auth-agentcore.yaml deploy)
+  --idp-allowed-clients CSV Comma-separated client_ids for the BYO-IdP authorizer
+  --idp-allowed-scopes CSV  Comma-separated scopes for the BYO-IdP authorizer
   --region REGION       AWS region (default: us-west-2)
   --name NAME           AgentCore runtime name override
   --profile PROFILE     AWS CLI profile
@@ -76,11 +136,12 @@ Options:
   --prompt JSON         Custom invoke payload
 
 Modes:
-  all    Deploy both MCP and HTTP runtimes
-  mcp    Deploy MCP protocol runtime only (staging_aamp_seller_mcp)
-  http   Deploy HTTP protocol runtime only (staging_aamp_seller_http)
+  all    Deploy MCP, HTTP, and A2A runtimes
+  mcp    Deploy MCP protocol runtime only (aamp_seller_mcp)
+  http   Deploy HTTP protocol runtime only (aamp_seller_http)
   crew   Deploy HTTP runtime with ROUTING_MODE=crew default
   chat   Deploy HTTP runtime with ROUTING_MODE=chat default
+  a2a    Deploy inbound A2A JSON-RPC runtime (aamp_seller_a2a)
 
 Inventory (--inventory):
   csv        Local CSV files in data/csv/samples/ (default, no infra needed)
@@ -110,6 +171,17 @@ if ! echo "${VALID_MODES}" | grep -qw "${DEPLOY_MODE}"; then
   exit 1
 fi
 
+# ── Validate --protocols tokens up-front (before any deploy) ─────────
+VALID_PROTOCOLS="mcp http crew chat a2a"
+if [[ -n "${PROTOCOLS:-}" ]]; then
+  for _p in ${PROTOCOLS//,/ }; do
+    if ! echo "${VALID_PROTOCOLS}" | grep -qw "${_p}"; then
+      echo "ERROR: Unknown protocol '${_p}' in --protocols. Must be from: ${VALID_PROTOCOLS}" >&2
+      exit 1
+    fi
+  done
+fi
+
 # ── Validate inventory ──────────────────────────────────────────────
 if [[ "${INVENTORY_TYPE}" != "csv" && "${INVENTORY_TYPE}" != "s3" && "${INVENTORY_TYPE}" != "gam" && "${INVENTORY_TYPE}" != "freewheel" ]]; then
   echo "ERROR: Invalid inventory '${INVENTORY_TYPE}'. Must be: csv|s3|gam|freewheel" >&2
@@ -131,14 +203,25 @@ if [[ -n "${AGENT_NAME}" && "${DEPLOY_MODE}" == "all" ]]; then
   # --mode all with --name: append _mcp/_http suffixes to base name
   MCP_AGENT_NAME="${AGENT_NAME}_mcp"
   HTTP_AGENT_NAME="${AGENT_NAME}_http"
+  A2A_AGENT_NAME="${AGENT_NAME}_a2a"
 elif [[ -n "${AGENT_NAME}" ]]; then
   # Single mode with --name: use name directly for both (only one deploys)
   MCP_AGENT_NAME="${AGENT_NAME}"
   HTTP_AGENT_NAME="${AGENT_NAME}"
+  A2A_AGENT_NAME="${AGENT_NAME}"
 else
   # No --name: use defaults
-  MCP_AGENT_NAME="staging_aamp_seller_mcp"
-  HTTP_AGENT_NAME="staging_aamp_seller_http"
+  MCP_AGENT_NAME="aamp_seller_mcp"
+  HTTP_AGENT_NAME="aamp_seller_http"
+  A2A_AGENT_NAME="aamp_seller_a2a"
+fi
+
+# When --protocols is a comma list AND --name is set, always suffix per
+# protocol so the runtimes get distinct names (mirrors --mode all).
+if [[ -n "${PROTOCOLS:-}" && -n "${AGENT_NAME}" ]]; then
+  MCP_AGENT_NAME="${AGENT_NAME}_mcp"
+  HTTP_AGENT_NAME="${AGENT_NAME}_http"
+  A2A_AGENT_NAME="${AGENT_NAME}_a2a"
 fi
 
 if [[ -n "${AWS_PROFILE}" ]]; then
@@ -147,6 +230,146 @@ fi
 
 # Must run from repo root
 cd "${REPO_ROOT}"
+
+# =============================================================================
+# Auth stack deployment (--auth) — seller-owned Cognito for cross-org JWT
+# =============================================================================
+# The seller OWNS the shared Cognito pool (ownership decision 2026-09-15).
+# Deploys auth-agentcore.yaml and reads DiscoveryUrl/AppClientId/InvokeScope into
+# env vars the per-runtime CUSTOM_JWT authorizer wiring (group 3) consumes.
+# BYO-IdP (--idp-discovery-url): skip the Cognito deploy, use the supplied issuer.
+deploy_auth_stack() {
+  local stack_name="${STACK_PREFIX}-auth"
+
+  # BYO-IdP path: no Cognito stack; validate the discovery URL and use it directly.
+  if [[ -n "${IDP_DISCOVERY_URL}" ]]; then
+    echo "============================================="
+    echo "  Auth: BYO-IdP (skipping Cognito stack)"
+    echo "  Discovery: ${IDP_DISCOVERY_URL}"
+    echo "============================================="
+    # Assert the discovery URL returns a valid OIDC document up front.
+    if ! curl -fsS "${IDP_DISCOVERY_URL}" | grep -q '"token_endpoint"'; then
+      echo "ERROR: --idp-discovery-url did not return a valid OIDC document" >&2
+      exit 1
+    fi
+    AUTH_DISCOVERY_URL="${IDP_DISCOVERY_URL}"
+    AUTH_ALLOWED_CLIENTS="${IDP_ALLOWED_CLIENTS}"
+    AUTH_ALLOWED_SCOPES="${IDP_ALLOWED_SCOPES}"
+    echo "✅ BYO-IdP validated"
+    return 0
+  fi
+
+  echo "============================================="
+  echo "  Deploying seller Cognito auth stack"
+  echo "  Stack: ${stack_name}"
+  echo "============================================="
+
+  # If the stack already exists and is healthy, REUSE it (read outputs only) —
+  # no redundant CloudFormation mutation — UNLESS --auth-update was passed. The
+  # reuse path avoids re-triggering the CFN safety floor on every deploy, but a
+  # genuine template change (e.g. adding the Req-13 per-tier app clients/scopes)
+  # must be applied: --auth-update forces the deploy. `aws cloudformation deploy`
+  # with --no-fail-on-empty-changeset is a no-op when the template is unchanged.
+  local existing_status
+  existing_status=$(aws cloudformation describe-stacks --stack-name "${stack_name}" \
+    --region "${REGION}" --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "MISSING")
+  if [[ ( "${existing_status}" == "CREATE_COMPLETE" || "${existing_status}" == "UPDATE_COMPLETE" ) \
+        && "${AUTH_UPDATE}" != "true" ]]; then
+    echo "  Reusing existing stack (${existing_status}) — reading outputs, no redeploy."
+    echo "  (pass --auth-update to APPLY a changed auth template, e.g. Req-13 tier scopes)"
+  else
+    if [[ "${AUTH_UPDATE}" == "true" ]]; then
+      echo "  --auth-update: applying auth template (status was ${existing_status})…"
+    fi
+    aws cloudformation deploy \
+      --template-file "${SCRIPT_DIR}/auth-agentcore.yaml" \
+      --stack-name "${stack_name}" \
+      --parameter-overrides "Environment=${ENVIRONMENT}" "DeployCognito=true" \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --region "${REGION}" \
+      --no-fail-on-empty-changeset
+  fi
+
+  local outputs
+  outputs=$(aws cloudformation describe-stacks --stack-name "${stack_name}" \
+    --region "${REGION}" --query "Stacks[0].Outputs" --output json)
+
+  _out() { echo "${outputs}" | python3 -c "
+import json,sys
+for o in json.load(sys.stdin):
+    if o['OutputKey']=='$1': print(o['OutputValue']); break
+" 2>/dev/null || echo ""; }
+
+  AUTH_DISCOVERY_URL="$(_out DiscoveryUrl)"
+  AUTH_ALLOWED_CLIENTS="$(_out AppClientId)"
+  AUTH_ALLOWED_SCOPES="$(_out InvokeScope)"
+  AUTH_TOKEN_ENDPOINT="$(_out TokenEndpoint)"
+
+  echo "  DiscoveryUrl : ${AUTH_DISCOVERY_URL}"
+  echo "  AppClientId  : ${AUTH_ALLOWED_CLIENTS}"
+  echo "  InvokeScope  : ${AUTH_ALLOWED_SCOPES}"
+  echo "  TokenEndpoint: ${AUTH_TOKEN_ENDPOINT}"
+  echo "  (app-client secret: retrieve via 'aws cognito-idp describe-user-pool-client' — never printed here)"
+  echo "✅ Auth stack deployed"
+}
+
+# Emit the CUSTOM_JWT authorizer JSON on stdout (group 3), or nothing when auth
+# is disabled. Callers append it to configure_args. Built from the auth-stack
+# outputs (or BYO-IdP inputs) via authorizer_config.py, so every runtime
+# validates the SAME shared pool/client/scope. bash-3.2 safe (no namerefs).
+# Usage: mapfile-free — AUTHZ_JSON=$(_authorizer_config_json); [[ -n "$AUTHZ_JSON" ]] && configure_args+=(--authorizer-config "$AUTHZ_JSON")
+_authorizer_config_json() {
+  if [[ "${DEPLOY_AUTH}" != "true" ]]; then
+    return 0
+  fi
+  if [[ -z "${AUTH_DISCOVERY_URL}" ]]; then
+    echo "ERROR: auth requested but AUTH_DISCOVERY_URL is empty — run deploy_auth_stack first" >&2
+    exit 1
+  fi
+  python3 "${SCRIPT_DIR}/authorizer_config.py" \
+    --discovery-url "${AUTH_DISCOVERY_URL}" \
+    --allowed-clients "${AUTH_ALLOWED_CLIENTS}" \
+    --allowed-scopes "${AUTH_ALLOWED_SCOPES}"
+}
+
+# Grant bedrock:CallWithBearerToken to a runtime's execution role (Req 11).
+# The runtime mints its own short-lived Bedrock token from this role at startup
+# (ad_seller.llm.bedrock_token) for the Anthropic Messages path, which the
+# toolkit-created execution role does NOT get by default (it has InvokeModel
+# for the SigV4/Converse path only). We attach a SEPARATELY-NAMED inline policy
+# so the toolkit's own BedrockAgentCoreRuntimeExecutionPolicy-* rewrite on each
+# deploy does not clobber it. Idempotent: put-role-policy overwrites in place.
+# Best-effort — a failure here (e.g. no IAM write perms) warns but does not fail
+# the deploy; the runtime falls back to a baked key if one was supplied.
+_grant_bedrock_bearer_token_permission() {
+  local agent_name="$1"
+  local role_arn role_name
+  # The per-runtime execution_role is written to .bedrock_agentcore.yaml by
+  # `agentcore configure`. Resolve THIS agent's runtime role without a YAML lib:
+  # find the agent's block, then the FIRST `execution_role:` under it (the
+  # runtime role; the CodeBuild role appears later in a nested block).
+  role_arn=$(awk -v name="  ${agent_name}:" '
+    $0==name {inblk=1; next}
+    inblk && /^  [A-Za-z0-9_]+:/ {inblk=0}
+    inblk && /execution_role:/ && !/execution_role_auto_create/ {
+      gsub(/^[[:space:]]*execution_role:[[:space:]]*/,""); print; exit
+    }
+  ' "${REPO_ROOT}/.bedrock_agentcore.yaml" 2>/dev/null)
+  if [[ -z "${role_arn}" ]]; then
+    echo "  ⚠️  Could not resolve execution role for ${agent_name}; skipping bedrock:CallWithBearerToken grant." >&2
+    return 0
+  fi
+  role_name="${role_arn##*/}"
+  echo "  Granting bedrock:CallWithBearerToken to ${role_name} (self-sustaining Bedrock token)…"
+  aws iam put-role-policy \
+    --role-name "${role_name}" \
+    --policy-name "BedrockCallWithBearerToken" \
+    --policy-document '{"Version":"2012-10-17","Statement":[{"Sid":"BedrockBearerTokenMessagesPath","Effect":"Allow","Action":"bedrock:CallWithBearerToken","Resource":"*"}]}' \
+    --region "${REGION}" \
+    ${AWS_PROFILE:+--profile "${AWS_PROFILE}"} 2>&1 \
+    && echo "  ✅ bedrock:CallWithBearerToken granted to ${role_name}" \
+    || echo "  ⚠️  Could not grant bedrock:CallWithBearerToken to ${role_name} (check IAM perms); runtime token mint may 403." >&2
+}
 
 # =============================================================================
 # Infrastructure deployment (postgres mode only)
@@ -470,17 +693,39 @@ deploy_mcp_runtime() {
     echo "  VPC mode: SG=${VPC_SECURITY_GROUP}, Subnets=${VPC_SUBNET_1},${VPC_SUBNET_2}"
   fi
 
+  AUTHZ_JSON=$(_authorizer_config_json)
+  if [[ -n "${AUTHZ_JSON}" ]]; then
+    configure_args+=(--authorizer-config "${AUTHZ_JSON}")
+    echo "  CUSTOM_JWT authorizer attached (mcp)"
+    # Req 13: forward the Cognito-verified tier header to the container (bash-3.2
+    # safe). Without this the authorizer strips it at the edge and the seam is
+    # inert — the live-probe finding this task exists to fix.
+    configure_args+=(--request-header-allowlist "${TIER_HEADER}")
+    echo "  Tier header allowlisted (mcp): ${TIER_HEADER}"
+  fi
+
   agentcore configure "${configure_args[@]}"
 
   # Build env var args — AGENTCORE_MODE tells main.py to run MCP server
   local env_args=(
     --env "AGENTCORE_MODE=mcp"
+    --env "PYTHONPATH=/app/src"
     --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
+    --env "MEMORY_LLM_MODEL=${MEMORY_MODEL}"
+    --env "ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL=${ANTHROPIC_BASE_URL}"
+    --env "PYTHONPATH=/app/src"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
     --env "CREW_MEMORY_ENABLED=true"
   )
+  # Req 11: only bake a Bedrock key when one was explicitly supplied. Otherwise
+  # omit it entirely so the runtime mints a fresh token from its execution role
+  # at startup (ad_seller.llm.bedrock_token). Baking an empty/stale value here
+  # would leave an expired token that shadows the role-mint.
+  if [[ -n "${BEDROCK_API_KEY}" ]]; then
+    env_args+=(--env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}")
+  fi
 
   if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
     env_args+=(
@@ -507,7 +752,17 @@ deploy_mcp_runtime() {
 
   # Deploy
   echo ">>> Deploying MCP runtime..."
+  # Claim→tier seam (spec 5.2): forward the mapping only when set in .env.
+  [[ -n "${CLAIM_TIER_MAP:-}" ]] && env_args+=(--env "CLAIM_TIER_MAP=${CLAIM_TIER_MAP}")
+  [[ -n "${SCOPE_TIER_MAP:-}" ]] && env_args+=(--env "SCOPE_TIER_MAP=${SCOPE_TIER_MAP}")
   agentcore deploy "${env_args[@]}" --auto-update-on-conflict
+
+  # Req 11: on a Bedrock base URL the runtime mints its own token from its
+  # execution role at startup (authoritative, even over a baked key) — so the
+  # role always needs bedrock:CallWithBearerToken here.
+  if [[ "${ANTHROPIC_BASE_URL}" == *bedrock-runtime* || "${ANTHROPIC_BASE_URL}" == *bedrock*amazonaws.com* ]]; then
+    _grant_bedrock_bearer_token_permission "${agent_name}"
+  fi
 
   echo "✅ MCP runtime deployed: ${agent_name}"
 }
@@ -552,14 +807,129 @@ deploy_http_runtime() {
     echo "  VPC mode: SG=${VPC_SECURITY_GROUP}, Subnets=${VPC_SUBNET_1},${VPC_SUBNET_2}"
   fi
 
+  AUTHZ_JSON=$(_authorizer_config_json)
+  if [[ -n "${AUTHZ_JSON}" ]]; then
+    configure_args+=(--authorizer-config "${AUTHZ_JSON}")
+    echo "  CUSTOM_JWT authorizer attached (http)"
+    # Req 13: forward the Cognito-verified tier header to the container.
+    configure_args+=(--request-header-allowlist "${TIER_HEADER}")
+    echo "  Tier header allowlisted (http): ${TIER_HEADER}"
+  fi
+
   agentcore configure "${configure_args[@]}"
 
   # Build env var args — AGENTCORE_MODE tells main.py to run HTTP server
   local env_args=(
     --env "AGENTCORE_MODE=http"
+    --env "PYTHONPATH=/app/src"
     --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
     --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
+    --env "MEMORY_LLM_MODEL=${MEMORY_MODEL}"
+    --env "ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL=${ANTHROPIC_BASE_URL}"
+    --env "PYTHONPATH=/app/src"
     --env "ROUTING_MODE=${routing_mode}"
+    --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
+    --env "DATABASE_URL=sqlite:///:memory:"
+    --env "CREW_MEMORY_ENABLED=true"
+  )
+  # Req 11: only bake a Bedrock key when one was explicitly supplied; otherwise
+  # omit it so the runtime mints a fresh token from its execution role at startup.
+  if [[ -n "${BEDROCK_API_KEY}" ]]; then
+    env_args+=(--env "ANTHROPIC_COMPATIBLE_LLM_API_KEY=${BEDROCK_API_KEY}")
+  fi
+
+  if [[ "${INVENTORY_TYPE}" == "s3" ]]; then
+    env_args+=(
+      --env "AD_SERVER_TYPE=s3"
+      --env "S3_DATA_BUCKET=${S3_DATA_BUCKET:-${STACK_PREFIX}-seller-data-${REGION}}"
+      --env "S3_DATA_PREFIX=${S3_DATA_PREFIX:-seller-data/}"
+      --env "STORAGE_TYPE=sqlite"
+    )
+  elif [[ "${STORAGE_TYPE}" == "postgres" ]]; then
+    env_args+=(
+      --env "AD_SERVER_TYPE=${INVENTORY_TYPE}"
+      --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
+      --env "STORAGE_TYPE=hybrid"
+      --env "DATABASE_URL=${DB_URL}"
+      --env "REDIS_URL=${REDIS_URL}"
+    )
+  else
+    env_args+=(
+      --env "AD_SERVER_TYPE=${INVENTORY_TYPE}"
+      --env "CSV_DATA_DIR=./data/csv/samples/aws_workshop"
+      --env "STORAGE_TYPE=sqlite"
+    )
+  fi
+
+  # Deploy
+  echo ">>> Deploying HTTP runtime..."
+  # Claim→tier seam (spec 5.2): forward the mapping only when set in .env.
+  [[ -n "${CLAIM_TIER_MAP:-}" ]] && env_args+=(--env "CLAIM_TIER_MAP=${CLAIM_TIER_MAP}")
+  [[ -n "${SCOPE_TIER_MAP:-}" ]] && env_args+=(--env "SCOPE_TIER_MAP=${SCOPE_TIER_MAP}")
+  agentcore deploy "${env_args[@]}" --auto-update-on-conflict
+
+  # Req 11: on a Bedrock base URL the runtime mints its own token — grant the role.
+  if [[ "${ANTHROPIC_BASE_URL}" == *bedrock-runtime* || "${ANTHROPIC_BASE_URL}" == *bedrock*amazonaws.com* ]]; then
+    _grant_bedrock_bearer_token_permission "${agent_name}"
+  fi
+
+  echo "✅ HTTP runtime deployed: ${agent_name}"
+}
+
+# -----------------------------------------------------------------------------
+# Deploy the A2A runtime (inbound agent-to-agent JSON-RPC server).
+#
+# AgentCore has no native A2A protocol value, so the A2A server deploys as a
+# plain HTTP-protocol runtime (-p HTTP) whose entrypoint is a2a_main.py and
+# whose AGENTCORE_MODE=a2a selects the A2A Starlette app in main.py.
+# -----------------------------------------------------------------------------
+deploy_a2a_runtime() {
+  local agent_name="${1:-${A2A_AGENT_NAME}}"
+  echo ""
+  echo "============================================="
+  echo "  Deploying A2A Runtime: ${agent_name}"
+  echo "============================================="
+
+  if ! command -v agentcore &>/dev/null; then
+    echo ">>> Installing agentcore CLI..."
+    pip install bedrock-agentcore-starter-toolkit==0.3.4
+  fi
+
+  echo ">>> Configuring A2A runtime..."
+  local configure_args=(
+    -e src/ad_seller/interfaces/agentcore/a2a_main.py
+    -n "${agent_name}"
+    -rf infra/aws/agentcore/requirements.txt
+    -p HTTP
+    -r "${REGION}"
+    --non-interactive
+    --deployment-type container
+  )
+  if [[ "${STORAGE_TYPE}" == "postgres" && -n "${VPC_SECURITY_GROUP}" ]]; then
+    configure_args+=(
+      --vpc
+      --subnets "${VPC_SUBNET_1},${VPC_SUBNET_2}"
+      --security-groups "${VPC_SECURITY_GROUP}"
+    )
+    echo "  VPC mode: SG=${VPC_SECURITY_GROUP}, Subnets=${VPC_SUBNET_1},${VPC_SUBNET_2}"
+  fi
+
+  AUTHZ_JSON=$(_authorizer_config_json)
+  if [[ -n "${AUTHZ_JSON}" ]]; then
+    configure_args+=(--authorizer-config "${AUTHZ_JSON}")
+    echo "  CUSTOM_JWT authorizer attached (a2a)"
+    # Req 13: forward the Cognito-verified tier header to the container.
+    configure_args+=(--request-header-allowlist "${TIER_HEADER}")
+    echo "  Tier header allowlisted (a2a): ${TIER_HEADER}"
+  fi
+
+  agentcore configure "${configure_args[@]}"
+
+  local env_args=(
+    --env "AGENTCORE_MODE=a2a"
+    --env "PYTHONPATH=/app/src"
+    --env "DEFAULT_LLM_MODEL=${LLM_MODEL}"
+    --env "MANAGER_LLM_MODEL=${LLM_MODEL}"
     --env "ANTHROPIC_API_KEY=not-used-with-bedrock"
     --env "DATABASE_URL=sqlite:///:memory:"
     --env "CREW_MEMORY_ENABLED=true"
@@ -588,11 +958,18 @@ deploy_http_runtime() {
     )
   fi
 
-  # Deploy
-  echo ">>> Deploying HTTP runtime..."
+  echo ">>> Deploying A2A runtime..."
+  # Claim→tier seam (spec 5.2): forward the mapping only when set in .env.
+  [[ -n "${CLAIM_TIER_MAP:-}" ]] && env_args+=(--env "CLAIM_TIER_MAP=${CLAIM_TIER_MAP}")
+  [[ -n "${SCOPE_TIER_MAP:-}" ]] && env_args+=(--env "SCOPE_TIER_MAP=${SCOPE_TIER_MAP}")
   agentcore deploy "${env_args[@]}" --auto-update-on-conflict
 
-  echo "✅ HTTP runtime deployed: ${agent_name}"
+  # Req 11: on a Bedrock base URL the runtime mints its own token — grant the role.
+  if [[ "${ANTHROPIC_BASE_URL}" == *bedrock-runtime* || "${ANTHROPIC_BASE_URL}" == *bedrock*amazonaws.com* ]]; then
+    _grant_bedrock_bearer_token_permission "${agent_name}"
+  fi
+
+  echo "✅ A2A runtime deployed: ${agent_name}"
 }
 
 # =============================================================================
@@ -673,8 +1050,22 @@ if [[ "${TEST_ONLY}" == "false" ]]; then
   echo "  Storage    : ${STORAGE_TYPE}"
   echo "  Region     : ${REGION}"
   echo "  LLM Model  : ${LLM_MODEL}"
+  if [[ "${DEPLOY_AUTH}" == "true" ]]; then
+    echo "  Auth       : $([[ -n "${IDP_DISCOVERY_URL}" ]] && echo "BYO-IdP" || echo "Cognito (CUSTOM_JWT)")"
+  else
+    echo "  Auth       : disabled (--no-auth)"
+  fi
   [[ -n "${AWS_PROFILE}" ]] && echo "  AWS Profile: ${AWS_PROFILE}"
   echo "============================================="
+
+  # Deploy the seller-owned Cognito auth stack (or validate BYO-IdP) first,
+  # so the per-runtime CUSTOM_JWT authorizer wiring can consume its outputs.
+  # Auth is default-on; --no-auth (DEPLOY_AUTH=false) reverts to SigV4/PUBLIC.
+  if [[ "${DEPLOY_AUTH}" == "true" ]]; then
+    deploy_auth_stack
+  else
+    echo "  Auth: DISABLED (--no-auth) — legacy SigV4/PUBLIC runtimes"
+  fi
 
   # Deploy infrastructure if postgres
   if [[ "${STORAGE_TYPE}" == "postgres" ]]; then
@@ -687,27 +1078,74 @@ if [[ "${TEST_ONLY}" == "false" ]]; then
   fi
 
   # Mode dispatch
-  case "${DEPLOY_MODE}" in
-    all)
-      deploy_mcp_runtime
-      deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
-      ;;
-    mcp)
-      deploy_mcp_runtime
-      ;;
-    http)
-      deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
-      ;;
-    crew)
-      deploy_http_runtime "${HTTP_AGENT_NAME}" "crew"
-      ;;
-    chat)
-      deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
-      ;;
-  esac
+  #
+  # --protocols <comma-list> takes precedence over --mode and deploys each
+  # named protocol runtime in turn (e.g. --protocols mcp,http,a2a), matching
+  # the ECS "all protocols up" ergonomics. --mode stays for the single-runtime
+  # (and legacy "all" = mcp+http) path and remains the default.
+  if [[ -n "${PROTOCOLS:-}" ]]; then
+    echo "  Protocols  : ${PROTOCOLS}"
+    for _proto in ${PROTOCOLS//,/ }; do
+      case "${_proto}" in
+        mcp)  deploy_mcp_runtime ;;
+        http) deploy_http_runtime "${HTTP_AGENT_NAME}" "chat" ;;
+        crew) deploy_http_runtime "${HTTP_AGENT_NAME}" "crew" ;;
+        chat) deploy_http_runtime "${HTTP_AGENT_NAME}" "chat" ;;
+        a2a)  deploy_a2a_runtime "${A2A_AGENT_NAME}" ;;
+        *)    echo "ERROR: Unknown protocol '${_proto}' in --protocols" >&2; exit 1 ;;
+      esac
+    done
+  else
+    case "${DEPLOY_MODE}" in
+      all)
+        deploy_mcp_runtime
+        deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
+        deploy_a2a_runtime "${A2A_AGENT_NAME}"
+        ;;
+      mcp)
+        deploy_mcp_runtime
+        ;;
+      http)
+        deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
+        ;;
+      crew)
+        deploy_http_runtime "${HTTP_AGENT_NAME}" "crew"
+        ;;
+      chat)
+        deploy_http_runtime "${HTTP_AGENT_NAME}" "chat"
+        ;;
+      a2a)
+        deploy_a2a_runtime "${A2A_AGENT_NAME}"
+        ;;
+    esac
+  fi
 
   echo ""
   echo "✅ Deploy complete (mode=${DEPLOY_MODE}, storage=${STORAGE_TYPE})"
+
+  # Req 6.1/6.2/6.5: register each deployed runtime to the AAMP registry
+  # (endpoint_url + auth_required + advertised token endpoint/scope) and print
+  # the cross-org connection info. Only when auth is on (a JWT seller is what a
+  # cross-org buyer discovers); print-only when AAMP_REGISTRY_URL is unset.
+  if [[ "${DEPLOY_AUTH}" == "true" ]]; then
+    # Resolve the deployed runtime ARNs from .bedrock_agentcore.yaml (written by
+    # `agentcore configure`), dependency-free.
+    _arn_for() {
+      awk -v name="  $1:" '
+        $0==name {inblk=1; next}
+        inblk && /^  [A-Za-z0-9_]+:/ {inblk=0}
+        inblk && /agent_arn:/ { gsub(/^[[:space:]]*agent_arn:[[:space:]]*/,""); print; exit }
+      ' "${REPO_ROOT}/.bedrock_agentcore.yaml" 2>/dev/null
+    }
+    export SELLER_MCP_RUNTIME_ARN="$(_arn_for "${MCP_AGENT_NAME}")"
+    export SELLER_A2A_RUNTIME_ARN="$(_arn_for "${A2A_AGENT_NAME}")"
+    export SELLER_HTTP_RUNTIME_ARN="$(_arn_for "${HTTP_AGENT_NAME}")"
+    export SELLER_TOKEN_ENDPOINT="${AUTH_TOKEN_ENDPOINT:-${SELLER_TOKEN_ENDPOINT:-}}"
+    export SELLER_INVOKE_SCOPE="${AUTH_ALLOWED_SCOPES:-${SELLER_INVOKE_SCOPE:-seller-agent/invoke}}"
+    echo ""
+    PYTHONPATH="${REPO_ROOT}/src" python3 -m ad_seller.registry.runtime_registration || \
+      echo "  ⚠️  runtime registration/print step failed (non-fatal)"
+  fi
 fi
 
 # =============================================================================
