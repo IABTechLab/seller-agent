@@ -280,15 +280,18 @@ class ProductSetupFlow(Flow[ProductSetupState]):
         await self._finish_sync(real_sync_completed=True)
 
     async def _finish_sync(self, real_sync_completed: bool = False) -> None:
-        """Terminal step of every sync path: prune the stale synced layer.
+        """Terminal step of a sync that reflects current state: prune the stale synced layer.
 
-        Runs unconditionally, including on the mock/fallback path (no ad
-        server configured, or the real sync raised) -- mirroring
-        ``_prune_stale_synced_packages``'s own convergence guarantee
-        (issue #34): a transient ad-server failure reverts the catalog to
-        the honest static-default fallback rather than serving
-        increasingly stale synced products forever, and the next
-        successful sync immediately re-populates it.
+        Runs on exactly two paths: the mock path (no ad server configured,
+        so mocks are the honest steady state) and the real ad-server
+        success path. It deliberately does NOT run when the real sync
+        raises: ``sync_from_ad_server`` returns before reaching it, because
+        a failed run leaves ``self.state.synced_segments`` /
+        ``self.state.products`` empty and the prune would then delete every
+        real package and product from the last successful sync. A transient
+        failure therefore keeps serving the last-good synced catalog, and
+        the next successful sync converges it (issue #34). Do not "fix"
+        the failure path to call this.
 
         ``real_sync_completed`` is only ever True from the real ad-server
         success path, never the mock path -- a zero-item real sync is a

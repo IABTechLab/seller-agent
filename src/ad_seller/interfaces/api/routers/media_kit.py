@@ -173,8 +173,9 @@ async def search_media_kit(
 async def _resolve_package_products(product_ids: list[str], storage):
     """Resolve product ids to ProductDefinitions, catalog-first.
 
-    ``GET /products`` serves the in-memory static catalog
-    (``deps.get_product_catalog()``), which is never persisted to storage —
+    ``GET /products`` serves ``deps.get_product_catalog()``: the static or
+    CSV catalog, or (since AI-6) the synced ad-server catalog stored under
+    ``synced_product:*`` keys, none of which ``storage.get_product`` reads —
     so package endpoints must resolve ids against that same catalog first,
     falling back to ``storage.get_product`` for products persisted by the
     negotiation flow (issue #34: storage-only resolution silently produced
