@@ -239,8 +239,8 @@ class TestAwsWorkshopTypesSupportTheirOwnDealTypes:
     """linear/digital_video/audio are recognised by classify_inventory_type
     but were missing from infer_deal_types, so they fell to the
     [PREFERRED_DEAL]-only default -- a real behavior change on shipped
-    sample data, since proposal_handling_flow rejects any proposal whose
-    deal_type isn't in supported_deal_types."""
+    sample data, since discovery gates PG availability on
+    supported_deal_types (proposal_handling_flow only warns)."""
 
     @pytest.mark.parametrize(
         "name,declared",

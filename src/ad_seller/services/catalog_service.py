@@ -246,6 +246,9 @@ def product_from_config(cfg: dict[str, Any], product_id: str) -> Any:
     )
 
 
+# linear/linear_tv and digital_video/video are intentional near-duplicates:
+# declared values are kept verbatim for rate-card matching, so every per-type
+# table (deal types, ad formats, device types, base CPM) needs both spellings.
 _RECOGNISED_INVENTORY_TYPES = {
     "ctv",
     "video",
@@ -277,6 +280,12 @@ def classify_inventory_type(item: Any) -> str:
     declared = str(raw.get("inventory_type") or "").strip().lower()
     if declared in _RECOGNISED_INVENTORY_TYPES:
         return declared
+    if declared:
+        logger.debug(
+            "Ignoring unrecognised declared inventory_type %r for %s",
+            declared,
+            getattr(item, "id", None),
+        )
 
     name_lower = item.name.lower() if hasattr(item, "name") else ""
     if "ctv" in name_lower or "ott" in name_lower or "connected" in name_lower:
