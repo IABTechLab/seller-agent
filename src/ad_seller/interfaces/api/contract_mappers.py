@@ -496,8 +496,14 @@ def internal_product_to_shared(product: Any) -> Product:
     """Map the seller's internal ``ProductDefinition`` to the shared Product.
 
     Seller-local fields with no home on the shared schema (inventory_type,
-    floor_cpm, minimum_impressions, the deal-type list, audience capability
-    ids) ride in the reserved ``ext`` slot so nothing is silently dropped.
+    minimum_impressions, the deal-type list, audience capability ids) ride
+    in the reserved ``ext`` slot so nothing is silently dropped.
+
+    ``floor_cpm`` is deliberately NOT one of them. The floor is the seller's
+    negotiation reserve, one of the guardrails the shared ``Negotiation``
+    primitive keeps off the wire; this mapper backs the anonymous
+    ``GET /products`` catalog, so publishing it here told every caller the
+    lowest price the seller would accept.
 
     ``inventory_type`` additionally populates the shared ``ad_formats``
     field (e.g. "display" -> ["display"], "video" -> ["video"]) so buyers
@@ -523,7 +529,6 @@ def internal_product_to_shared(product: Any) -> Product:
 
     ext = {
         "inventory_type": inventory_type,
-        "floor_cpm": getattr(product, "floor_cpm", None),
         "minimum_impressions": getattr(product, "minimum_impressions", None),
         "deal_types": [
             _deal_type_wire_value(dt)
