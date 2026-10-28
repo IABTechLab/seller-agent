@@ -103,6 +103,10 @@ class ApprovalStatus(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     TIMED_OUT = "timed_out"
+    CONSUMED = "consumed"  # approved and already acted on (terminal)
+    # Approved, but whether the SSP created the deal could not be confirmed;
+    # resuming re-checks the SSP and never creates a second deal.
+    OUTCOME_UNKNOWN = "outcome_unknown"
 
 
 class ApprovalRequest(BaseModel):
