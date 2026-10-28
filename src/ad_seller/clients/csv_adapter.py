@@ -262,7 +262,7 @@ class CSVAdServerClient(AdServerClient):
     async def list_inventory(
         self,
         *,
-        limit: int = 100,
+        limit: Optional[int] = 100,
         filter_str: Optional[str] = None,
     ) -> list[AdServerInventoryItem]:
         """Read inventory.csv and return AdServerInventoryItem list."""

@@ -163,8 +163,11 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             # servers (GAM/FreeWheel), which is also where excluding
             # archived inventory by default actually matters.
             filter_str = "status:ACTIVE" if client.ad_server_type.value != "csv" else None
+            # limit=None: a sync must see the whole inventory. The default
+            # (100) silently truncated larger GAM networks and S3 files, and
+            # the prune below then deleted everything past the cut.
             async with client:
-                items = await client.list_inventory(filter_str=filter_str)
+                items = await client.list_inventory(filter_str=filter_str, limit=None)
 
             # Group items by inferred type and create packages
             grouped: dict[str, list] = {}

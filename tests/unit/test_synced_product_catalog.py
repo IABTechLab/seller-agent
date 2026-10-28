@@ -276,6 +276,7 @@ class _FakeAdServerClient:
 
     def __init__(self, items):
         self._items = items
+        self.limit_requested = "not called"
 
     async def __aenter__(self):
         return self
@@ -283,7 +284,9 @@ class _FakeAdServerClient:
     async def __aexit__(self, *exc):
         return False
 
-    async def list_inventory(self, filter_str=None):
+    # Same default as the real adapters, so a caller that omits limit is caught.
+    async def list_inventory(self, filter_str=None, limit=100):
+        self.limit_requested = limit
         return self._items
 
 
@@ -315,6 +318,14 @@ async def _run_sync(storage, settings, client) -> None:
 
 
 class TestSyncPersistsAndPrunesProducts:
+    async def test_sync_requests_the_whole_inventory(self, storage):
+        """The adapters' default limit is 100; a sync that inherited it
+        would see only the first 100 items and prune the rest."""
+        client = _FakeAdServerClient([_FakeInventoryItem("gam-001", "Homepage Display Banner")])
+        await _run_sync(storage, _flow_settings(), client)
+
+        assert client.limit_requested is None
+
     async def test_sync_persists_products_to_storage(self, storage):
         client = _FakeAdServerClient(
             [
