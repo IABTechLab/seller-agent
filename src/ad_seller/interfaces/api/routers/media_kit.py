@@ -496,6 +496,10 @@ def _default_ad_formats(inventory_type: str) -> list[str]:
         "ctv": ["video"],
         "mobile_app": ["banner", "video"],
         "native": ["native"],
+        "linear_tv": ["video"],
+        "linear": ["video"],
+        "digital_video": ["video"],
+        "audio": ["audio"],
     }.get(inventory_type, ["banner"])
 
 
@@ -507,4 +511,8 @@ def _default_device_types(inventory_type: str) -> list[int]:
         "ctv": [3, 7],
         "mobile_app": [4, 5],
         "native": [2, 4, 5],
+        "linear_tv": [3, 7],
+        "linear": [3, 7],
+        "digital_video": [2, 4, 5],
+        "audio": [2, 4, 5, 6],
     }.get(inventory_type, [2])

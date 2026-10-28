@@ -483,6 +483,9 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             "mobile_app": ["banner", "video"],
             "native": ["native"],
             "linear_tv": ["video"],
+            "linear": ["video"],
+            "digital_video": ["video"],
+            "audio": ["audio"],
         }.get(inv_type, ["banner"])
 
     @staticmethod
@@ -495,6 +498,9 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             "mobile_app": [4, 5],
             "native": [2, 4, 5],
             "linear_tv": [3, 7],
+            "linear": [3, 7],
+            "digital_video": [2, 4, 5],
+            "audio": [2, 4, 5, 6],
         }.get(inv_type, [2])
 
     def _estimate_base_cpm(self, inv_type: str) -> float:
@@ -513,6 +519,9 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             "mobile_app": 18.0,
             "native": 10.0,
             "linear_tv": 40.0,
+            "linear": 40.0,
+            "digital_video": 25.0,
+            "audio": 15.0,
         }.get(inv_type, self._settings.default_price_floor_cpm)
 
     @listen(sync_from_ad_server)

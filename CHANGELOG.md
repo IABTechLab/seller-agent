@@ -72,6 +72,15 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- CSV/S3 inventory now keeps the `inventory_type` declared in the row
+  instead of guessing it from the name, ad formats or sizes. Rows that
+  declare `ctv` were being served as `display`, and `linear`,
+  `digital_video` and `audio` were discarded. **Prices can change on
+  upgrade:** rate-card entries match on this value by exact string, so a
+  CSV product may now resolve to a different entry (or to its own CSV
+  price when no entry matches). Synced packages for `linear`,
+  `digital_video` and `audio` get their own ad formats, device types and
+  base CPM instead of the desktop-banner fallback.
 - **Information disclosure:** buyer-facing catalog surfaces no longer
   publish the seller's floor. `GET /products` and `GET /products/{id}`
   dropped `ext.floor_cpm`, the ungated MCP `list_products` dropped
@@ -82,8 +91,9 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   knobs only to an operator. `POST /discovery` pricing answers no longer
   include each product's `floor` for tiers that see exact prices.
   AgentCore `create_deal_direct` no longer states the floor-derived
-  minimum in its rejection or returns `floor_cpm` on the booked deal. With real ad-server floors served
-  (AI-6), these told any caller the lowest price the seller would accept.
+  minimum in its rejection or returns `floor_cpm` on the booked deal.
+  With real ad-server floors served (AI-6), these told any caller the
+  lowest price the seller would accept.
   Pricing, quotes and negotiation still read floors internally, and
   deal-level auction bid floors (`bidfloor`) are unchanged. Consumers that
   read `ext.floor_cpm` or `floor_price` from these responses get nothing
