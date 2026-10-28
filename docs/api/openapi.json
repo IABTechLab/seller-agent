@@ -1016,7 +1016,7 @@
           "Products"
         ],
         "summary": "List Products",
-        "description": "List products in the catalog (shared ProductListResponse).\n\nReads from the cached static catalog (see `_get_static_product_catalog`)\ninstead of running ProductSetupFlow per request \u2014 kicking off the flow\nspins up an OpenDirect MCP session that hangs in `session.initialize()`.\nBuyers filter client-side over the returned Product records (there is\ndeliberately no POST /products/search on the shared catalog surface).",
+        "description": "List products in the catalog (shared ProductListResponse).\n\nReads from the cached static catalog (see `_get_static_product_catalog`)\ninstead of running ProductSetupFlow per request \u2014 kicking off the flow\nspins up an OpenDirect MCP session that hangs in `session.initialize()`.\nBuyers filter client-side over the returned Product records (there is\ndeliberately no POST /products/search on the shared catalog surface).\n\nAny stored inventory-type override (AI-14) is applied automatically \u2014\n``deps.get_product_catalog()`` itself now returns the catalog with\noverrides already applied, so every consumer sees one consistent view,\nnot just this route and ``get_product``.",
         "operationId": "list_products_products_get",
         "parameters": [
           {
@@ -1131,7 +1131,7 @@
           "Products"
         ],
         "summary": "Get Product",
-        "description": "Get a specific product (shared Product primitive, no wrapper).\n\nReads from the cached static catalog instead of running ProductSetupFlow\nper request (see `list_products` for rationale).",
+        "description": "Get a specific product (shared Product primitive, no wrapper).\n\nReads from the cached static catalog instead of running ProductSetupFlow\nper request (see `list_products` for rationale). Any stored\ninventory-type override (AI-14) is applied automatically by\n``deps.get_product_catalog()``.",
         "operationId": "get_product_products__product_id__get",
         "parameters": [
           {
@@ -1922,6 +1922,86 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DealBookingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Deal Booking"
+        ],
+        "summary": "List Deals",
+        "description": "List stored deals, optionally filtered by wire status.\n\nOperator-only: the list spans every buyer's deals. Buyers read their\nown deal with ``GET /api/v1/deals/{deal_id}``.\n\n``status`` is the shared :class:`DealStatus` value the deal carries on\nthe wire (the same value ``GET /api/v1/deals/{deal_id}`` returns), so\nthe filter is applied after mapping each stored record to its\nresponse shape.\n\nRegistered ahead of ``/api/v1/deals/{deal_id}``; the two paths differ in\nlength so there is no shadowing, but keeping literal routes together\nwith ``/export`` keeps the EP-8.4 ordering rule easy to audit.",
+        "operationId": "list_deals_api_v1_deals_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DealStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "X-Api-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DealListResponse"
                 }
               }
             }
@@ -7699,6 +7779,36 @@
         ],
         "title": "DealFromTemplateResponse",
         "description": "Response for template-based deal creation."
+      },
+      "DealListResponse": {
+        "properties": {
+          "deals": {
+            "items": {
+              "$ref": "#/components/schemas/DealBookingResponse"
+            },
+            "type": "array",
+            "title": "Deals"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "deals",
+          "count"
+        ],
+        "title": "DealListResponse",
+        "description": "Page of stored deals in the shared booking-response shape."
       },
       "DealMigrationRequest": {
         "properties": {
