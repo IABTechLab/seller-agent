@@ -306,7 +306,7 @@ class CSVAdServerClient(AdServerClient):
             item.__dict__["raw"] = raw
 
             results.append(item)
-            if len(results) >= limit:
+            if limit is not None and len(results) >= limit:
                 break
 
         return results

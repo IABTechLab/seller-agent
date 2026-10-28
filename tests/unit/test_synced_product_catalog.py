@@ -518,3 +518,36 @@ class TestMidSyncCrashRollsBackPartialWrites:
             "C was persisted by the products loop of the failed run -- it must be "
             "rolled back when the packages loop fails"
         )
+
+
+class TestSyncWithRealCsvAdapter:
+    """The flow tests above use _FakeAdServerClient, which accepts any
+    ``limit``. This runs the sync through the real CSVAdServerClient so a
+    flow/adapter contract mismatch (the flow passing ``limit=None``) fails
+    here instead of only on a live server."""
+
+    async def test_csv_sync_completes_and_persists_every_row(self, storage, tmp_path):
+        import shutil
+        from pathlib import Path
+
+        from ad_seller.clients.csv_adapter import CSVAdServerClient
+
+        sample = Path(__file__).parents[2] / "data" / "csv" / "samples" / "ctv_streaming"
+        shutil.copy(sample / "inventory.csv", tmp_path / "inventory.csv")
+        client = CSVAdServerClient(data_dir=str(tmp_path))
+        async with client:
+            rows = await client.list_inventory(limit=10_000)
+
+        settings = _flow_settings(gam_network_code=None, ad_server_type="csv")
+        with (
+            patch("ad_seller.flows.product_setup_flow.get_settings", return_value=settings),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.clients.ad_server_base.get_ad_server_client", lambda: client),
+        ):
+            from ad_seller.flows.product_setup_flow import ProductSetupFlow
+
+            flow = ProductSetupFlow()
+            await flow.sync_from_ad_server()
+
+        assert not flow.state.ad_server_sync_failed, flow.state.warnings
+        assert len(await storage.keys("synced_product:*")) == len(rows)
