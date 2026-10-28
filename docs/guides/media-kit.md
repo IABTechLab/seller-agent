@@ -263,7 +263,6 @@ curl http://localhost:8000/packages/pkg-abc12345 \
   "cat": ["IAB19", "IAB19-29"],
   "price_range": "$33 CPM",
   "exact_price": 33.25,
-  "floor_price": 29.40,
   "currency": "USD",
   "placements": [
     {

@@ -79,9 +79,10 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
   `floor_price` (it is served to any non-public effective tier, including
   a tier claimed in the request body). The ungated MCP `get_config` and
   `get_setup_status` now return the default floor and the PG/PD pricing
-  knobs only to an operator. AgentCore `create_deal_direct` no longer
-  states the floor-derived minimum in its rejection or returns
-  `floor_cpm` on the booked deal. With real ad-server floors served
+  knobs only to an operator. `POST /discovery` pricing answers no longer
+  include each product's `floor` for tiers that see exact prices.
+  AgentCore `create_deal_direct` no longer states the floor-derived
+  minimum in its rejection or returns `floor_cpm` on the booked deal. With real ad-server floors served
   (AI-6), these told any caller the lowest price the seller would accept.
   Pricing, quotes and negotiation still read floors internally, and
   deal-level auction bid floors (`bidfloor`) are unchanged. Consumers that

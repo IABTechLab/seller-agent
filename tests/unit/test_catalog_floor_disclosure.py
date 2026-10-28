@@ -18,6 +18,9 @@ The catalog surfaces still published it:
    ``/media-kit/search`` includes a tier merely claimed in the body.
 5. AgentCore ``create_deal_direct`` stated the floor-derived minimum in its
    rejection and returned ``floor_cpm`` on the booked deal.
+6. ``POST /discovery`` pricing answers (``DiscoveryInquiryFlow``) returned
+   every product's floor under the bare key ``floor`` to any tier that sees
+   exact prices, including a tier claimed in the body.
 
 With real ad-server floors served (AI-6) and quotes clamped to the floor,
 any of these told a buyer the lowest price the seller would accept.
@@ -50,7 +53,9 @@ from ad_seller.models.pricing_tiers import TieredPricingConfig
 
 FLOOR_CPM = 21.25
 #: Field names that would disclose the floor or the pricing guardrails.
-FLOOR_FIELDS = {"floor_cpm", "floor_price", "pg_floor_multiplier", "pd_discount_max"}
+#: Includes the bare ``floor`` (the /discovery spelling), which a search for
+#: ``floor_cpm`` / ``floor_price`` misses.
+FLOOR_FIELDS = {"floor", "floor_cpm", "floor_price", "pg_floor_multiplier", "pd_discount_max"}
 
 
 def _all_keys(obj: Any) -> set[str]:
@@ -247,3 +252,36 @@ class TestAgentCoreDirectDealCarriesNoFloor:
         assert result["status"] == "booked"
         assert result["cpm"] == 30.0
         _assert_no_floor_fields(result, "AgentCore booked deal")
+
+
+# =============================================================================
+# 6. POST /discovery pricing answers
+# =============================================================================
+
+
+class TestDiscoveryPricingCarriesNoFloor:
+    @pytest.mark.parametrize("query", ["what is the price for ctv?", "how much does ctv cost?"])
+    def test_exact_price_tier_gets_price_but_no_floor(self, query):
+        """A tier that sees exact prices (built as POST /discovery builds a
+        body-claimed agency tier) gets its price, never the floor."""
+        from ad_seller.flows.discovery_inquiry_flow import DiscoveryInquiryFlow
+        from ad_seller.interfaces.api import deps
+
+        context = deps._build_buyer_context(buyer_tier="agency", agency_id="ag-1")
+        flow = DiscoveryInquiryFlow()
+        response = flow.query(query=query, buyer_context=context, products={"p": _product()})
+
+        assert flow.state.response_type == "pricing"
+        products = response["pricing"]["products"]
+        assert products[0]["price"] == pytest.approx(25.0 * 0.9)
+        _assert_no_floor_fields(response, "POST /discovery pricing answer")
+
+    def test_catalog_answer_carries_no_floor(self):
+        from ad_seller.flows.discovery_inquiry_flow import DiscoveryInquiryFlow
+        from ad_seller.interfaces.api import deps
+
+        context = deps._build_buyer_context(buyer_tier="agency", agency_id="ag-1")
+        response = DiscoveryInquiryFlow().query(
+            query="what do you have?", buyer_context=context, products={"p": _product()}
+        )
+        _assert_no_floor_fields(response, "POST /discovery catalog answer")
