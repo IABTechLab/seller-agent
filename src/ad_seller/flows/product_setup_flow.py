@@ -197,6 +197,16 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             # persisted by an earlier successful sync; rollback must
             # restore that old value, not erase still-valid data.
             persisted: list[tuple[str, Optional[dict[str, Any]]]] = []
+
+            async def _rollback_products() -> None:
+                for product_id, prior in persisted:
+                    key = f"synced_product:{product_id}"
+                    if prior is None:
+                        await storage.delete(key)
+                    else:
+                        await storage.set(key, prior)
+                    self.state.products.pop(product_id, None)
+
             try:
                 for item in items:
                     product_def = product_from_inventory_item(item)
@@ -209,13 +219,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
                     await persist_synced_product(product_def)
                     persisted.append((product_def.product_id, prior))
             except Exception:
-                for product_id, prior in persisted:
-                    key = f"synced_product:{product_id}"
-                    if prior is None:
-                        await storage.delete(key)
-                    else:
-                        await storage.set(key, prior)
-                    self.state.products.pop(product_id, None)
+                await _rollback_products()
                 raise
 
             logger.info("Created %d products from ad server inventory", len(self.state.products))
@@ -265,6 +269,9 @@ class ProductSetupFlow(Flow[ProductSetupState]):
                         await storage.set_package(package_id, prior_package)
                     if package_id in self.state.synced_segments:
                         self.state.synced_segments.remove(package_id)
+                # The products loop already committed this run's products;
+                # a failed run must not leave them behind either.
+                await _rollback_products()
                 raise
 
             logger.info("Synced %d packages from ad server", len(grouped))

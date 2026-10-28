@@ -483,3 +483,38 @@ class TestMidSyncCrashRollsBackPartialWrites:
             "prior value, not deleted or left with the crashed run's new value"
         )
         assert not await storage.exists("synced_product:D")
+
+    async def test_packages_loop_crash_rolls_back_this_runs_products(self, storage):
+        """The products loop commits before the packages loop runs, so a
+        crash in the packages loop must roll back this run's products too,
+        not only its packages."""
+        settings = _flow_settings()
+        client_a = _FakeAdServerClient(
+            [_FakeInventoryItem("A", "Product A", {"floor_price_cpm": 8.0})]
+        )
+        await _run_sync(storage, settings, client_a)
+        original = await storage.get("synced_product:A")
+
+        client_b = _FakeAdServerClient(
+            [
+                _FakeInventoryItem("A", "Product A", {"floor_price_cpm": 99.0}),
+                _FakeInventoryItem("C", "Product C"),
+            ]
+        )
+
+        async def crashing_upsert(self, storage, package):
+            raise RuntimeError("simulated crash upserting a package")
+
+        with patch(
+            "ad_seller.flows.product_setup_flow.ProductSetupFlow._upsert_synced_package",
+            crashing_upsert,
+        ):
+            await _run_sync(storage, settings, client_b)
+
+        assert await storage.get("synced_product:A") == original, (
+            "A must be restored to the last successful sync's value"
+        )
+        assert not await storage.exists("synced_product:C"), (
+            "C was persisted by the products loop of the failed run -- it must be "
+            "rolled back when the packages loop fails"
+        )
