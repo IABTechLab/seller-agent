@@ -163,8 +163,11 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             # servers (GAM/FreeWheel), which is also where excluding
             # archived inventory by default actually matters.
             filter_str = "status:ACTIVE" if client.ad_server_type.value != "csv" else None
+            # limit=None: a sync must see the whole inventory. The default
+            # (100) silently truncated larger GAM networks and S3 files, and
+            # the prune below then deleted everything past the cut.
             async with client:
-                items = await client.list_inventory(filter_str=filter_str)
+                items = await client.list_inventory(filter_str=filter_str, limit=None)
 
             # Group items by inferred type and create packages
             grouped: dict[str, list] = {}
@@ -177,45 +180,99 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             # Canonical item→product mapping lives in catalog_service
             # (shared with the CSV-mode catalog build) so flow-seeded
             # products and API catalog products cannot diverge.
-            from ..services.catalog_service import product_from_inventory_item
+            from ..services.catalog_service import (
+                persist_synced_product,
+                product_from_inventory_item,
+            )
 
-            for item in items:
-                product_def = product_from_inventory_item(item)
-                self.state.products[product_def.product_id] = product_def
+            # Persist every product, but roll back precisely on any
+            # mid-loop failure (AI-6 follow-up): persist_synced_product
+            # writes straight to storage per item, so without this, an
+            # exception on item N left items 1..N-1 of THIS run already
+            # committed even though the sync is reported as failed --
+            # contradicting the "a transient failure never silently
+            # changes the synced layer" invariant above. Capturing each
+            # key's PRIOR value (not just blindly deleting it) matters
+            # because a re-synced item can share an id with one already
+            # persisted by an earlier successful sync; rollback must
+            # restore that old value, not erase still-valid data.
+            persisted: list[tuple[str, Optional[dict[str, Any]]]] = []
+
+            async def _rollback_products() -> None:
+                for product_id, prior in persisted:
+                    key = f"synced_product:{product_id}"
+                    if prior is None:
+                        await storage.delete(key)
+                    else:
+                        await storage.set(key, prior)
+                    self.state.products.pop(product_id, None)
+
+            try:
+                for item in items:
+                    product_def = product_from_inventory_item(item)
+                    key = f"synced_product:{product_def.product_id}"
+                    prior = await storage.get(key)
+                    self.state.products[product_def.product_id] = product_def
+                    # Persist so GET /products reflects real ad-server inventory
+                    # for non-CSV ad servers too (AI-6) -- state.products alone
+                    # is per-flow-instance and never outlives this request.
+                    await persist_synced_product(product_def)
+                    persisted.append((product_def.product_id, prior))
+            except Exception:
+                await _rollback_products()
+                raise
 
             logger.info("Created %d products from ad server inventory", len(self.state.products))
 
-            for inv_type, inv_items in grouped.items():
-                ad_formats = self._classify_ad_formats_from_type(inv_type)
-                device_types = self._classify_device_types_from_type(inv_type)
-                base_cpm = self._estimate_base_cpm(inv_type)
+            # Same rollback discipline for packages -- identical risk,
+            # same fix shape.
+            upserted: list[tuple[str, Optional[dict[str, Any]]]] = []
+            try:
+                for inv_type, inv_items in grouped.items():
+                    ad_formats = self._classify_ad_formats_from_type(inv_type)
+                    device_types = self._classify_device_types_from_type(inv_type)
+                    base_cpm = self._estimate_base_cpm(inv_type)
 
-                package = Package(
-                    package_id=self._synced_package_id(client.ad_server_type.value, inv_type),
-                    name=f"{inv_type.replace('_', ' ').title()} - Synced",
-                    description=f"Synced {inv_type} inventory ({len(inv_items)} ad units)",
-                    layer=PackageLayer.SYNCED,
-                    status=PackageStatus.ACTIVE,
-                    placements=[
-                        PackagePlacement(
-                            product_id=item.id,
-                            product_name=item.name,
-                            ad_formats=ad_formats,
-                            device_types=device_types,
-                        )
-                        for item in inv_items
-                    ],
-                    ad_formats=ad_formats,
-                    device_types=device_types,
-                    cat=["IAB1"],
-                    cattax=2,
-                    base_price=base_cpm,
-                    floor_price=round(base_cpm * 0.7, 2),
-                    ad_server_source=client.ad_server_type.value,
-                    is_featured=inv_type == "ctv",
-                )
+                    package = Package(
+                        package_id=self._synced_package_id(client.ad_server_type.value, inv_type),
+                        name=f"{inv_type.replace('_', ' ').title()} - Synced",
+                        description=f"Synced {inv_type} inventory ({len(inv_items)} ad units)",
+                        layer=PackageLayer.SYNCED,
+                        status=PackageStatus.ACTIVE,
+                        placements=[
+                            PackagePlacement(
+                                product_id=item.id,
+                                product_name=item.name,
+                                ad_formats=ad_formats,
+                                device_types=device_types,
+                            )
+                            for item in inv_items
+                        ],
+                        ad_formats=ad_formats,
+                        device_types=device_types,
+                        cat=["IAB1"],
+                        cattax=2,
+                        base_price=base_cpm,
+                        floor_price=round(base_cpm * 0.7, 2),
+                        ad_server_source=client.ad_server_type.value,
+                        is_featured=inv_type == "ctv",
+                    )
 
-                await self._upsert_synced_package(storage, package)
+                    prior_package = await storage.get_package(package.package_id)
+                    await self._upsert_synced_package(storage, package)
+                    upserted.append((package.package_id, prior_package))
+            except Exception:
+                for package_id, prior_package in upserted:
+                    if prior_package is None:
+                        await storage.delete_package(package_id)
+                    else:
+                        await storage.set_package(package_id, prior_package)
+                    if package_id in self.state.synced_segments:
+                        self.state.synced_segments.remove(package_id)
+                # The products loop already committed this run's products;
+                # a failed run must not leave them behind either.
+                await _rollback_products()
+                raise
 
             logger.info("Synced %d packages from ad server", len(grouped))
 
@@ -230,14 +287,40 @@ class ProductSetupFlow(Flow[ProductSetupState]):
             self.state.ad_server_sync_failed = True
             return
 
-        await self._finish_sync()
+        await self._finish_sync(real_sync_completed=True)
 
-    async def _finish_sync(self) -> None:
-        """Terminal step of every sync path: prune the stale synced layer."""
+    async def _finish_sync(self, real_sync_completed: bool = False) -> None:
+        """Terminal step of a sync that reflects current state: prune the stale synced layer.
+
+        Runs on exactly two paths: the mock path (no ad server configured,
+        so mocks are the honest steady state) and the real ad-server
+        success path. It deliberately does NOT run when the real sync
+        raises: ``sync_from_ad_server`` returns before reaching it, because
+        a failed run leaves ``self.state.synced_segments`` /
+        ``self.state.products`` empty and the prune would then delete every
+        real package and product from the last successful sync. A transient
+        failure therefore keeps serving the last-good synced catalog, and
+        the next successful sync converges it (issue #34). Do not "fix"
+        the failure path to call this.
+
+        ``real_sync_completed`` is only ever True from the real ad-server
+        success path, never the mock path -- a zero-item real sync is a
+        genuine "no inventory right now" result that must be served as an
+        honestly empty catalog, not mistaken for "never synced" (AI-6
+        follow-up); the mock path has no such distinction to make, since
+        it never persists ``synced_product:*`` entries at all.
+        """
+        from ..services.catalog_service import (
+            mark_synced_catalog_completed,
+            prune_stale_synced_products,
+        )
         from ..storage.factory import get_storage
 
         storage = await get_storage()
         await self._prune_stale_synced_packages(storage)
+        await prune_stale_synced_products(set(self.state.products.keys()))
+        if real_sync_completed:
+            await mark_synced_catalog_completed()
 
     async def _create_mock_synced_packages(self) -> None:
         """Create mock Layer 1 packages for development without ad server creds."""

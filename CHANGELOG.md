@@ -72,6 +72,43 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- `GET /products` (and everything reading the catalog — avails, pricing,
+  package resolution, quotes) now reflects real ad-server inventory
+  (GAM/FreeWheel/S3) once synced, read fresh from storage on every call
+  (AI-6). Previously a synced product only ever lived in the flow's
+  per-request state and one worker process's in-memory cache
+  (`infra/docker/Dockerfile` runs uvicorn with `--workers 2`), so the
+  catalog kept serving the 13-product static default indefinitely after
+  a real sync — matching how synced packages already worked. Synced
+  products persist under a dedicated `synced_product:{id}` storage key,
+  separate from the generic `product:{id}` key `negotiation_service`
+  already writes for an unrelated reason (a narrower proposal-time
+  snapshot), and are pruned when no longer returned by the ad server.
+  CSV-mode and no-ad-server-configured behavior is unchanged.
+- `GAMRestClient` can now actually connect to Google Ad Manager (AI-6).
+  It called `googleapiclient.discovery.build("admanager", "v1", ...)`
+  with no `discoveryServiceUrl`; Ad Manager self-hosts its own discovery
+  document rather than registering with the generic, centrally-indexed
+  discovery service `build()` queries by default (and it isn't in the
+  locally bundled discovery docs either), so every real connection
+  attempt raised `UnknownApiNameOrVersion` and `sync_from_ad_server()`'s
+  broad exception handler silently degraded to mock synced packages —
+  real GAM inventory sync had never actually succeeded. Fixed by pointing
+  `build()` at `admanager.googleapis.com/$discovery/rest?version=v1`
+  directly (with `static_discovery=False`). Verified against a live GAM
+  network: `list_inventory()` returned 100 real ad units, a real
+  `POST /packages/sync` completed with zero warnings (previously always
+  warned and fell back to mocks), and `GET /products` served 50 real
+  synced products end to end.
+- `infra/docker/Dockerfile` now installs the `gam` extra alongside
+  `redis` (AI-6): the production image only ever installed
+  `".[redis]"`, so `googleads`/`google-api-python-client`/`google-auth`
+  were never present, and a real GAM deployment would `ImportError`
+  before ever reaching `GAMRestClient.connect()` — even with the
+  discovery-URL fix above in place. Rebuilt the real Dockerfile from
+  scratch with no manual installs and re-ran the full live-GAM
+  verification (100 real ad units, clean sync, 50 real products served)
+  to confirm the production image now works end to end unmodified.
 - MCP `list_packages` no longer crashes (AI-12). It constructed
   `MediaKitService()` with no arguments, but the class requires
   `storage`/`pricing_engine`, so every call raised `TypeError`

@@ -258,10 +258,14 @@ class AdServerClient(ABC):
     async def list_inventory(
         self,
         *,
-        limit: int = 100,
+        limit: Optional[int] = 100,
         filter_str: Optional[str] = None,
     ) -> list[AdServerInventoryItem]:
-        """List ad units (GAM) or ad slots (FreeWheel)."""
+        """List ad units (GAM) or ad slots (FreeWheel).
+
+        Returns at most ``limit`` items; ``limit=None`` returns all of them
+        (a full sync needs the whole inventory, not the first page).
+        """
 
     # -- Audience Operations --
 

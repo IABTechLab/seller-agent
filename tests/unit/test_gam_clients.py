@@ -339,3 +339,73 @@ class TestCostTypeMapping:
         """Test CPV is not a valid GAM cost type."""
         valid_types = [e.value for e in GAMCostType]
         assert "CPV" not in valid_types
+
+
+class TestGAMAdapterListInventoryPaging:
+    """GAMAdServerClient.list_inventory must follow nextPageToken.
+
+    The REST API returns at most 100 ad units per page. Reading only the
+    first page made a sync of a larger network see 100 units and prune the
+    rest.
+    """
+
+    @staticmethod
+    def _adapter(total_units: int, repeat_token: bool = False):
+        from types import SimpleNamespace
+
+        from ad_seller.clients.gam_adapter import GAMAdServerClient
+
+        units = [
+            SimpleNamespace(
+                id=f"u{i}", name=f"Unit {i}", parent_id=None, status="ACTIVE", ad_unit_sizes=[]
+            )
+            for i in range(total_units)
+        ]
+        calls: list[dict] = []
+
+        async def list_ad_units(page_size=100, page_token=None, filter_str=None):
+            calls.append({"page_size": page_size, "page_token": page_token})
+            start = int(page_token or 0)
+            end = start + min(page_size, 100)
+            if repeat_token:
+                return units[start:end], "0"
+            return units[start:end], str(end) if end < len(units) else None
+
+        with (
+            patch("ad_seller.clients.gam_adapter.GAMSoapClient"),
+            patch("ad_seller.clients.gam_adapter.GAMRestClient"),
+        ):
+            adapter = GAMAdServerClient()
+        adapter._rest.list_ad_units = list_ad_units
+        return adapter, calls
+
+    async def test_limit_none_reads_every_page(self):
+        adapter, calls = self._adapter(250)
+
+        items = await adapter.list_inventory(limit=None, filter_str="status:ACTIVE")
+
+        assert [i.id for i in items] == [f"u{i}" for i in range(250)]
+        assert [c["page_token"] for c in calls] == [None, "100", "200"]
+
+    async def test_limit_caps_across_pages(self):
+        adapter, calls = self._adapter(250)
+
+        items = await adapter.list_inventory(limit=120)
+
+        assert len(items) == 120
+        assert [c["page_size"] for c in calls] == [100, 20]
+
+    async def test_default_limit_still_returns_one_page(self):
+        adapter, calls = self._adapter(250)
+
+        items = await adapter.list_inventory()
+
+        assert len(items) == 100
+        assert len(calls) == 1
+
+    async def test_repeated_page_token_stops_instead_of_looping(self):
+        adapter, calls = self._adapter(250, repeat_token=True)
+
+        await adapter.list_inventory(limit=None)
+
+        assert len(calls) == 2
