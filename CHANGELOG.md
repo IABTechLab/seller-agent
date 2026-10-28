@@ -72,6 +72,15 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- CSV/S3 inventory now keeps the `inventory_type` declared in the row
+  instead of guessing it from the name, ad formats or sizes. Rows that
+  declare `ctv` were being served as `display`, and `linear`,
+  `digital_video` and `audio` were discarded. **Prices can change on
+  upgrade:** rate-card entries match on this value by exact string, so a
+  CSV product may now resolve to a different entry (or to its own CSV
+  price when no entry matches). Synced packages for `linear`,
+  `digital_video` and `audio` get their own ad formats, device types and
+  base CPM instead of the desktop-banner fallback.
 - `GET /products` (and everything reading the catalog — avails, pricing,
   package resolution, quotes) now reflects real ad-server inventory
   (GAM/FreeWheel/S3) once synced, read fresh from storage on every call

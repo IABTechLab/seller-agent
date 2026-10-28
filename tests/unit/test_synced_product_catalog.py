@@ -551,3 +551,43 @@ class TestSyncWithRealCsvAdapter:
 
         assert not flow.state.ad_server_sync_failed, flow.state.warnings
         assert len(await storage.keys("synced_product:*")) == len(rows)
+
+    async def test_aws_workshop_packages_never_fall_back_to_desktop_banner(self, storage):
+        from pathlib import Path
+
+        from ad_seller.clients.csv_adapter import CSVAdServerClient
+
+        sample = Path(__file__).parents[2] / "data" / "csv" / "samples" / "aws_workshop"
+        client = CSVAdServerClient(data_dir=str(sample))
+
+        settings = _flow_settings(gam_network_code=None, ad_server_type="csv")
+        with (
+            patch("ad_seller.flows.product_setup_flow.get_settings", return_value=settings),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.clients.ad_server_base.get_ad_server_client", lambda: client),
+        ):
+            from ad_seller.flows.product_setup_flow import ProductSetupFlow
+
+            flow = ProductSetupFlow()
+            await flow.sync_from_ad_server()
+
+        assert not flow.state.ad_server_sync_failed, flow.state.warnings
+        packages = {
+            p["name"].removesuffix(" - Synced"): p
+            for p in await storage.list_packages()
+            if p.get("layer") == "synced"
+        }
+        expected = {
+            "Linear": (["video"], [3, 7], 40.0),
+            "Digital Video": (["video"], [2, 4, 5], 25.0),
+            "Audio": (["audio"], [2, 4, 5, 6], 15.0),
+            "Ctv": (["video"], [3, 7], 35.0),
+        }
+        for name, (ad_formats, device_types, base_price) in expected.items():
+            assert name in packages, f"no synced {name!r} package: {sorted(packages)}"
+            pkg = packages[name]
+            assert (pkg["ad_formats"], pkg["device_types"], pkg["base_price"]) == (
+                ad_formats,
+                device_types,
+                base_price,
+            ), f"{name} package fell back to defaults: {pkg['ad_formats']}, {pkg['device_types']}"

@@ -266,6 +266,49 @@ class TestResolveBaseCpm:
         assert price == TieredPricingConfig.model_fields["global_floor_cpm"].default
 
 
+class TestReclassificationChangesRateCardSelection:
+    """_find_entry matches by exact inventory_type string, so a
+    classification change silently moves which price a product resolves
+    to. Runs the real production pipeline, not a synthetic product, so a
+    future classifier change that moves a booked price fails here."""
+
+    async def test_ctv_preroll_row_prices_off_the_ctv_entry_not_display(self, mock_storage):
+        """The real 'Sports Pre-Roll' row: declares inventory_type=ctv, must
+        price off the "ctv" rate-card entry, not "display" or "video"."""
+        from ad_seller.clients.ad_server_base import AdServerInventoryItem, AdServerType
+        from ad_seller.services import catalog_service
+
+        item = AdServerInventoryItem(
+            id="inv-ctv-sports-preroll",
+            name="Sports Pre-Roll :15/:30",
+            sizes=[(1920, 1080)],
+            ad_server_type=AdServerType.CSV,
+        )
+        item.__dict__["raw"] = {
+            "ad_formats": ["video"],
+            "inventory_type": "ctv",
+            "floor_price_cpm": 28.0,
+        }
+        product = catalog_service.product_from_inventory_item(item)
+        assert product.inventory_type == "ctv", (
+            "classify_inventory_type regressed -- fix belongs in "
+            "test_classify_inventory_type.py, not here"
+        )
+
+        mock_storage._store["rate_card:current"] = _rate_card(
+            [
+                {"inventory_type": "display", "base_cpm": 12.0},
+                {"inventory_type": "video", "base_cpm": 25.0},
+                {"inventory_type": "ctv", "base_cpm": 35.0},
+            ]
+        )
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            price = await rate_card_service.resolve_base_cpm(product)
+
+        assert price == 35.0
+
+
 # =============================================================================
 # (2) Quoting — quote_service.create_quote
 # =============================================================================
