@@ -142,7 +142,7 @@ async def search_media_kit(
     that match its type/id/version triple, parallel to `GET /packages`.
     """
     context = None
-    if api_key_record is not None or request.buyer_tier != "public":
+    if api_key_record is not None:
         context = deps._build_buyer_context(
             buyer_tier=request.buyer_tier,
             agency_id=request.agency_id,

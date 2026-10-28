@@ -155,3 +155,33 @@ async def test_layer_and_audience_filters_still_apply(package_client, authentica
         assert response.status_code == 400
     response = await client.get("/packages/missing", headers=headers)
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize("claims", _CLAIMS)
+async def test_anonymous_search_keeps_the_public_view(package_client, claims):
+    client, _ = package_client
+    response = await client.post("/media-kit/search", json={"query": "regression", **claims})
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert len(results) == 1
+    package = results[0]
+    assert package["price_range"] == "$36-$54 CPM"
+    assert "exact_price" not in package
+    assert "floor_price" not in package
+    assert "placements" not in package
+    assert "standard_segment_ids" not in package["audience_capabilities"]
+
+
+async def test_valid_key_search_keeps_authenticated_view(package_client):
+    client, records = package_client
+    raw = _seed_key(records, role=ApiKeyRole.BUYER)
+    response = await client.post(
+        "/media-kit/search",
+        json={"query": "regression", "buyer_tier": "agency", "agency_id": "claimed-agency"},
+        headers={"X-Api-Key": raw},
+    )
+    assert response.status_code == 200
+    package = response.json()["results"][0]
+    assert package["exact_price"] == 40.5
+    assert package["floor_price"] == 38.25
+    assert package["placements"][0]["product_id"] == "product-1"
