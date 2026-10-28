@@ -72,6 +72,21 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- **Information disclosure:** buyer-facing catalog surfaces no longer
+  publish the seller's floor. `GET /products` and `GET /products/{id}`
+  dropped `ext.floor_cpm`, the ungated MCP `list_products` dropped
+  `floor_cpm`, and the media-kit `AuthenticatedPackageView` dropped
+  `floor_price` (it is served to any non-public effective tier, including
+  a tier claimed in the request body). The ungated MCP `get_config` and
+  `get_setup_status` now return the default floor and the PG/PD pricing
+  knobs only to an operator. AgentCore `create_deal_direct` no longer
+  states the floor-derived minimum in its rejection or returns
+  `floor_cpm` on the booked deal. With real ad-server floors served
+  (AI-6), these told any caller the lowest price the seller would accept.
+  Pricing, quotes and negotiation still read floors internally, and
+  deal-level auction bid floors (`bidfloor`) are unchanged. Consumers that
+  read `ext.floor_cpm` or `floor_price` from these responses get nothing
+  in its place; the buyer agent only parsed it into an optional field.
 - `GET /products` (and everything reading the catalog — avails, pricing,
   package resolution, quotes) now reflects real ad-server inventory
   (GAM/FreeWheel/S3) once synced, read fresh from storage on every call
