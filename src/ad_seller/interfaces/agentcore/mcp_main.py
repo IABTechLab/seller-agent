@@ -38,7 +38,68 @@ os.environ.setdefault("STORAGE_TYPE", "sqlite")
 os.environ.setdefault("AD_SERVER_TYPE", "csv")
 os.environ.setdefault("CSV_DATA_DIR", "./data/csv/samples/aws_workshop")
 
+# Durable Bedrock auth: mint a fresh bearer token from the execution role at
+# startup when none was supplied (see ad_seller.llm.bedrock_token).
+from ad_seller.llm.bedrock_token import ensure_bedrock_token  # noqa: E402
+
+ensure_bedrock_token()
+
 logger = logging.getLogger(__name__)
+
+# Price-moving MCP tools whose self-declared buyer tier must be verified against
+# the registry before the tool runs. Keyed by tool name; the wrapper reads the
+# tier/agent_url from that tool's arguments. Non-listed tools (public discovery,
+# health) pass through unverified.
+_VERIFIED_TOOLS = {"get_pricing", "request_quote"}
+
+
+def _install_verification_wrapper(mcp_server) -> None:
+    """Wrap FastMCP's ``call_tool`` to verify buyer trust for price-moving tools.
+
+    In-boundary enforcement: for a tool in ``_VERIFIED_TOOLS`` that carries a
+    non-public ``buyer_tier``, run the shared verification core
+    (``interfaces/agentcore/verification.verify_buyer_context``) — cap the tier
+    to the registry ceiling, floor unknown agents to PUBLIC, and REJECT a blocked
+    agent before the tool executes. The verified tier is threaded back into the
+    tool arguments (``buyer_tier``/``_verified_max_tier``) so the tool prices at
+    the capped tier. Fail-closed: on any verification error we floor to public
+    rather than let an unverified claim through.
+    """
+    from ad_seller.interfaces.agentcore.verification import (
+        BlockedAgentError,
+        verify_buyer_context,
+    )
+    from ad_seller.models.buyer_identity import AccessTier
+
+    # Wrap the TOOL MANAGER's call_tool, not FastMCP.call_tool: FastMCP captures
+    # its own bound `call_tool` into the low-level server at construction (so
+    # reassigning it post-init is ignored), but it delegates to
+    # `self._tool_manager.call_tool(...)` looked up FRESH per request — so
+    # wrapping the manager method reliably intercepts every tools/call.
+    tool_manager = mcp_server._tool_manager
+    _orig_call_tool = tool_manager.call_tool
+
+    async def _guarded_call_tool(name, arguments, context=None, convert_result=False):
+        args = dict(arguments or {})
+        tier = args.get("buyer_tier", "public")
+        if name in _VERIFIED_TOOLS and tier and tier != "public":
+            try:
+                ctx = await verify_buyer_context(
+                    endpoint=f"mcp:{name}",
+                    buyer_tier=tier,
+                    agent_url=args.get("agent_url") or None,
+                )
+                # Cap the claimed tier to the verified effective tier so the
+                # tool cannot price above the registry ceiling.
+                args["buyer_tier"] = ctx.effective_tier.value if ctx else "public"
+            except BlockedAgentError:
+                raise ValueError("Agent is blocked. Contact the seller operator for access.")
+            except Exception as exc:  # noqa: BLE001 — fail closed to public
+                logger.warning("MCP verification failed (%s) — flooring to public.", exc)
+                args["buyer_tier"] = AccessTier.PUBLIC.value
+        return await _orig_call_tool(name, args, context=context, convert_result=convert_result)
+
+    tool_manager.call_tool = _guarded_call_tool
 
 
 def main():
@@ -55,6 +116,19 @@ def main():
     from mcp.server.transport_security import TransportSecuritySettings
 
     from ad_seller.interfaces.mcp_server import mcp as mcp_server
+
+    # Req 8 — in-boundary MCP verification (belt-and-suspenders).
+    # The seller MCP runtime enforces a CUSTOM_JWT authorizer at the edge (WHO
+    # may call), but request-time REGISTRY verification (tier ceiling / block)
+    # for price-moving tools lives in the tool bodies in `mcp_server.py` — shared
+    # external surface owned by the core maintainers. Rather than edit that
+    # surface here, we wrap FastMCP's single `call_tool` dispatch method (the
+    # funnel every tools/call passes through in mcp==1.28.x) from THIS in-boundary
+    # launcher, so verification holds even if the optional in-tool edit
+    # (`mcp_server.get_pricing`, a separate cherry-pickable commit) is absent.
+    # If that commit IS present, the in-tool check is a redundant, idempotent
+    # second layer — never a conflict.
+    _install_verification_wrapper(mcp_server)
 
     # Ensure stateless_http is set for AgentCore compatibility
     mcp_server.settings.stateless_http = True

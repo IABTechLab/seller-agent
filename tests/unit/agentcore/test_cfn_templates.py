@@ -1,9 +1,9 @@
 """Tests for AgentCore CloudFormation templates.
 
 Validates:
-- agentcore-network.yaml and main-agentcore.yaml are valid YAML
+- network-agentcore.yaml and main-agentcore.yaml are valid YAML
 - Templates have required Parameters, Resources, Outputs sections
-- agentcore-network.yaml has AgentCoreSecurityGroup, ingress rules, VPC endpoints
+- network-agentcore.yaml has AgentCoreSecurityGroup, ingress rules, VPC endpoints
 - main-agentcore.yaml has NetworkStack, StorageStack, AgentCoreNetworkStack
 - Zero git diff on infra/aws/cloudformation/ (existing files untouched)
 
@@ -23,8 +23,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 AGENTCORE_DIR = REPO_ROOT / "infra" / "aws" / "agentcore"
 CFN_DIR = REPO_ROOT / "infra" / "aws" / "cloudformation"
 
-AGENTCORE_NETWORK = AGENTCORE_DIR / "agentcore-network.yaml"
+AGENTCORE_NETWORK = AGENTCORE_DIR / "network-agentcore.yaml"
 MAIN_AGENTCORE = AGENTCORE_DIR / "main-agentcore.yaml"
+AUTH_AGENTCORE = AGENTCORE_DIR / "auth-agentcore.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -53,12 +54,12 @@ def load_cfn_template(path: Path) -> dict:
 
 
 # ===================================================================
-# agentcore-network.yaml validation
+# agentcore-network validation (network-agentcore.yaml)
 # ===================================================================
 
 
 class TestAgentCoreNetworkTemplate:
-    """Validate agentcore-network.yaml structure and resources."""
+    """Validate network-agentcore.yaml structure and resources."""
 
     @pytest.fixture(autouse=True)
     def load_template(self):
@@ -131,6 +132,25 @@ class TestAgentCoreNetworkTemplate:
     def test_has_cloudwatch_logs_endpoint(self):
         resources = self.template["Resources"]
         assert "CloudWatchLogsEndpoint" in resources
+
+    def test_has_private_subnet_service_endpoints(self):
+        """A private-subnet CUSTOMER_VPC runtime needs Bedrock/STS/Secrets
+        endpoints too (Req 10.1) — not just ECR + Logs — or it fails on a
+        preceding AWS call (token mint / role / DB password) before Aurora."""
+        resources = self.template["Resources"]
+        expected = {
+            "BedrockAgentCoreEndpoint": "bedrock-agentcore",
+            "BedrockRuntimeEndpoint": "bedrock-runtime",
+            "StsEndpoint": "sts",
+            "SecretsManagerEndpoint": "secretsmanager",
+        }
+        for logical_id, service in expected.items():
+            assert logical_id in resources, f"missing endpoint {logical_id}"
+            res = resources[logical_id]
+            assert res["Type"] == "AWS::EC2::VPCEndpoint"
+            # ServiceName is a !Sub string containing the service suffix.
+            svc = res["Properties"]["ServiceName"]
+            assert service in str(svc), f"{logical_id} not pointed at {service}: {svc}"
 
     # -- Outputs --
     def test_outputs_agentcore_security_group_id(self):
@@ -250,7 +270,7 @@ class TestMainAgentCoreTemplate:
     def test_agentcore_network_stack_uses_relative_path(self):
         props = self.template["Resources"]["AgentCoreNetworkStack"]["Properties"]
         template_url = str(props.get("TemplateURL", ""))
-        assert "agentcore-network.yaml" in template_url
+        assert "network-agentcore.yaml" in template_url
 
 
 # ===================================================================
@@ -261,17 +281,37 @@ class TestMainAgentCoreTemplate:
 class TestExistingFilesUntouched:
     """Verify zero git diff on infra/aws/cloudformation/ files."""
 
-    def test_cloudformation_dir_no_changes(self):
-        """Existing CloudFormation files must have zero git diff."""
+    def test_cloudformation_dir_no_unexpected_changes(self):
+        """Existing CloudFormation files must have no UNEXPECTED changes.
+
+        The enterprise-auth-gateway work adds a parallel agentcore stack rather
+        than editing the shared ECS CloudFormation stacks, so this dir stays
+        essentially untouched. The ONE sanctioned exception is bumping the
+        Aurora ``EngineVersion`` in ``storage.yaml`` off a version AWS has since
+        retired (``16.4`` was no longer creatable, breaking every ``--storage
+        postgres`` deploy) to a current 16.x minor. Any change to a line OTHER
+        than ``EngineVersion`` still fails this guard.
+        """
         result = subprocess.run(
-            ["git", "diff", "--stat", "infra/aws/cloudformation/"],
+            ["git", "diff", "-U0", "infra/aws/cloudformation/"],
             capture_output=True,
             text=True,
             timeout=10,
             cwd=str(REPO_ROOT),
         )
-        assert result.stdout.strip() == "", (
-            f"Unexpected changes in cloudformation/:\n{result.stdout}"
+        # Collect changed content lines (added/removed), ignoring diff headers
+        # and hunk markers.
+        changed = [
+            ln
+            for ln in result.stdout.splitlines()
+            if (ln.startswith("+") or ln.startswith("-"))
+            and not ln.startswith(("+++", "---"))
+        ]
+        # Every changed line must be an EngineVersion pin (the sanctioned bump).
+        offending = [ln for ln in changed if "EngineVersion" not in ln]
+        assert not offending, (
+            "Unexpected non-EngineVersion changes in cloudformation/:\n"
+            + "\n".join(offending)
         )
 
     def test_network_yaml_exists(self):
@@ -285,6 +325,76 @@ class TestExistingFilesUntouched:
 
     def test_main_yaml_exists(self):
         assert (CFN_DIR / "main.yaml").exists()
+
+
+# ===================================================================
+# auth-agentcore.yaml validation (enterprise-auth-gateway group 1)
+# ===================================================================
+
+
+class TestAuthAgentCoreTemplate:
+    """Validate the seller-owned Cognito auth stack (auth-agentcore.yaml).
+
+    The seller OWNS the shared Cognito pool; buyer references its outputs.
+    Validates: Requirements 2.1, 2.2, 2.3 (Cognito default IdP + outputs contract).
+    """
+
+    @pytest.fixture(autouse=True)
+    def load_template(self):
+        assert AUTH_AGENTCORE.exists(), f"Not found: {AUTH_AGENTCORE}"
+        self.template = load_cfn_template(AUTH_AGENTCORE)
+
+    def test_is_valid_yaml(self):
+        assert self.template is not None
+
+    def test_has_standard_sections(self):
+        for section in ("AWSTemplateFormatVersion", "Description", "Parameters",
+                        "Resources", "Outputs", "Conditions"):
+            assert section in self.template, f"Missing section: {section}"
+
+    # -- Cognito resources --
+    def test_has_user_pool(self):
+        resources = self.template["Resources"]
+        assert "SellerUserPool" in resources
+        assert resources["SellerUserPool"]["Type"] == "AWS::Cognito::UserPool"
+
+    def test_has_resource_server(self):
+        resources = self.template["Resources"]
+        assert "SellerResourceServer" in resources
+        assert (
+            resources["SellerResourceServer"]["Type"]
+            == "AWS::Cognito::UserPoolResourceServer"
+        )
+
+    def test_app_client_is_client_credentials(self):
+        client = self.template["Resources"]["SellerAppClient"]
+        assert client["Type"] == "AWS::Cognito::UserPoolClient"
+        props = client["Properties"]
+        assert props["GenerateSecret"] is True
+        assert "client_credentials" in props["AllowedOAuthFlows"]
+
+    def test_has_domain(self):
+        resources = self.template["Resources"]
+        assert "SellerUserPoolDomain" in resources
+        assert resources["SellerUserPoolDomain"]["Type"] == "AWS::Cognito::UserPoolDomain"
+
+    # -- BYO-IdP gating: every resource is conditioned on DeployCognitoPool --
+    def test_all_resources_condition_gated(self):
+        for name, res in self.template["Resources"].items():
+            assert res.get("Condition") == "DeployCognitoPool", (
+                f"{name} is not gated on DeployCognitoPool (BYO-IdP skip)"
+            )
+
+    # -- Outputs contract (task 1.2) --
+    def test_outputs_contract(self):
+        outputs = self.template["Outputs"]
+        for required in ("UserPoolId", "DiscoveryUrl", "AppClientId", "TokenEndpoint"):
+            assert required in outputs, f"Missing output: {required}"
+
+    def test_no_secret_output(self):
+        """The app-client secret must NEVER be a stack output."""
+        joined = " ".join(self.template["Outputs"].keys()).lower()
+        assert "secret" not in joined, "app-client secret must not be an output"
 
 
 # ===================================================================

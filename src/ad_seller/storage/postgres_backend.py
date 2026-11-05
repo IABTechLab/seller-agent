@@ -41,10 +41,24 @@ class PostgresBackend(StorageBackend):
         """Create connection pool and ensure the KV table exists."""
         import asyncpg
 
+        async def _init_conn(conn: "asyncpg.Connection") -> None:
+            # asyncpg does NOT decode JSONB to native objects by default — it
+            # hands back the raw JSON text. Register a codec so ``get`` returns a
+            # dict/list (matching the SQLite backend's ``json.loads``); without
+            # this, callers doing ``value.get(...)`` hit
+            # "'str' object has no attribute 'get'".
+            await conn.set_type_codec(
+                "jsonb",
+                encoder=json.dumps,
+                decoder=json.loads,
+                schema="pg_catalog",
+            )
+
         self._pool = await asyncpg.create_pool(
             dsn=self._dsn,
             min_size=self._pool_min,
             max_size=self._pool_max,
+            init=_init_conn,
         )
 
         async with self._pool.acquire() as conn:
@@ -87,7 +101,7 @@ class PostgresBackend(StorageBackend):
                 await conn.execute("DELETE FROM kv_store WHERE key = $1", key)
                 return None
 
-            # asyncpg returns JSONB as native Python objects
+            # The pool's jsonb codec decodes JSONB to a native dict/list.
             return row["value"]
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
@@ -95,19 +109,16 @@ class PostgresBackend(StorageBackend):
         self._ensure_pool()
         expires_at = time.time() + ttl if ttl else None
 
-        # asyncpg needs the value as a JSON string for JSONB parameter binding
-        json_value = json.dumps(value)
-
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO kv_store (key, value, expires_at)
-                VALUES ($1, $2::jsonb, $3)
+                VALUES ($1, $2, $3)
                 ON CONFLICT (key) DO UPDATE
                 SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at
                 """,
                 key,
-                json_value,
+                value,
                 expires_at,
             )
 
