@@ -575,7 +575,6 @@ class MediaKitService:
             rate_type=package.rate_type.value,
             is_featured=package.is_featured,
             exact_price=exact_price,
-            floor_price=package.floor_price,
             currency=package.currency,
             placements=package.placements,
             negotiation_enabled=tier_config.negotiation_enabled,

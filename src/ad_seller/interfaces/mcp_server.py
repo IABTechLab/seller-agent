@@ -210,6 +210,19 @@ async def _deny_unless_operator() -> Optional[str]:
     return None
 
 
+async def _pricing_policy(settings: Any, **operator_fields: Any) -> dict[str, Any]:
+    """The ``pricing`` section for the ungated status/config tools.
+
+    Currency is public. The default floor and the PG/PD pricing knobs are
+    the seller's negotiation guardrails, so they are included only for an
+    operator (operator key over HTTP, or local stdio access).
+    """
+    pricing: dict[str, Any] = {"currency": settings.default_currency}
+    if await _deny_unless_operator() is None:
+        pricing.update(operator_fields)
+    return pricing
+
+
 # =============================================================================
 # Setup & Status
 # =============================================================================
@@ -262,10 +275,7 @@ async def get_setup_status() -> str:
             "connectors": settings.ssp_connectors or "none",
         },
         "media_kit": {"configured": len(packages) > 0, "package_count": len(packages)},
-        "pricing": {
-            "floor_cpm": settings.default_price_floor_cpm,
-            "currency": settings.default_currency,
-        },
+        "pricing": await _pricing_policy(settings, floor_cpm=settings.default_price_floor_cpm),
         "approval_gates": {"enabled": settings.approval_gate_enabled},
         "setup_complete": all([identity_configured, ad_server_configured, len(packages) > 0]),
     }
@@ -338,13 +348,13 @@ async def get_config() -> str:
                 "connectors": settings.ssp_connectors or "none",
                 "routing_rules": settings.ssp_routing_rules or "none",
             },
-            "pricing": {
-                "currency": settings.default_currency,
-                "floor_cpm": settings.default_price_floor_cpm,
-                "yield_optimization": settings.yield_optimization_enabled,
-                "pg_floor_multiplier": settings.programmatic_floor_multiplier,
-                "pd_discount_max": settings.preferred_deal_discount_max,
-            },
+            "pricing": await _pricing_policy(
+                settings,
+                floor_cpm=settings.default_price_floor_cpm,
+                yield_optimization=settings.yield_optimization_enabled,
+                pg_floor_multiplier=settings.programmatic_floor_multiplier,
+                pd_discount_max=settings.preferred_deal_discount_max,
+            ),
             "approval_gates": {
                 "enabled": settings.approval_gate_enabled,
                 "timeout_hours": settings.approval_timeout_hours,
@@ -406,6 +416,8 @@ async def list_products(limit: int | None = 50) -> str:
     # hangs in session.initialize()). Same source the REST /products route uses.
     catalog = await catalog_service.get_static_product_catalog()
 
+    # No floor_cpm: this tool is ungated, and the floor is the seller's
+    # negotiation reserve (kept off the wire, as on GET /products).
     products = []
     for pid, product in list(catalog["products"].items())[:limit]:
         products.append(
@@ -414,7 +426,6 @@ async def list_products(limit: int | None = 50) -> str:
                 "name": product.name,
                 "inventory_type": product.inventory_type,
                 "base_cpm": product.base_cpm,
-                "floor_cpm": product.floor_cpm,
                 "deal_types": [dt.value for dt in product.supported_deal_types],
             }
         )

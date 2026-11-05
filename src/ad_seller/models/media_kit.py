@@ -244,10 +244,13 @@ class AuthenticatedPackageView(PublicPackageView):
     Note: `audience_capabilities` is *redeclared* here as the full
     `AudienceCapabilities` type (overriding the public summary on the base
     class) so authenticated callers see the segment lists.
+
+    The package floor is deliberately absent: `exact_price` is what this
+    buyer pays, while the floor is the seller's negotiation reserve. It is
+    also served to any non-public *effective* tier, not only key holders.
     """
 
     exact_price: float
-    floor_price: float
     currency: str = "USD"
     placements: list[PackagePlacement] = Field(default_factory=list)
     audience_capabilities: AudienceCapabilities = Field(default_factory=AudienceCapabilities)

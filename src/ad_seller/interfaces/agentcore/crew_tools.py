@@ -382,13 +382,15 @@ class CreateDealTool(BaseTool):
             base_cpm = product_data.get("base_cpm", floor_cpm)
             product_name = product_data.get("name", product_data.get("product_name", product_id))
 
-            # Validate max_cpm against floor
+            # Validate max_cpm against floor. The rejection must not state the
+            # threshold: it is derived from the floor (the seller's negotiation
+            # reserve), and naming it would tell the buyer exactly what to bid.
             if max_cpm and max_cpm < floor_cpm * 0.85:
                 return json.dumps(
                     {
                         "error": "price_below_floor",
-                        "message": f"Offered ${max_cpm:.2f} CPM is below seller minimum ${floor_cpm * 0.85:.2f} CPM",
-                        "seller_minimum_cpm": round(floor_cpm * 0.85, 2),
+                        "message": f"Offered ${max_cpm:.2f} CPM is below what the seller "
+                        "accepts for this product. Request a quote for the current price.",
                         "buyer_max_cpm": max_cpm,
                         "product_id": product_id,
                         "deal_type": dt_str,
@@ -409,7 +411,6 @@ class CreateDealTool(BaseTool):
                 "deal_type": dt_str,
                 "status": "booked",
                 "cpm": round(final_cpm, 2),
-                "floor_cpm": round(floor_cpm, 2),
                 "impressions": total_impressions,
                 "total_cost": round(total_cost, 2),
                 "currency": "USD",
