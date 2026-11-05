@@ -442,17 +442,35 @@ async def _run_crew_with_crewai(prompt: str, payload: dict) -> dict:
     authorization and a deal-specific task description when the prompt
     asks for deals. No deterministic Python fallback.
     """
-    from crewai import LLM, Crew, Process, Task
+    from crewai import Crew, Process, Task
 
     from ad_seller.crews.publisher_crew import PublisherCrew
 
-    # Apply Bedrock Converse compatibility patches
-    try:
-        from patches.crewai_bedrock_fix import apply_patches
+    # Apply Bedrock compatibility patches. The Converse sanitizer
+    # (crewai_bedrock_fix) is only needed on the legacy Converse path
+    # (DEFAULT_LLM_MODEL="bedrock/..."). When ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL
+    # is set, Claude runs on Bedrock's Anthropic Messages endpoint via CrewAI's
+    # native Anthropic provider, which needs the strict-strip patch instead.
+    _default_model = os.environ.get("DEFAULT_LLM_MODEL", "")
+    _on_converse_path = not os.environ.get(
+        "ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL"
+    ) and _default_model.startswith("bedrock/")
+    if _on_converse_path:
+        try:
+            from patches.crewai_bedrock_fix import apply_patches
 
-        apply_patches()
-    except ImportError:
-        logger.warning("patches.crewai_bedrock_fix not available — skipping")
+            apply_patches()
+        except ImportError:
+            logger.warning("patches.crewai_bedrock_fix not available — skipping")
+    else:
+        try:
+            from patches.crewai_bedrock_anthropic_fix import (
+                apply_patches as apply_anthropic_patches,
+            )
+
+            apply_anthropic_patches()
+        except ImportError:
+            logger.warning("patches.crewai_bedrock_anthropic_fix not available — skipping")
 
     # Apply AgentCore memory patch (read_only mode — no RememberTool injection)
     if os.environ.get("CREW_MEMORY_ENABLED", "false").lower() == "true":
@@ -470,9 +488,14 @@ async def _run_crew_with_crewai(prompt: str, payload: dict) -> dict:
 
     bedrock_model = os.environ.get(
         "DEFAULT_LLM_MODEL",
-        "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "us.anthropic.claude-sonnet-5",
     )
-    bedrock_llm = LLM(model=bedrock_model, temperature=0.3, max_tokens=4096)
+    # Build via the shared factory so the Anthropic Messages endpoint config
+    # (ANTHROPIC_COMPATIBLE_LLM_API_BASE_URL / _API_KEY) is honored — the deploy
+    # sets these to run Claude on Bedrock without the Converse provider.
+    from ad_seller.llm import build_llm
+
+    bedrock_llm = build_llm(model=bedrock_model, temperature=0.3, max_tokens=4096)
     publisher_crew.inventory_manager.llm = bedrock_llm
     publisher_crew.inventory_manager.memory = False
 
