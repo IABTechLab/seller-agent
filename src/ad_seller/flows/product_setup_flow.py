@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from crewai.flow.flow import Flow, listen, start
 
+from ..clients.ad_server_base import AdServerType
 from ..config import get_settings
 from ..models.core import DealType
 from ..models.flow_state import (
@@ -32,6 +33,12 @@ from ..models.media_kit import (
 )
 
 logger = logging.getLogger(__name__)
+
+# GAM's REST filter grammar: https://developers.google.com/ad-manager/api/beta/filters
+_ACTIVE_INVENTORY_FILTERS = {
+    AdServerType.GOOGLE_AD_MANAGER.value: "status = ACTIVE",
+    AdServerType.FREEWHEEL.value: "status:ACTIVE",
+}
 
 
 class ProductSetupState(SellerFlowState):
@@ -157,12 +164,7 @@ class ProductSetupFlow(Flow[ProductSetupState]):
 
             storage = await get_storage()
             client = get_ad_server_client()
-            # CSV's filter_str is a literal substring match against item
-            # names, not a real query language -- passing "status:ACTIVE"
-            # there matches zero rows, so this only applies to real ad
-            # servers (GAM/FreeWheel), which is also where excluding
-            # archived inventory by default actually matters.
-            filter_str = "status:ACTIVE" if client.ad_server_type.value != "csv" else None
+            filter_str = _ACTIVE_INVENTORY_FILTERS.get(client.ad_server_type.value)
             # limit=None: a sync must see the whole inventory. The default
             # (100) silently truncated larger GAM networks and S3 files, and
             # the prune below then deleted everything past the cut.

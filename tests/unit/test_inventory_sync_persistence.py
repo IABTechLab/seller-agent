@@ -240,7 +240,7 @@ class TestDefaultFloorFallback:
 class _RecordingAdServerClient:
     """Like _FakeAdServerClient, but records the filter_str it was called with."""
 
-    ad_server_type = SimpleNamespace(value="gam")
+    ad_server_type = SimpleNamespace(value="google_ad_manager")
 
     def __init__(self, items):
         self._items = items
@@ -302,7 +302,41 @@ class TestStatusActiveFilterRestored:
             flow = ProductSetupFlow()
             await flow.sync_from_ad_server()
 
-        assert client.received_filter_str == "status:ACTIVE"
+        assert client.received_filter_str == "status = ACTIVE"
+
+    @pytest.mark.parametrize(
+        "ad_server_type, expected",
+        [
+            ("google_ad_manager", "status = ACTIVE"),
+            ("freewheel", "status:ACTIVE"),
+            ("csv", None),
+            ("s3", None),
+            ("gam", None),
+            ("", None),
+        ],
+    )
+    async def test_filter_is_chosen_per_ad_server_type(self, storage, ad_server_type, expected):
+        from ad_seller.flows.product_setup_flow import ProductSetupFlow
+
+        client = _RecordingAdServerClient(
+            [_FakeInventoryItem("item-001", "Homepage Display Banner")]
+        )
+        client.ad_server_type = SimpleNamespace(value=ad_server_type)
+
+        with (
+            patch(
+                "ad_seller.flows.product_setup_flow.get_settings",
+                return_value=_flow_settings(),
+            ),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.clients.ad_server_base.get_ad_server_client", lambda: client),
+        ):
+            flow = ProductSetupFlow()
+            await flow.sync_from_ad_server()
+
+        assert client.received_filter_str == expected
+        assert not flow.state.ad_server_sync_failed
+        assert "item-001" in flow.state.products
 
     async def test_csv_receives_no_filter(self, storage):
         """CSV's filter_str is a literal substring match against item names
