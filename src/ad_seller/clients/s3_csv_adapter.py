@@ -179,7 +179,7 @@ class S3CsvAdServerClient(AdServerClient):
     async def list_inventory(
         self,
         *,
-        limit: int = 100,
+        limit: Optional[int] = 100,
         filter_str: Optional[str] = None,
     ) -> list[AdServerInventoryItem]:
         """List inventory items from S3 CSV files."""

@@ -26,6 +26,13 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Changed
 
+- Index Exchange SSP connector rewritten against the real `/v3/deals` API
+  (create, get, list, update, clone, troubleshoot, seat-ID to DSP
+  resolution). Seat IDs that resolve to several DSPs pause for operator
+  approval instead of guessing; approvals, their listing and resume are
+  operator-only, and a resumed approval is consumed so it cannot create the
+  deal twice. `INDEX_EXCHANGE_API_URL` has no default, so an unconfigured
+  deployment never calls production.
 - Booking (POST /api/v1/deals) now requires a verified buyer key matching
   the quote; the MCP deal-from-template tool is operator-gated. Previously
   anonymous callers could book any quote.
@@ -65,6 +72,69 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- CSV/S3 inventory now keeps the `inventory_type` declared in the row
+  instead of guessing it from the name, ad formats or sizes. Rows that
+  declare `ctv` were being served as `display`, and `linear`,
+  `digital_video` and `audio` were discarded. **Prices can change on
+  upgrade:** rate-card entries match on this value by exact string, so a
+  CSV product may now resolve to a different entry (or to its own CSV
+  price when no entry matches). Synced packages for `linear`,
+  `digital_video` and `audio` get their own ad formats, device types and
+  base CPM instead of the desktop-banner fallback.
+- **Information disclosure:** buyer-facing catalog surfaces no longer
+  publish the seller's floor. `GET /products` and `GET /products/{id}`
+  dropped `ext.floor_cpm`, the ungated MCP `list_products` dropped
+  `floor_cpm`, and the media-kit `AuthenticatedPackageView` dropped
+  `floor_price` (it is served to any non-public effective tier, including
+  a tier claimed in the request body). The ungated MCP `get_config` and
+  `get_setup_status` now return the default floor and the PG/PD pricing
+  knobs only to an operator. `POST /discovery` pricing answers no longer
+  include each product's `floor` for tiers that see exact prices.
+  AgentCore `create_deal_direct` no longer states the floor-derived
+  minimum in its rejection or returns `floor_cpm` on the booked deal.
+  With real ad-server floors served (AI-6), these told any caller the
+  lowest price the seller would accept.
+  Pricing, quotes and negotiation still read floors internally, and
+  deal-level auction bid floors (`bidfloor`) are unchanged. Consumers that
+  read `ext.floor_cpm` or `floor_price` from these responses get nothing
+  in its place; the buyer agent only parsed it into an optional field.
+- `GET /products` (and everything reading the catalog — avails, pricing,
+  package resolution, quotes) now reflects real ad-server inventory
+  (GAM/FreeWheel/S3) once synced, read fresh from storage on every call
+  (AI-6). Previously a synced product only ever lived in the flow's
+  per-request state and one worker process's in-memory cache
+  (`infra/docker/Dockerfile` runs uvicorn with `--workers 2`), so the
+  catalog kept serving the 13-product static default indefinitely after
+  a real sync — matching how synced packages already worked. Synced
+  products persist under a dedicated `synced_product:{id}` storage key,
+  separate from the generic `product:{id}` key `negotiation_service`
+  already writes for an unrelated reason (a narrower proposal-time
+  snapshot), and are pruned when no longer returned by the ad server.
+  CSV-mode and no-ad-server-configured behavior is unchanged.
+- `GAMRestClient` can now actually connect to Google Ad Manager (AI-6).
+  It called `googleapiclient.discovery.build("admanager", "v1", ...)`
+  with no `discoveryServiceUrl`; Ad Manager self-hosts its own discovery
+  document rather than registering with the generic, centrally-indexed
+  discovery service `build()` queries by default (and it isn't in the
+  locally bundled discovery docs either), so every real connection
+  attempt raised `UnknownApiNameOrVersion` and `sync_from_ad_server()`'s
+  broad exception handler silently degraded to mock synced packages —
+  real GAM inventory sync had never actually succeeded. Fixed by pointing
+  `build()` at `admanager.googleapis.com/$discovery/rest?version=v1`
+  directly (with `static_discovery=False`). Verified against a live GAM
+  network: `list_inventory()` returned 100 real ad units, a real
+  `POST /packages/sync` completed with zero warnings (previously always
+  warned and fell back to mocks), and `GET /products` served 50 real
+  synced products end to end.
+- `infra/docker/Dockerfile` now installs the `gam` extra alongside
+  `redis` (AI-6): the production image only ever installed
+  `".[redis]"`, so `googleads`/`google-api-python-client`/`google-auth`
+  were never present, and a real GAM deployment would `ImportError`
+  before ever reaching `GAMRestClient.connect()` — even with the
+  discovery-URL fix above in place. Rebuilt the real Dockerfile from
+  scratch with no manual installs and re-ran the full live-GAM
+  verification (100 real ad units, clean sync, 50 real products served)
+  to confirm the production image now works end to end unmodified.
 - MCP `list_packages` no longer crashes (AI-12). It constructed
   `MediaKitService()` with no arguments, but the class requires
   `storage`/`pricing_engine`, so every call raised `TypeError`

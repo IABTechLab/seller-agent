@@ -85,7 +85,7 @@ class _FakeAdServerClient:
     async def __aexit__(self, *exc):
         return False
 
-    async def list_inventory(self, filter_str=None):
+    async def list_inventory(self, filter_str=None, limit=None):
         return self._items
 
 
@@ -252,7 +252,7 @@ class _RecordingAdServerClient:
     async def __aexit__(self, *exc):
         return False
 
-    async def list_inventory(self, filter_str=None):
+    async def list_inventory(self, filter_str=None, limit=None):
         self.received_filter_str = filter_str
         return self._items
 
@@ -275,7 +275,7 @@ class _FailingAdServerClient:
     async def __aexit__(self, *exc):
         return False
 
-    async def list_inventory(self, filter_str=None):
+    async def list_inventory(self, filter_str=None, limit=None):
         raise self._error
 
 

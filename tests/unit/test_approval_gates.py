@@ -43,6 +43,7 @@ from ad_seller.interfaces.api.main import app  # noqa: E402
 from ad_seller.models.api_key import (  # noqa: E402
     API_KEY_STORAGE_PREFIX,
     ApiKeyRecord,
+    ApiKeyRole,
     generate_api_key,
     hash_api_key,
 )
@@ -70,8 +71,10 @@ def client():
     return httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
-def _seed_key(store, *, key_id="key-approver", agency_id="agency-approve"):
-    """Seed a valid API key record; return the raw key."""
+def _seed_key(
+    store, *, key_id="key-approver", agency_id="agency-approve", role=ApiKeyRole.OPERATOR
+):
+    """Seed a valid API key record (operator by default); return the raw key."""
     raw_key = generate_api_key()
     key_hash = hash_api_key(raw_key)
     record = ApiKeyRecord(
@@ -80,6 +83,7 @@ def _seed_key(store, *, key_id="key-approver", agency_id="agency-approve"):
         key_prefix_hint=raw_key[:12] + "...",
         identity=BuyerIdentity(agency_id=agency_id, agency_name="Acme Agency"),
         label="Approval test key",
+        role=role,
     )
     store[f"{API_KEY_STORAGE_PREFIX}{key_hash}"] = record.model_dump(mode="json")
     return raw_key
@@ -136,6 +140,36 @@ class TestApprovalEndpointAuth:
             resume_resp = await client.post(f"/approvals/{approval_id}/resume")
         assert list_resp.status_code == 401
         assert resume_resp.status_code == 401
+
+    async def test_buyer_key_rejected_on_every_approval_route(self, client, mock_storage):
+        """Approvals snapshot deal pricing and resume creates the deal, so a
+        buyer-role key gets 403 on list, get, decide and resume."""
+        buyer_key = _seed_key(mock_storage._store, key_id="key-buyer", role=ApiKeyRole.BUYER)
+        approval_id = _seed_pending_approval(mock_storage._store)
+        headers = {"X-Api-Key": buyer_key}
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            responses = [
+                await client.get("/approvals", headers=headers),
+                await client.get(f"/approvals/{approval_id}", headers=headers),
+                await client.post(
+                    f"/approvals/{approval_id}/decide",
+                    json={"decision": "approve"},
+                    headers=headers,
+                ),
+                await client.post(f"/approvals/{approval_id}/resume", headers=headers),
+            ]
+        assert [r.status_code for r in responses] == [403, 403, 403, 403]
+        assert mock_storage._store[f"approval:{approval_id}"]["status"] == "pending"
+
+    async def test_operator_key_can_list_and_get_approvals(self, client, mock_storage):
+        operator_key = _seed_key(mock_storage._store, key_id="key-op")
+        approval_id = _seed_pending_approval(mock_storage._store)
+        headers = {"X-Api-Key": operator_key}
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            list_resp = await client.get("/approvals", headers=headers)
+            get_resp = await client.get(f"/approvals/{approval_id}", headers=headers)
+        assert list_resp.status_code == 200
+        assert get_resp.status_code == 200
 
     async def test_authenticated_resume_after_decide_returns_200(self, client, mock_storage):
         """Resume after a recorded decision must not 500 on CrewAI's read-only state."""

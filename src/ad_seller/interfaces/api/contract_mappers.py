@@ -350,7 +350,24 @@ def internal_deal_status_to_wire(status: Any) -> DealStatus:
 
 def internal_deal_to_shared_deal(data: dict[str, Any]) -> Deal:
     """Build the shared :class:`Deal` primitive from the internal deal dict."""
-    product = data.get("product", {})
+    # Template bookings store flat fields. Preserve nested quote-booked
+    # sections when present, including deliberately empty sections.
+    product = data.get("product")
+    if product is None:
+        product = {"product_id": data.get("product_id", "")}
+    pricing = data.get("pricing")
+    if pricing is None:
+        pricing = {
+            "final_cpm": data.get("actual_price_cpm"),
+            "currency": data.get("currency", "USD"),
+        }
+    terms = data.get("terms")
+    if terms is None:
+        terms = {
+            "impressions": data.get("impressions"),
+            "flight_start": data.get("flight_start"),
+            "flight_end": data.get("flight_end"),
+        }
     return Deal(
         deal_id=data["deal_id"],
         deal_type=DealType(data["deal_type"]),
@@ -361,8 +378,8 @@ def internal_deal_to_shared_deal(data: dict[str, Any]) -> Deal:
             name=product.get("name", ""),
             inventory_type=product.get("inventory_type"),
         ),
-        pricing=_quote_pricing_to_shared(data.get("pricing", {})),
-        terms=_quote_terms_to_shared(data.get("terms", {})),
+        pricing=_quote_pricing_to_shared(pricing),
+        terms=_quote_terms_to_shared(terms),
         buyer_tier=AccessTier(data.get("buyer_tier", "public")),
         seller_id=data.get("seller_id"),
         expires_at=_parse_dt(data.get("expires_at")),
@@ -479,8 +496,14 @@ def internal_product_to_shared(product: Any) -> Product:
     """Map the seller's internal ``ProductDefinition`` to the shared Product.
 
     Seller-local fields with no home on the shared schema (inventory_type,
-    floor_cpm, minimum_impressions, the deal-type list, audience capability
-    ids) ride in the reserved ``ext`` slot so nothing is silently dropped.
+    minimum_impressions, the deal-type list, audience capability ids) ride
+    in the reserved ``ext`` slot so nothing is silently dropped.
+
+    ``floor_cpm`` is deliberately NOT one of them. The floor is the seller's
+    negotiation reserve, one of the guardrails the shared ``Negotiation``
+    primitive keeps off the wire; this mapper backs the anonymous
+    ``GET /products`` catalog, so publishing it here told every caller the
+    lowest price the seller would accept.
 
     ``inventory_type`` additionally populates the shared ``ad_formats``
     field (e.g. "display" -> ["display"], "video" -> ["video"]) so buyers
@@ -506,7 +529,6 @@ def internal_product_to_shared(product: Any) -> Product:
 
     ext = {
         "inventory_type": inventory_type,
-        "floor_cpm": getattr(product, "floor_cpm", None),
         "minimum_impressions": getattr(product, "minimum_impressions", None),
         "deal_types": [
             _deal_type_wire_value(dt)

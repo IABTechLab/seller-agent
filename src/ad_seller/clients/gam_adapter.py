@@ -322,13 +322,29 @@ class GAMAdServerClient(AdServerClient):
     async def list_inventory(
         self,
         *,
-        limit: int = 100,
+        limit: Optional[int] = 100,
         filter_str: Optional[str] = None,
     ) -> list[AdServerInventoryItem]:
-        ad_units, _ = await self._rest.list_ad_units(
-            page_size=limit,
-            filter_str=filter_str,
-        )
+        # The REST API caps a page at 100 ad units, so follow
+        # nextPageToken until it runs out or ``limit`` units are collected
+        # (``limit=None`` reads every page). Reading only the first page made
+        # a full sync see at most 100 units and prune the rest.
+        ad_units = []
+        page_token: Optional[str] = None
+        seen_tokens: set[str] = set()
+        while limit is None or len(ad_units) < limit:
+            page_size = 100 if limit is None else min(100, limit - len(ad_units))
+            page, page_token = await self._rest.list_ad_units(
+                page_size=page_size,
+                page_token=page_token,
+                filter_str=filter_str,
+            )
+            ad_units.extend(page)
+            if not page or not page_token or page_token in seen_tokens:
+                break
+            seen_tokens.add(page_token)
+        if limit is not None:
+            ad_units = ad_units[:limit]
 
         return [
             AdServerInventoryItem(

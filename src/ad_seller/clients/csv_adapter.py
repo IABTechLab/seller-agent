@@ -262,7 +262,7 @@ class CSVAdServerClient(AdServerClient):
     async def list_inventory(
         self,
         *,
-        limit: int = 100,
+        limit: Optional[int] = 100,
         filter_str: Optional[str] = None,
     ) -> list[AdServerInventoryItem]:
         """Read inventory.csv and return AdServerInventoryItem list."""
@@ -306,7 +306,7 @@ class CSVAdServerClient(AdServerClient):
             item.__dict__["raw"] = raw
 
             results.append(item)
-            if len(results) >= limit:
+            if limit is not None and len(results) >= limit:
                 break
 
         return results

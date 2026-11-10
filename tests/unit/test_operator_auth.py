@@ -1003,6 +1003,42 @@ class TestMcpTransitionOrderGated:
         assert "operator_required" not in result
 
 
+class TestMcpListPendingApprovalsGated:
+    """Pending approvals snapshot deal pricing, so listing them is operator-only."""
+
+    async def test_http_without_credentials_is_denied(self, mock_storage):
+        from ad_seller.interfaces import mcp_server
+
+        ctx = _fake_mcp_context(headers={})
+        with (
+            patch.object(mcp_server.mcp, "get_context", return_value=ctx),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.approval_service.list_pending_approvals",
+                new=AsyncMock(return_value={"approvals": []}),
+            ) as listing,
+        ):
+            result = await mcp_server.list_pending_approvals()
+        assert "authentication_required" in result
+        listing.assert_not_called()
+
+    async def test_http_with_operator_key_is_allowed(self, mock_storage):
+        from ad_seller.interfaces import mcp_server
+
+        op_key = _seed_key(mock_storage._store, role=ApiKeyRole.OPERATOR)
+        ctx = _fake_mcp_context(headers={"x-api-key": op_key})
+        with (
+            patch.object(mcp_server.mcp, "get_context", return_value=ctx),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.approval_service.list_pending_approvals",
+                new=AsyncMock(return_value={"approvals": []}),
+            ),
+        ):
+            result = await mcp_server.list_pending_approvals()
+        assert "operator_required" not in result
+
+
 class TestMcpCreateDealFromTemplateGated:
     """The MCP twin of POST /api/v1/deals/from-template — unlike the REST
     route (which accepts any authenticated buyer key), the MCP tool

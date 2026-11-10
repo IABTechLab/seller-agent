@@ -238,16 +238,19 @@ async def _verified_buyer_context(
 
 
 async def get_product_catalog() -> dict[str, Any]:
-    """Return the cached static product catalog.
+    """Return the product catalog.
 
     Resolves through ``interfaces.api.main._get_static_product_catalog``
     AT CALL TIME so existing tests that patch that attribute (and reset
     ``main._STATIC_PRODUCT_CATALOG``) keep governing every endpoint.
     The lazy import avoids the main ↔ routers circular import.
 
-    Async since the AI-14 follow-up: any stored inventory-type override
-    is applied inside ``catalog_service.get_static_product_catalog()``
-    itself, which needs to consult storage.
+    Async for two reasons that both land in
+    ``catalog_service.get_static_product_catalog()``: since AI-6, when a
+    real ad server is configured and synced, this reads persisted products
+    from storage on every call rather than an in-memory cache; since the
+    AI-14 follow-up, any stored inventory-type override is applied inside
+    that same function, which also needs to consult storage.
     """
     from . import main
 

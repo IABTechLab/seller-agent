@@ -164,7 +164,8 @@ class DiscoveryInquiryFlow(Flow[DiscoveryState]):
                 # Apply tier discount
                 discounted_price = product.base_cpm * (1 - tier_config.tier_discount)
                 price_info["price"] = round(discounted_price, 2)
-                price_info["floor"] = product.floor_cpm
+                # No floor: `price` is what this buyer pays; the floor is the
+                # seller's negotiation reserve and stays internal.
                 price_info["pricing_model"] = "CPM"
             else:
                 variance = tier_config.price_range_variance

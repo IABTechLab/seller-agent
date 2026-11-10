@@ -120,7 +120,7 @@ async def test_valid_keys_keep_authenticated_view(package_client, path, header, 
         path,
     )
     assert package["exact_price"] == (40.5 if role == ApiKeyRole.BUYER else 45.0)
-    assert package["floor_price"] == 38.25
+    assert "floor_price" not in package
     assert package["placements"][0]["product_id"] == "product-1"
     assert package["audience_capabilities"]["standard_segment_ids"] == ["3-7"]
 
@@ -183,5 +183,5 @@ async def test_valid_key_search_keeps_authenticated_view(package_client):
     assert response.status_code == 200
     package = response.json()["results"][0]
     assert package["exact_price"] == 40.5
-    assert package["floor_price"] == 38.25
+    assert "floor_price" not in package
     assert package["placements"][0]["product_id"] == "product-1"

@@ -194,6 +194,42 @@ class TestInternalDealStatusToWire:
 
 
 class TestGetDealCreatedOutsideQuotePath:
+    async def test_template_post_and_get_preserve_the_booked_terms(self, client, mock_storage):
+        app.dependency_overrides[_get_optional_api_key_record] = lambda: SimpleNamespace(
+            identity=BuyerIdentity()
+        )
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.interfaces.api.deps.get_product_catalog",
+                new=AsyncMock(return_value=_mock_catalog()),
+            ),
+        ):
+            created = await client.post(
+                "/api/v1/deals/from-template",
+                json={
+                    "deal_type": "PD",
+                    "product_id": "ctv-premium-sports",
+                    "impressions": 1_000_000,
+                    "flight_start": "2026-10-06",
+                    "flight_end": "2026-11-05",
+                },
+            )
+            assert created.status_code == 201, created.text
+            booked = created.json()
+            response = await client.get(f"/api/v1/deals/{booked['deal_id']}")
+
+        assert response.status_code == 200, response.text
+        deal = response.json()["deal"]
+        assert deal["product"]["product_id"] == booked["product_id"]
+        assert deal["pricing"]["final_cpm"] == {
+            "amount_micros": round(booked["actual_price_cpm"] * 1_000_000),
+            "currency": "USD",
+        }
+        assert deal["terms"]["impressions"] == booked["impressions"]
+        assert deal["terms"]["flight_start"] == booked["flight_start"]
+        assert deal["terms"]["flight_end"] == booked["flight_end"]
+
     async def test_from_template_deal_is_readable_as_booked(self, client, mock_storage):
         """Create via the from-template service path (what the REST route
         and the MCP tool both call), then GET through the wire mapper."""

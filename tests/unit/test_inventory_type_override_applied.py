@@ -129,11 +129,9 @@ class TestApplyInventoryTypeOverrideHelper:
     async def test_override_swaps_type_only_declared_fields_survive(self, storage):
         """Deal types, pricing, and every other declared field must survive
         an override unchanged -- only inventory_type may differ. Uses the
-        catalog's actual first product ("Premium Display - Homepage",
-        declaring [PROGRAMMATIC_GUARANTEED, PREFERRED_DEAL]) overridden to
-        "ctv", whose infer_deal_types() output ([PROGRAMMATIC_GUARANTEED]
-        only) differs from the declared set -- so this fails if deal types
-        are ever recomputed again instead of preserved."""
+        catalog's actual first product, overridden to a type whose
+        infer_deal_types() output differs from the declared set -- so this
+        fails if deal types are ever recomputed again instead of preserved."""
         from ad_seller.interfaces.api import deps
         from ad_seller.services import catalog_service
 
@@ -143,22 +141,23 @@ class TestApplyInventoryTypeOverrideHelper:
             original_deal_types = product.supported_deal_types
             original_base_cpm = product.base_cpm
             original_floor_cpm = product.floor_cpm
-            assert original_deal_types != catalog_service.infer_deal_types("ctv"), (
+            target_type = "display" if product.inventory_type != "display" else "ctv"
+            assert original_deal_types != catalog_service.infer_deal_types(target_type), (
                 "test product must declare deal types that differ from infer_deal_types "
                 "output for this assertion to be meaningful"
             )
 
             await catalog_service.override_inventory_type(
-                product_id=product.product_id, inventory_type="ctv", reason="test"
+                product_id=product.product_id, inventory_type=target_type, reason="test"
             )
             result = await catalog_service.apply_inventory_type_override(product)
 
-        assert result.inventory_type == "ctv"
+        assert result.inventory_type == target_type
         assert result.supported_deal_types == original_deal_types
         assert result.base_cpm == original_base_cpm
         assert result.floor_cpm == original_floor_cpm
         # The cached catalog product itself must never be mutated in place.
-        assert product.inventory_type != "ctv"
+        assert product.inventory_type != target_type
 
     async def test_no_override_returns_the_exact_same_dict_no_wasted_reads(self, storage):
         """apply_inventory_type_overrides_batch must short-circuit to the
@@ -260,10 +259,10 @@ class TestQuotePricingReflectsOverride:
             catalog = await deps.get_product_catalog()
             product = next(iter(catalog["products"].values()))
             original_type = product.inventory_type
-            assert original_type != "ctv"
+            target_type = "display" if original_type != "display" else "ctv"
 
             await catalog_service.override_inventory_type(
-                product_id=product.product_id, inventory_type="ctv", reason="test"
+                product_id=product.product_id, inventory_type=target_type, reason="test"
             )
 
             # Re-fetch exactly as the real POST /quotes route does -- one
@@ -282,9 +281,9 @@ class TestQuotePricingReflectsOverride:
             context = deps._build_buyer_context(buyer_tier="agency", agency_id="agency-1")
             quote = await quote_service.create_quote(request, context, catalog)
 
-        assert quote["product"]["inventory_type"] == "ctv", (
+        assert quote["product"]["inventory_type"] == target_type, (
             "a buyer must be quoted against the overridden type, not the "
             f"original catalog type ({original_type!r}) -- otherwise GET "
-            "/products can say ctv while POST /quotes prices it as the "
-            "original type"
+            f"/products can say {target_type} while POST /quotes prices it as "
+            "the original type"
         )

@@ -575,7 +575,6 @@ class MediaKitService:
             rate_type=package.rate_type.value,
             is_featured=package.is_featured,
             exact_price=exact_price,
-            floor_price=package.floor_price,
             currency=package.currency,
             placements=package.placements,
             negotiation_enabled=tier_config.negotiation_enabled,
@@ -636,6 +635,9 @@ class MediaKitService:
             "ctv": ["video"],
             "mobile_app": ["banner", "video"],
             "native": ["native"],
+            "linear_tv": ["video"],
+            "linear": ["video"],
+            "digital_video": ["video"],
             "audio": ["audio"],
         }
         return mapping.get(inventory_type, ["banner"])
@@ -649,6 +651,9 @@ class MediaKitService:
             "ctv": [3, 7],  # CTV, STB
             "mobile_app": [4, 5],  # Phone, Tablet
             "native": [2, 4, 5],  # PC, Phone, Tablet
+            "linear_tv": [3, 7],  # CTV, STB
+            "linear": [3, 7],  # CTV, STB
+            "digital_video": [2, 4, 5],  # PC, Phone, Tablet
             "audio": [2, 4, 5, 6],  # PC, Phone, Tablet, Connected Device
         }
         return mapping.get(inventory_type, [2])

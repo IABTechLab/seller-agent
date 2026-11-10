@@ -244,6 +244,12 @@ class TestListInventory:
         items = await sample_client.list_inventory(limit=3)
         assert len(items) == 3
 
+    async def test_limit_none_returns_every_row(self, sample_client: CSVAdServerClient) -> None:
+        """limit=None (what a full sync passes) returns all rows."""
+        everything = await sample_client.list_inventory(limit=10_000)
+        items = await sample_client.list_inventory(limit=None)
+        assert len(items) == len(everything) > 3
+
     async def test_applies_filter_str(self, sample_client: CSVAdServerClient) -> None:
         """filter_str filters by substring match on name (case-insensitive)."""
         items = await sample_client.list_inventory(filter_str="sports")

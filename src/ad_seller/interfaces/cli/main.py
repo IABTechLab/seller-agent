@@ -54,7 +54,8 @@ def init(
     # Read the default catalog from the single cached service source (EP-3.2)
     # rather than spinning up ProductSetupFlow / an OpenDirect MCP session.
     # Bridged via _run_blocking since this Typer command is synchronous but
-    # the catalog accessor is async (applies inventory-type overrides).
+    # the catalog accessor is async (AI-6: live reads for synced ad servers;
+    # also applies inventory-type overrides).
     products = _run_blocking(catalog_service.get_static_product_catalog())["products"]
 
     console.print(f"[green]✓[/green] Organization '{organization_name}' initialized")

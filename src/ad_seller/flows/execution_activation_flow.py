@@ -275,6 +275,7 @@ class ExecutionActivationFlow(Flow[ExecutionState]):
                 deal_type=ssp_deal_type,
                 name=f"Deal {deal.deal_id}",
                 cpm=deal.price,
+                external_deal_id=deal.deal_id,
             )
 
             # SSP block
