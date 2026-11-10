@@ -72,6 +72,15 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- GAM inventory sync no longer fails on every run with a 400 ("HAS
+  operator only supports repeated fields or singular string fields")
+  (#127). The sync asked the Ad Manager REST API for
+  `filter=status:ACTIVE`, but `:` is the HAS operator and `status` is an
+  enum, so it now sends `status = ACTIVE`. **Catalog contents change on
+  upgrade:** the first successful GAM sync persists every `ACTIVE` ad
+  unit and prunes synced products for units that are now `INACTIVE` or
+  `ARCHIVED`. FreeWheel still receives `status:ACTIVE`; CSV, S3 and
+  unrecognised ad server types receive no filter.
 - CSV/S3 inventory now keeps the `inventory_type` declared in the row
   instead of guessing it from the name, ad formats or sizes. Rows that
   declare `ctv` were being served as `display`, and `linear`,

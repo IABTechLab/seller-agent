@@ -364,7 +364,9 @@ class TestGAMAdapterListInventoryPaging:
         calls: list[dict] = []
 
         async def list_ad_units(page_size=100, page_token=None, filter_str=None):
-            calls.append({"page_size": page_size, "page_token": page_token})
+            calls.append(
+                {"page_size": page_size, "page_token": page_token, "filter_str": filter_str}
+            )
             start = int(page_token or 0)
             end = start + min(page_size, 100)
             if repeat_token:
@@ -382,10 +384,11 @@ class TestGAMAdapterListInventoryPaging:
     async def test_limit_none_reads_every_page(self):
         adapter, calls = self._adapter(250)
 
-        items = await adapter.list_inventory(limit=None, filter_str="status:ACTIVE")
+        items = await adapter.list_inventory(limit=None, filter_str="status = ACTIVE")
 
         assert [i.id for i in items] == [f"u{i}" for i in range(250)]
         assert [c["page_token"] for c in calls] == [None, "100", "200"]
+        assert {c["filter_str"] for c in calls} == {"status = ACTIVE"}
 
     async def test_limit_caps_across_pages(self):
         adapter, calls = self._adapter(250)
