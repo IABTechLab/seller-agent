@@ -92,6 +92,25 @@ class RedisBackend(StorageBackend):
         else:
             await self._client.set(prefixed, json_value)
 
+    async def compare_and_set(self, key: str, expected: Any, value: Any) -> bool:
+        if not self._client:
+            raise RuntimeError("Storage not connected. Call connect() first.")
+        from redis.exceptions import WatchError
+
+        prefixed = self._prefixed_key(key)
+        async with self._client.pipeline() as pipe:
+            try:
+                await pipe.watch(prefixed)
+                current = await pipe.get(prefixed)
+                if current is None or json.loads(current) != expected:
+                    return False
+                pipe.multi()
+                pipe.set(prefixed, json.dumps(value), keepttl=True)
+                await pipe.execute()
+                return True
+            except WatchError:
+                return False
+
     async def delete(self, key: str) -> bool:
         """Delete a key. Returns True if key existed."""
         if not self._client:

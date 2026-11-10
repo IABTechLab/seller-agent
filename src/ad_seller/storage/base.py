@@ -45,6 +45,15 @@ class StorageBackend(ABC):
         """Store a value with optional TTL (seconds)."""
         pass
 
+    async def compare_and_set(self, key: str, expected: Any, value: Any) -> bool:
+        """Atomically replace an existing, unexpired value if it equals expected.
+
+        Preserve the existing TTL. Return False on a conflict, missing key, or
+        expiration. Backends must implement this atomically across connections;
+        a get/set fallback cannot safely protect external side effects.
+        """
+        raise NotImplementedError("This storage backend does not support atomic updates")
+
     @abstractmethod
     async def delete(self, key: str) -> bool:
         """Delete a key. Returns True if key existed."""

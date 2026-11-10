@@ -117,6 +117,25 @@ class SQLiteBackend(StorageBackend):
         )
         await self._connection.commit()
 
+    async def compare_and_set(self, key: str, expected: Any, value: Any) -> bool:
+        if not self._connection:
+            raise RuntimeError("Storage not connected. Call connect() first.")
+        async with self._connection.execute(
+            "SELECT value FROM kv_store WHERE key = ?", (key,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None or json.loads(row[0]) != expected:
+            return False
+        # Compare the original serialization in the UPDATE, so another connection
+        # cannot change the record between our read and write.
+        async with self._connection.execute(
+            "UPDATE kv_store SET value = ? WHERE key = ? AND value = ? "
+            "AND (expires_at IS NULL OR expires_at > ?)",
+            (json.dumps(value), key, row[0], time.time()),
+        ) as cursor:
+            await self._connection.commit()
+            return cursor.rowcount == 1
+
     async def delete(self, key: str) -> bool:
         """Delete a key. Returns True if key existed."""
         if not self._connection:
