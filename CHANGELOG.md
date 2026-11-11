@@ -72,6 +72,17 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- Deal export, push and migration now read every stored deal's price
+  (#135). Curated deals (stored as flat `total_cpm`) were exported at 0
+  in the TTD, Amazon, Xandr and DV360 formats, pushed to buyers as a $0
+  deal, and migrated into a replacement with no price. The DV360 export
+  also read only template prices and truncated them to whole units
+  (`28.26` → `"28"`), and exported quote-booked deals at 0; `fixedCpm` now
+  carries the fraction in `nanos`. Migrating a quote-booked deal now
+  carries its product, impressions, flight dates and currency, which it
+  dropped before (the flight was reset to today + 30 days). Request
+  overrides (`price` on push, `max_cpm` and the term fields on migrate)
+  still take precedence.
 - CSV/S3 inventory now keeps the `inventory_type` declared in the row
   instead of guessing it from the name, ad formats or sizes. Rows that
   declare `ctv` were being served as `display`, and `linear`,

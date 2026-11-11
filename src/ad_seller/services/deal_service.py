@@ -924,6 +924,21 @@ async def list_deals(status: Optional[str] = None) -> list[dict[str, Any]]:
     return deals
 
 
+def _stored_deal_cpm(deal: dict[str, Any]) -> Optional[float]:
+    """The CPM a stored deal is booked at, whichever booking path wrote it."""
+    if deal.get("actual_price_cpm") is not None:
+        return deal["actual_price_cpm"]
+    pricing = deal.get("pricing")
+    if isinstance(pricing, dict) and pricing.get("final_cpm") is not None:
+        return pricing["final_cpm"]
+    return deal.get("total_cpm")
+
+
+def _dv360_money(cpm: Optional[float]) -> dict[str, Any]:
+    units, nanos = divmod(round((cpm or 0) * 1_000_000_000), 1_000_000_000)
+    return {"currencyCode": "USD", "units": str(units), "nanos": nanos}
+
+
 async def export_deals(format: str = "generic", status: Optional[str] = None) -> dict[str, Any]:
     """Export deals in DSP-native format for platform connectors."""
     all_deals = await list_deals(status=status)
@@ -940,8 +955,7 @@ async def export_deals(format: str = "generic", status: Optional[str] = None) ->
                     else "PreferredDeal"
                     if d.get("deal_type") == "PD"
                     else "PrivateAuction",
-                    "BidFloor": d.get("actual_price_cpm")
-                    or d.get("pricing", {}).get("final_cpm", 0),
+                    "BidFloor": _stored_deal_cpm(d) or 0,
                     "Currency": "USD",
                     "Status": "Active" if d.get("status") == "confirmed" else "Inactive",
                 }
@@ -957,11 +971,7 @@ async def export_deals(format: str = "generic", status: Optional[str] = None) ->
                     "dealId": d.get("deal_id"),
                     "displayName": f"Deal {d.get('deal_id')}",
                     "dealType": d.get("deal_type", "PD"),
-                    "fixedCpm": {
-                        "currencyCode": "USD",
-                        "units": str(int(d.get("actual_price_cpm", 0) or 0)),
-                        "nanos": 0,
-                    },
+                    "fixedCpm": _dv360_money(_stored_deal_cpm(d)),
                     "status": "ACCEPTED" if d.get("status") == "confirmed" else "PENDING",
                 }
                 for d in all_deals
@@ -978,8 +988,7 @@ async def export_deals(format: str = "generic", status: Optional[str] = None) ->
                     "auctionType": "FIXED_PRICE"
                     if d.get("deal_type") in ("PG", "PD")
                     else "SECOND_PRICE",
-                    "priceAmount": d.get("actual_price_cpm")
-                    or d.get("pricing", {}).get("final_cpm", 0),
+                    "priceAmount": _stored_deal_cpm(d) or 0,
                     "priceCurrency": "USD",
                 }
                 for d in all_deals
@@ -996,8 +1005,7 @@ async def export_deals(format: str = "generic", status: Optional[str] = None) ->
                     "type": {"1": "PG", "2": "PD", "3": "PA"}.get(
                         d.get("deal_type"), d.get("deal_type")
                     ),
-                    "floor_price": d.get("actual_price_cpm")
-                    or d.get("pricing", {}).get("final_cpm", 0),
+                    "floor_price": _stored_deal_cpm(d) or 0,
                     "currency": "USD",
                     "active": d.get("status") == "confirmed",
                 }
@@ -1033,11 +1041,7 @@ async def push_deal_to_buyers(request: Any) -> dict[str, Any]:
 
     # Build IAB Deal object
     deal_type = request.deal_type or (stored_deal or {}).get("deal_type", "PD")
-    price = (
-        request.price
-        or (stored_deal or {}).get("actual_price_cpm")
-        or (stored_deal or {}).get("pricing", {}).get("final_cpm", 0)
-    )
+    price = request.price or _stored_deal_cpm(stored_deal or {}) or 0
 
     deal_obj = service.build_deal_object(
         deal_id=request.deal_id,
@@ -1636,21 +1640,29 @@ async def migrate_deal(deal_id: str, request: Any) -> dict[str, Any]:
     now = datetime.utcnow()
     new_deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
 
+    old_product = old_deal.get("product") if isinstance(old_deal.get("product"), dict) else {}
+    old_terms = old_deal.get("terms") if isinstance(old_deal.get("terms"), dict) else {}
+    old_pricing = old_deal.get("pricing") if isinstance(old_deal.get("pricing"), dict) else {}
+
     new_deal = {
         "deal_id": new_deal_id,
         "deal_type": request.deal_type or old_deal.get("deal_type", "PD"),
         "status": "confirmed",
-        "product_id": request.product_id or old_deal.get("product_id"),
-        "actual_price_cpm": request.max_cpm
-        or old_deal.get("actual_price_cpm")
-        or old_deal.get("pricing", {}).get("final_cpm"),
-        "currency": old_deal.get("currency", "USD"),
-        "impressions": request.impressions or old_deal.get("impressions"),
+        "product_id": request.product_id
+        or old_deal.get("product_id")
+        or old_product.get("product_id"),
+        "actual_price_cpm": request.max_cpm or _stored_deal_cpm(old_deal),
+        "currency": old_deal.get("currency") or old_pricing.get("currency") or "USD",
+        "impressions": request.impressions
+        or old_deal.get("impressions")
+        or old_terms.get("impressions"),
         "flight_start": request.flight_start
         or old_deal.get("flight_start")
+        or old_terms.get("flight_start")
         or now.strftime("%Y-%m-%d"),
         "flight_end": request.flight_end
         or old_deal.get("flight_end")
+        or old_terms.get("flight_end")
         or (now + timedelta(days=30)).strftime("%Y-%m-%d"),
         "buyer_seat_ids": request.buyer_seat_ids or old_deal.get("buyer_seat_ids", []),
         # Lineage
