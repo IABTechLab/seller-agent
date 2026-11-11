@@ -348,17 +348,30 @@ def internal_deal_status_to_wire(status: Any) -> DealStatus:
         ) from None
 
 
+def _stored_deal_type(raw: Any) -> DealType:
+    from ...services.deal_service import normalize_curated_deal_type_code
+
+    code = normalize_curated_deal_type_code(raw) if isinstance(raw, str) else None
+    if code is None:
+        raise ValueError(f"Stored deal_type {raw!r} has no shared DealType wire value.")
+    return DealType(code)
+
+
 def internal_deal_to_shared_deal(data: dict[str, Any]) -> Deal:
     """Build the shared :class:`Deal` primitive from the internal deal dict."""
     # Template bookings store flat fields. Preserve nested quote-booked
     # sections when present, including deliberately empty sections.
     product = data.get("product")
     if product is None:
-        product = {"product_id": data.get("product_id", "")}
+        product = {"product_id": data.get("product_id") or ""}
     pricing = data.get("pricing")
     if pricing is None:
+        final_cpm = data.get("actual_price_cpm")
+        if final_cpm is None:
+            final_cpm = data.get("total_cpm")
         pricing = {
-            "final_cpm": data.get("actual_price_cpm"),
+            "base_cpm": data.get("base_cpm"),
+            "final_cpm": final_cpm,
             "currency": data.get("currency", "USD"),
         }
     terms = data.get("terms")
@@ -370,7 +383,7 @@ def internal_deal_to_shared_deal(data: dict[str, Any]) -> Deal:
         }
     return Deal(
         deal_id=data["deal_id"],
-        deal_type=DealType(data["deal_type"]),
+        deal_type=_stored_deal_type(data["deal_type"]),
         status=internal_deal_status_to_wire(data.get("status", "proposed")),
         quote_id=data.get("quote_id"),
         product=ProductRef(

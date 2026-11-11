@@ -1185,7 +1185,7 @@ async def list_curators() -> str:
 @mcp.tool()
 async def create_curated_deal(
     curator_id: str,
-    deal_type: str = "PMP",
+    deal_type: str = "PA",
     product_id: str = "",
     max_cpm: float = 0,
     impressions: int = 0,
