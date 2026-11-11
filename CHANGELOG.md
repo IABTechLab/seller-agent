@@ -72,6 +72,19 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- Curated deals read back correctly (#123). `GET /api/v1/deals/{deal_id}`
+  now returns a curated deal's price (`base_cpm` as the publisher base,
+  `final_cpm` as the total including the curator fee) instead of `null`,
+  and a curated deal created without a `product_id` reads back instead
+  of returning a 500. `POST /api/v1/deals/curated` and the MCP
+  `create_curated_deal` tool now default `deal_type` to `PA` (was `PMP`,
+  which no read-back could map, so every default curated deal was a 500
+  on read). `deal_type` is validated at create time: `PG` / `PD` / `PA`
+  and their long forms in any case, plus the legacy `PMP` (stored as
+  `PA`) and `PREFERRED` (stored as `PD`); anything else is a 400
+  `invalid_deal_type` and no deal is created. Curated deals already
+  stored as `PMP` / `PREFERRED` read back as `PA` / `PD` without a
+  migration, and `GET /api/v1/deals` no longer reports them in `skipped`.
 - CSV/S3 inventory now keeps the `inventory_type` declared in the row
   instead of guessing it from the name, ad formats or sizes. Rows that
   declare `ctv` were being served as `display`, and `linear`,

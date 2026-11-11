@@ -7047,7 +7047,7 @@
           "deal_type": {
             "type": "string",
             "title": "Deal Type",
-            "default": "PMP"
+            "default": "PA"
           },
           "product_id": {
             "anyOf": [

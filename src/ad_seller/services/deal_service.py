@@ -735,6 +735,17 @@ def _normalize_deal_type_code(raw: str) -> Optional[str]:
     return _DEAL_TYPE_ALIASES.get(raw.upper())
 
 
+_LEGACY_DEAL_TYPE_ALIASES: dict[str, str] = {
+    "PMP": "PA",
+    "PREFERRED": "PD",
+}
+
+
+def normalize_curated_deal_type_code(raw: str) -> Optional[str]:
+    """Like :func:`_normalize_deal_type_code`, also accepting ``PMP`` / ``PREFERRED``."""
+    return _normalize_deal_type_code(raw) or _LEGACY_DEAL_TYPE_ALIASES.get(raw.upper())
+
+
 def _build_seller_schain() -> dict[str, Any]:
     """Build the seller-side schain object (sellers.json-backed or default)."""
     from ..config import get_settings, seller_id_or_default
@@ -1441,6 +1452,16 @@ async def create_curated_deal(request: Any, catalog: dict[str, Any]) -> dict[str
     from ..storage.factory import get_storage
     from .curator_registry import build_curator_registry
 
+    deal_type = normalize_curated_deal_type_code(request.deal_type)
+    if deal_type is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_deal_type",
+                "message": f"Deal type must be one of: PG, PD, PA. Got: {request.deal_type}",
+            },
+        )
+
     # Get curator
     registry = build_curator_registry()
     try:
@@ -1544,7 +1565,7 @@ async def create_curated_deal(request: Any, catalog: dict[str, Any]) -> dict[str
 
     deal_data = {
         "deal_id": deal_id,
-        "deal_type": request.deal_type,
+        "deal_type": deal_type,
         "status": "confirmed",
         "product_id": request.product_id,
         "base_cpm": base_cpm,
@@ -1577,7 +1598,7 @@ async def create_curated_deal(request: Any, catalog: dict[str, Any]) -> dict[str
     return {
         "deal_id": deal_id,
         "status": "confirmed",
-        "deal_type": request.deal_type,
+        "deal_type": deal_type,
         "pricing": {
             "base_cpm": base_cpm,
             "curator_fee_cpm": curated_deal.curator_fee_cpm,

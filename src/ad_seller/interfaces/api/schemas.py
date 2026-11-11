@@ -662,7 +662,7 @@ class CuratedDealRequest(BaseModel):
     """Request to create a curated deal."""
 
     curator_id: str
-    deal_type: str = "PMP"
+    deal_type: str = "PA"
     product_id: Optional[str] = None
     max_cpm: Optional[float] = None  # Buyer's max CPM (curator fee included)
     impressions: Optional[int] = None

@@ -173,7 +173,7 @@ class TestBookingEmitsDealCreated:
         _assert_payload(
             events[0],
             source="curated",
-            deal_type="PMP",
+            deal_type="PA",
             status="confirmed",
             product_id="ctv-premium-sports",
             quote_id=None,
