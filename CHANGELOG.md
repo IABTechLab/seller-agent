@@ -72,6 +72,21 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- SSP distribution (`POST /api/v1/deals/distribute`, MCP
+  `distribute_deal_via_ssp`) now validates its input and reports Index
+  Exchange failures (#122). `deal_type` accepts `PG`, `PD` / `PREFERRED`,
+  `PA` / `PMP`, `AUCTION_PACKAGE` and their long forms in any case. `PD`
+  previously fell back to PMP and created an auction deal, and
+  `auction_package` created a direct PMP deal instead of a Marketplace
+  Package. Anything else is a 400 `invalid_deal_type`; omitting it still
+  means PMP. A negative or non-finite `cpm` is a 400 `invalid_cpm`. Neither
+  reaches the SSP. When Index Exchange did not create the deal (a 4xx, a
+  connection failure, a 5xx or timeout with no deal found afterwards, or a
+  failed seat lookup), the response is now `400 ssp_rejected` (Index 400 /
+  422), `409 ssp_conflict` (Index 409) or `502 ssp_error` (anything else)
+  with Index's status and message, instead of a bare 500. The same mapping
+  applies when resuming a `dsp_resolution` approval, which is restored to
+  `approved` so it can be resumed again.
 - CSV/S3 inventory now keeps the `inventory_type` declared in the row
   instead of guessing it from the name, ad formats or sizes. Rows that
   declare `ctv` were being served as `display`, and `linear`,

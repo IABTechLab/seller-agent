@@ -61,6 +61,7 @@ from pydantic import BaseModel
 from .ssp_base import (
     SSPDeal,
     SSPDealCreateRequest,
+    SSPDealNotCreatedError,
     SSPDealOutcomeUnknownError,
     SSPDealStatus,
     SSPDealType,
@@ -111,6 +112,22 @@ def _may_have_reached_index(exc: Exception) -> bool:
     if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)):
         return False
     return isinstance(exc, (httpx.TimeoutException, httpx.TransportError))
+
+
+def _not_created_error(exc: Exception) -> SSPDealNotCreatedError:
+    if isinstance(exc, httpx.HTTPStatusError):
+        resp = exc.response
+        try:
+            body = resp.json()
+        except ValueError:
+            body = None
+        message = body.get("message") if isinstance(body, dict) else None
+        message = str(message or resp.text or resp.reason_phrase)[:500]
+        return SSPDealNotCreatedError(
+            f"Index Exchange returned {resp.status_code}: {message}",
+            upstream_status=resp.status_code,
+        )
+    return SSPDealNotCreatedError(f"Index Exchange request failed: {exc}")
 
 
 def _ix_deal_config(deal_type: SSPDealType) -> tuple[int, str, bool]:
@@ -260,6 +277,8 @@ class IndexExchangeSSPClient(RESTSSPClient):
             resp.raise_for_status()
         except Exception as exc:
             if not _may_have_reached_index(exc):
+                if isinstance(exc, (httpx.HTTPStatusError, httpx.TransportError)):
+                    raise _not_created_error(exc) from exc
                 raise
             try:
                 existing = await self.find_deal_by_external_id(
@@ -271,7 +290,7 @@ class IndexExchangeSSPClient(RESTSSPClient):
                     f"{request.external_deal_id} failed ({exc}); {lookup_exc}"
                 ) from exc
             if existing is None:
-                raise
+                raise _not_created_error(exc) from exc
             logger.warning(
                 "Index Exchange create_deal failed (%s) but deal %s exists; returning it",
                 exc,
@@ -359,7 +378,10 @@ class IndexExchangeSSPClient(RESTSSPClient):
                 if seat.get("status") == "A"
             ]
 
-        per_seat = await asyncio.gather(*(_lookup(s) for s in seat_ids))
+        try:
+            per_seat = await asyncio.gather(*(_lookup(s) for s in seat_ids))
+        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+            raise _not_created_error(exc) from exc
         return [match for matches in per_seat for match in matches]
 
     async def clone_deal(

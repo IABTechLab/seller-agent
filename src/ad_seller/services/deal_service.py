@@ -14,6 +14,7 @@ stay function-level so existing test patch points keep working.
 
 import hashlib
 import logging
+import math
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Optional
@@ -1180,12 +1181,74 @@ async def _resolve_dsp_id_or_pending_approval(
     }
 
 
+_SSP_DEAL_TYPE_ALIASES: dict[str, str] = {
+    "PG": "pg",
+    "PROGRAMMATIC_GUARANTEED": "pg",
+    "PROGRAMMATICGUARANTEED": "pg",
+    "PREFERRED": "preferred",
+    "PD": "preferred",
+    "PREFERRED_DEAL": "preferred",
+    "PREFERREDDEAL": "preferred",
+    "PMP": "pmp",
+    "PA": "pmp",
+    "PRIVATE_AUCTION": "pmp",
+    "PRIVATEAUCTION": "pmp",
+    "AUCTION_PACKAGE": "auction_package",
+}
+
+
+def ssp_not_created_http_exception(exc: Any) -> HTTPException:
+    """Map an SSPDealNotCreatedError to the HTTP error the caller should see."""
+    status = exc.upstream_status
+    if status in (400, 422):
+        code, error = 400, "ssp_rejected"
+    elif status == 409:
+        code, error = 409, "ssp_conflict"
+    else:
+        code, error = 502, "ssp_error"
+    return HTTPException(
+        status_code=code,
+        detail={"error": error, "message": str(exc), "ssp_status": status},
+    )
+
+
 async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
     """Distribute a deal through configured SSP(s) or deal-sync providers."""
     from ..clients.deal_sync_factory import build_deal_sync_registry
-    from ..clients.ssp_base import SSPDealCreateRequest, SSPDealOutcomeUnknownError, SSPDealType
+    from ..clients.ssp_base import (
+        SSPDealCreateRequest,
+        SSPDealNotCreatedError,
+        SSPDealOutcomeUnknownError,
+        SSPDealType,
+    )
     from ..clients.ssp_factory import build_ssp_registry
     from ..storage.factory import get_storage
+
+    if request.deal_type is None:
+        deal_type = SSPDealType.PMP
+    else:
+        alias = _SSP_DEAL_TYPE_ALIASES.get(request.deal_type.upper())
+        if alias is None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_deal_type",
+                    "message": (
+                        "Deal type must be one of: PG, PD (PREFERRED), PA (PMP), "
+                        f"AUCTION_PACKAGE. Got: {request.deal_type}"
+                    ),
+                },
+            )
+        deal_type = SSPDealType(alias)
+
+    if request.cpm is not None and not (math.isfinite(request.cpm) and request.cpm >= 0):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_cpm",
+                "message": f"cpm must be a finite number >= 0. Got: {request.cpm}",
+            },
+        )
 
     ssp_registry = build_ssp_registry()
     sync_registry = build_deal_sync_registry()
@@ -1232,16 +1295,6 @@ async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
             },
         )
 
-    # Map deal type
-    deal_type_map = {
-        "PMP": SSPDealType.PMP,
-        "PG": SSPDealType.PG,
-        "PREFERRED": SSPDealType.PREFERRED,
-        "pmp": SSPDealType.PMP,
-        "pg": SSPDealType.PG,
-        "preferred": SSPDealType.PREFERRED,
-    }
-
     # Same fallback push_deal_to_buyers already uses: no MCP tool lets the
     # LLM set buyer_seat_ids on this route, so without this a stored deal's
     # seat IDs (set at creation time) would never reach DSP resolution.
@@ -1249,7 +1302,7 @@ async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
     stored_deal = await storage.get_deal(request.deal_id)
 
     create_request = SSPDealCreateRequest(
-        deal_type=deal_type_map.get(request.deal_type or "PMP", SSPDealType.PMP),
+        deal_type=deal_type,
         name=request.name,
         advertiser=request.advertiser,
         cpm=request.cpm,
@@ -1275,6 +1328,8 @@ async def distribute_deal_via_ssp(request: Any) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail={"error": "invalid_request", "message": str(e)})
     except SSPDealOutcomeUnknownError as e:
         raise HTTPException(status_code=502, detail={"error": "outcome_unknown", "message": str(e)})
+    except SSPDealNotCreatedError as e:
+        raise ssp_not_created_http_exception(e) from e
 
     if is_deal_sync:
         return {
