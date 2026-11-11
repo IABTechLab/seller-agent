@@ -72,6 +72,19 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- `POST /api/v1/deals/from-template` now honours `idempotency_key` (#87).
+  The request model didn't declare the field, so a key was silently dropped
+  and a retry created a second deal. The key is optional (1-255
+  characters; requests without one behave as before). A retry with the
+  same key and body replays the original deal, with its current status;
+  the same key with a different body is `409 idempotency_conflict`. Keys
+  are scoped per verified buyer, as on `POST /api/v1/deals`, and an API key
+  with no agency, advertiser or seat identity is scoped to that key rather
+  than a shared `public` bucket. The record is written right after the deal
+  is persisted and before `deal.created` is emitted, so a retry after an
+  event failure replays the deal instead of creating another. Records
+  expire after 24 hours. Concurrent identical requests can still each
+  create a deal, as on the other idempotent routes.
 - CSV/S3 inventory now keeps the `inventory_type` declared in the row
   instead of guessing it from the name, ad formats or sizes. Rows that
   declare `ctv` were being served as `display`, and `linear`,
