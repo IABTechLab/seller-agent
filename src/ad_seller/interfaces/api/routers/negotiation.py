@@ -196,6 +196,8 @@ async def post_negotiation_message(
             ),
         )
 
+    await negotiation_service.verify_negotiation_owner(proposal_id, buyer_context)
+
     buyer_price = cm.money_to_float(message.buyer_price)
 
     # Idempotency (FD-12): every negotiation message — priced or terminal —

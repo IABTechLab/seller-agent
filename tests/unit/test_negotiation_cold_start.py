@@ -88,7 +88,9 @@ def _make_catalog(products=None):
 def _make_buyer_context(buyer_tier="agency", agency_id="agency-1"):
     from ad_seller.interfaces.api.deps import _build_buyer_context
 
-    return _build_buyer_context(buyer_tier=buyer_tier, agency_id=agency_id)
+    context = _build_buyer_context(buyer_tier=buyer_tier, agency_id=agency_id)
+    context.authentication_method = "api_key"
+    return context
 
 
 def _proposal_request(product_id="ctv-premium-sports", price=25.0):
@@ -207,7 +209,11 @@ def mock_storage():
 
 @pytest.fixture
 def client():
-    app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    from ad_seller.models.buyer_identity import BuyerIdentity
+
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
+        identity=BuyerIdentity(agency_id="agency-1")
+    )
     transport = ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://test")
     yield c
@@ -437,6 +443,7 @@ class TestQuoteLedNegotiation:
         product instead of 404ing."""
         quote = _available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        mock_storage._store[f"quote_history:{quote['quote_id']}"] = {"buyer_id": "agency:agency-1"}
         mock_storage._store["product:ctv-premium-sports"] = {
             "product_id": "ctv-premium-sports",
             "base_cpm": 35.0,
@@ -469,6 +476,7 @@ class TestQuoteLedNegotiation:
         negotiation (was a 400 unsupported_capability)."""
         quote = _available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        mock_storage._store[f"quote_history:{quote['quote_id']}"] = {"buyer_id": "agency:agency-1"}
         mock_storage._store["product:ctv-premium-sports"] = {
             "product_id": "ctv-premium-sports",
             "base_cpm": 35.0,
@@ -512,6 +520,7 @@ class TestTerminalMovePersistence:
         neg["rounds"] = neg["rounds"][:1]
         neg["completed_at"] = None
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        mock_storage._store[f"quote_history:{quote['quote_id']}"] = {"buyer_id": "agency:agency-1"}
         mock_storage._store[f"negotiation:{quote['quote_id']}"] = neg
 
         with (
@@ -548,6 +557,7 @@ class TestBookingHonorsNegotiation:
         agreed price, not the stale quoted price."""
         quote = _available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        mock_storage._store[f"quote_history:{quote['quote_id']}"] = {"buyer_id": "agency:agency-1"}
         mock_storage._store[f"negotiation:{quote['quote_id']}"] = _accepted_negotiation(
             quote["quote_id"], agreed=24.0
         )
@@ -567,6 +577,7 @@ class TestBookingHonorsNegotiation:
         quote with NO negotiation books at the quoted price."""
         quote = _available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        mock_storage._store[f"quote_history:{quote['quote_id']}"] = {"buyer_id": "agency:agency-1"}
 
         request = MagicMock()
         request.quote_id = quote["quote_id"]
@@ -586,6 +597,7 @@ class TestBookingHonorsNegotiation:
         neg["rounds"] = neg["rounds"][:1]
         neg["completed_at"] = None
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        mock_storage._store[f"quote_history:{quote['quote_id']}"] = {"buyer_id": "agency:agency-1"}
         mock_storage._store[f"negotiation:{quote['quote_id']}"] = neg
 
         request = MagicMock()

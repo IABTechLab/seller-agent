@@ -122,6 +122,8 @@ class NegotiationHistory(BaseModel):
     quote_id: Optional[str] = None
     product_id: str
     buyer_tier: AccessTier
+    # Server-verified pricing key. Never derived from proposal text.
+    buyer_key: Optional[str] = None
     strategy: NegotiationStrategy
     limits: NegotiationLimits
     base_price: float  # Seller's starting price (tier-adjusted)

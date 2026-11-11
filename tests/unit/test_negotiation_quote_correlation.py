@@ -117,6 +117,7 @@ def _stored_proposal(proposal_id=PROPOSAL_ID, product_id=PRODUCT_ID):
         "start_date": "2026-04-01",
         "end_date": "2026-04-30",
         "buyer_id": "buyer-1",
+        "buyer_key": "advertiser:adv-test-1",
     }
 
 
@@ -177,9 +178,11 @@ def _accepted_negotiation(
 def _buyer_context(buyer_tier="advertiser"):
     from ad_seller.interfaces.api.deps import _build_buyer_context
 
-    return _build_buyer_context(
+    context = _build_buyer_context(
         buyer_tier=buyer_tier, agency_id="agency-test-1", advertiser_id="adv-test-1"
     )
+    context.authentication_method = "api_key"
+    return context
 
 
 def _booking_request(quote_id=QUOTE_ID):
@@ -242,6 +245,7 @@ def client():
 def _seed_negotiable(mock_storage):
     """Quote + product + proposal, the state a proposal-led buyer negotiates from."""
     mock_storage._store[f"quote:{QUOTE_ID}"] = _available_quote()
+    mock_storage._store[f"quote_history:{QUOTE_ID}"] = {"buyer_id": "advertiser:adv-test-1"}
     mock_storage._store[f"product:{PRODUCT_ID}"] = _stored_product()
     mock_storage._store[f"proposal:{PROPOSAL_ID}"] = _stored_proposal()
 
@@ -287,7 +291,9 @@ class TestQuoteIdRetained:
             await negotiation_service.counter_proposal(
                 PROPOSAL_ID, buyer_price=23.5, buyer_context=_buyer_context()
             )
-            status = await negotiation_service.apply_terminal_action(PROPOSAL_ID, "accept")
+            status = await negotiation_service.apply_terminal_action(
+                PROPOSAL_ID, "accept", buyer_context=_buyer_context()
+            )
 
         assert status["quote_id"] == QUOTE_ID
         assert status["status"] == "accepted"
@@ -347,7 +353,9 @@ class TestQuoteIndex:
             await negotiation_service.counter_proposal(
                 PROPOSAL_ID, buyer_price=22.0, buyer_context=_buyer_context(), quote_id=QUOTE_ID
             )
-            await negotiation_service.apply_terminal_action(PROPOSAL_ID, "accept")
+            await negotiation_service.apply_terminal_action(
+                PROPOSAL_ID, "accept", buyer_context=_buyer_context()
+            )
 
         assert mock_storage._store[f"negotiation_by_quote:{QUOTE_ID}"] == PROPOSAL_ID
 
@@ -831,7 +839,7 @@ class TestQuoteBindingOwnership:
                 )
 
         assert exc.value.status_code == 404
-        assert exc.value.detail["error"] == "quote_not_found"
+        assert exc.value.detail == "No negotiation found for this proposal"
         assert f"negotiation:{QUOTE_ID}" not in mock_storage._store
 
     async def test_anonymous_self_asserted_identity_cannot_bind_a_buyer_quote(self, mock_storage):
@@ -859,7 +867,7 @@ class TestQuoteBindingOwnership:
                 )
 
         assert exc.value.status_code == 404
-        assert exc.value.detail["error"] == "quote_not_found"
+        assert exc.value.detail == "No negotiation found for this proposal"
 
     async def test_a_public_quote_stays_negotiable_without_ownership(self, mock_storage):
         """A quote issued to ``buyer_id="public"`` asserted no identity at

@@ -154,3 +154,17 @@ The negotiation engine emits three event types:
 - `negotiation.started` --- When the first counter-offer creates a new negotiation
 - `negotiation.round` --- After each round, with round number, action, and prices
 - `negotiation.concluded` --- When the negotiation reaches `accepted` or `rejected` status
+
+
+## Negotiation mutations require the submitting buyer.
+
+Proposal-led counters, accepts and rejects require the seller-issued buyer API
+key associated with the proposal. The server stores that verified identity
+separately from the request's informational `buyer_id`. Idempotent replays use
+the same ownership check before returning a saved response.
+
+Older proposal records lack verified ownership. Their request-supplied
+`buyer_id` and a quote named in a negotiation message cannot safely establish
+it. Such mutations return 404. Submit a new proposal with the buyer's key.
+Older quote-led negotiations can recover ownership from the quote's original
+issuance history. A different buyer cannot mutate or resume that negotiation.

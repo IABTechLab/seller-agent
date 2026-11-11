@@ -12,7 +12,7 @@ validation; a well-formed counter must NOT.
 """
 
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 # Stub execution_activation_flow (cancel-scope leak on ad-server
@@ -49,7 +49,11 @@ _COUNTER_RESULT = {
 
 @pytest.fixture
 def client():
-    app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    from ad_seller.models.buyer_identity import BuyerIdentity
+
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: SimpleNamespace(
+        identity=BuyerIdentity(agency_id="agency-1")
+    )
     transport = ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://test")
     yield c
@@ -65,10 +69,11 @@ def mock_storage():
     AsyncMock attribute returns a truthy Mock, not None, which breaks its
     "no stored negotiation" no-op path.
     """
-    store = {}
+    store = {"proposal:prop-1": {"buyer_key": "agency:agency-1"}}
     storage = AsyncMock()
     storage.get = AsyncMock(side_effect=lambda k: store.get(k))
     storage.set = AsyncMock(side_effect=lambda k, v, ttl=None: store.__setitem__(k, v))
+    storage.get_proposal = AsyncMock(side_effect=lambda pid: store.get(f"proposal:{pid}"))
     storage.get_negotiation = AsyncMock(side_effect=lambda pid: store.get(f"negotiation:{pid}"))
     storage.set_negotiation = AsyncMock(
         side_effect=lambda pid, data: store.__setitem__(f"negotiation:{pid}", data)
@@ -146,6 +151,7 @@ class TestSharedNegotiationMessage:
 
     async def test_reject_records_terminal_round(self, client, mock_storage):
         """A walk-away is recorded as a terminal round, not silently dropped."""
+        mock_storage._store["proposal:neg-9"] = {"buyer_key": "agency:agency-1"}
         status_data = {
             "negotiation_id": "neg-9",
             "status": "active",
@@ -252,7 +258,7 @@ class TestNegotiationMessageIdempotency:
         different buyer reusing the same client-chosen key."""
         counter = AsyncMock(return_value=_COUNTER_RESULT)
         # As if a different buyer already used this exact key.
-        mock_storage._store["idempotency:negotiation:public:idem-shared"] = {
+        mock_storage._store["idempotency:negotiation:agency:other-buyer:idem-shared"] = {
             "response": {**_COUNTER_RESULT, "negotiation_id": "neg-other-buyer"},
             "payload_hash": "not-the-real-hash",
         }
@@ -277,3 +283,7 @@ class TestNegotiationMessageIdempotency:
         # correctly scoped out of this buyer's lookup.
         assert counter.await_count == 1
         assert resp.json()["negotiation_id"] != "neg-other-buyer"
+        assert "idempotency:negotiation:agency:agency-1:idem-shared" in mock_storage._store
+        assert (
+            "idempotency:negotiation:advertiser:adv-buyer-b:idem-shared" not in mock_storage._store
+        )

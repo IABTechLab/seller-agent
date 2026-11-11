@@ -105,7 +105,9 @@ def _make_product(product_id="ctv-premium-sports", base_cpm=35.0, floor_cpm=28.0
 def _make_buyer_context(buyer_tier="agency", agency_id="agency-1"):
     from ad_seller.interfaces.api.deps import _build_buyer_context
 
-    return _build_buyer_context(buyer_tier=buyer_tier, agency_id=agency_id)
+    context = _build_buyer_context(buyer_tier=buyer_tier, agency_id=agency_id)
+    context.authentication_method = "api_key"
+    return context
 
 
 def _proposal_data(price=25.0, product_id="ctv-premium-sports"):
@@ -144,7 +146,11 @@ def mock_storage():
 
 @pytest.fixture
 def client():
-    app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    from ad_seller.models.buyer_identity import BuyerIdentity
+
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
+        identity=BuyerIdentity(agency_id="agency-1")
+    )
     transport = ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://test")
     yield c
@@ -497,6 +503,7 @@ class TestRestSurface:
         back as a counter at the floor (28), not a terminal reject."""
         mock_storage._store["proposal:prop-lb1"] = {
             "proposal_id": "prop-lb1",
+            "buyer_key": "agency:agency-1",
             "product_id": "ctv-premium-sports",
         }
         mock_storage._store["product:ctv-premium-sports"] = {
@@ -537,6 +544,7 @@ class TestRestSurface:
         and the stored negotiation converges to accepted at 28."""
         mock_storage._store["proposal:prop-lb2"] = {
             "proposal_id": "prop-lb2",
+            "buyer_key": "agency:agency-1",
             "product_id": "ctv-premium-sports",
         }
         mock_storage._store["product:ctv-premium-sports"] = {
