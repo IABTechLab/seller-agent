@@ -120,6 +120,8 @@ class ApprovalRequest(BaseModel):
     proposal_id: str = ""
     deal_id: str = ""
     status: ApprovalStatus = ApprovalStatus.PENDING
+    # Retained across retries so stale resumes cannot claim a later attempt.
+    resume_token: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     expires_at: Optional[datetime] = None
     context: dict[str, Any] = Field(default_factory=dict)

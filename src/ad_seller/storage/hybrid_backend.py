@@ -64,6 +64,9 @@ class HybridBackend(StorageBackend):
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         await self._backend_for(key).set(key, value, ttl=ttl)
 
+    async def compare_and_set(self, key: str, expected: Any, value: Any) -> bool:
+        return await self._backend_for(key).compare_and_set(key, expected, value)
+
     async def delete(self, key: str) -> bool:
         return await self._backend_for(key).delete(key)
 

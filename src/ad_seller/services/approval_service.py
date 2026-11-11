@@ -7,7 +7,9 @@ Extracted from ``interfaces/api/main.py`` (EP-3.1): approval listing,
 decision submission, and flow resumption after a decision.
 """
 
+import asyncio
 import logging
+import uuid
 from typing import Any
 
 from fastapi import HTTPException
@@ -130,12 +132,22 @@ async def resume_flow(approval_id: str) -> dict[str, Any]:
     )
 
 
-async def _set_approval_status(request, status) -> None:
+async def _transition_approval(request, status, *, resume_token=None):
+    """Update only the exact approval attempt this caller owns."""
+    from ..events.models import ApprovalRequest
     from ..storage.factory import get_storage
 
-    request.status = status
     storage = await get_storage()
-    await storage.set(f"approval:{request.approval_id}", request.model_dump(mode="json"))
+    key = f"approval:{request.approval_id}"
+    current = await storage.get(key)
+    if current is None or ApprovalRequest.model_validate(current) != request:
+        raise HTTPException(status_code=409, detail="Approval changed or has already been resumed")
+    updated = request.model_copy(
+        update={"status": status, "resume_token": resume_token or request.resume_token}
+    )
+    if not await storage.compare_and_set(key, current, updated.model_dump(mode="json")):
+        raise HTTPException(status_code=409, detail="Approval changed or has already been resumed")
+    return updated
 
 
 _DECISION_TIME_FIELDS = frozenset(
@@ -206,7 +218,7 @@ async def _resume_ssp_distribution(request, response):
     """Resume an SSP distribution after a dsp_resolution approval decision.
 
     Unlike _resume_proposal_flow, there's no CrewAI flow/state machine to
-    re-hydrate here — distribute_deal_via_ssp is a plain service call, so the
+    re-hydrate here. distribute_deal_via_ssp is a plain service call, so the
     snapshot is just the SSP name and the SSPDealCreateRequest that was
     waiting on a dsp_id. On approval, the human's selected_dsp_id
     (response.modifications) is applied and create_deal() finally runs.
@@ -244,7 +256,14 @@ async def _resume_ssp_distribution(request, response):
             "resumed_from_approval": request.approval_id,
         }
 
-    if request.status == ApprovalStatus.OUTCOME_UNKNOWN:
+    if request.status not in {ApprovalStatus.APPROVED, ApprovalStatus.OUTCOME_UNKNOWN}:
+        raise HTTPException(status_code=409, detail="Approval is not ready to resume")
+    previous_status = request.status
+    request = await _transition_approval(
+        request, ApprovalStatus.CONSUMED, resume_token=str(uuid.uuid4())
+    )
+
+    if previous_status == ApprovalStatus.OUTCOME_UNKNOWN:
         # A previous create may or may not have landed. Only look the deal up here; never
         # POST, so this cannot create a second deal.
         try:
@@ -253,11 +272,14 @@ async def _resume_ssp_distribution(request, response):
                     create_request.external_deal_id, create_request.account_id
                 )
         except SSPDealOutcomeUnknownError as exc:
+            await _transition_approval(request, ApprovalStatus.OUTCOME_UNKNOWN)
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except (Exception, asyncio.CancelledError):
+            await _transition_approval(request, ApprovalStatus.OUTCOME_UNKNOWN)
+            raise
         if existing is not None:
-            await _set_approval_status(request, ApprovalStatus.CONSUMED)
             return _success(existing)
-        await _set_approval_status(request, ApprovalStatus.APPROVED)
+        await _transition_approval(request, ApprovalStatus.APPROVED)
         raise HTTPException(
             status_code=409,
             detail=(
@@ -266,19 +288,20 @@ async def _resume_ssp_distribution(request, response):
             ),
         )
 
-    # Mark the approval consumed before creating the deal so a repeated resume
-    # cannot create it twice; restore it if creation fails so the call can be retried.
-    # Storage has no compare-and-set, so two truly simultaneous resumes can still race.
-    await _set_approval_status(request, ApprovalStatus.CONSUMED)
+    # The atomic claim above excludes simultaneous creates and reconciliation.
+    # A crash leaves consumed in place; it never automatically retries an uncertain POST.
     try:
         async with ssp:
             result = await ssp.create_deal(create_request)
     except SSPDealOutcomeUnknownError as exc:
         # The deal may exist in the SSP; resuming again re-checks it instead of re-creating.
-        await _set_approval_status(request, ApprovalStatus.OUTCOME_UNKNOWN)
+        await _transition_approval(request, ApprovalStatus.OUTCOME_UNKNOWN)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except asyncio.CancelledError:
+        await _transition_approval(request, ApprovalStatus.OUTCOME_UNKNOWN)
+        raise
     except Exception:
-        await _set_approval_status(request, ApprovalStatus.APPROVED)
+        await _transition_approval(request, ApprovalStatus.APPROVED)
         raise
 
     return _success(result)

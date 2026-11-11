@@ -244,11 +244,21 @@ class TestResolveDspIdOrPendingApproval:
         )
 
 
-def _storage():
+def _storage(request=None):
     store: dict = {}
     storage = AsyncMock()
     storage.get = AsyncMock(side_effect=lambda k: store.get(k))
     storage.set = AsyncMock(side_effect=lambda k, v, ttl=None: store.__setitem__(k, v))
+
+    async def compare_and_set(key, expected, value):
+        if key not in store or store[key] != expected:
+            return False
+        store[key] = value
+        return True
+
+    storage.compare_and_set = AsyncMock(side_effect=compare_and_set)
+    if request is not None:
+        store[f"approval:{request.approval_id}"] = request.model_dump(mode="json")
     storage._store = store
     return storage
 
@@ -256,6 +266,7 @@ def _storage():
 class TestResumeSSPDistribution:
     def _approval_request(self, **overrides):
         defaults = dict(
+            status=ApprovalStatus.APPROVED,
             approval_id="apr-999",
             event_id="evt-1",
             flow_id="ssp-distribute-deal-1",
@@ -337,7 +348,7 @@ class TestResumeSSPDistribution:
 
         mock_registry = MagicMock()
         mock_registry.get_client.return_value = mock_ssp
-        storage = _storage()
+        storage = _storage(request)
 
         with (
             patch(
@@ -378,7 +389,7 @@ class TestResumeSSPDistribution:
             approval_id="apr-999", decision="approve", modifications={"selected_dsp_id": 52}
         )
         registry, _ = self._mock_registry(self._created_deal())
-        storage = _storage()
+        storage = _storage(request)
 
         with (
             patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
@@ -395,7 +406,7 @@ class TestResumeSSPDistribution:
             approval_id="apr-999", decision="approve", modifications={"selected_dsp_id": 52}
         )
         registry, ssp = self._mock_registry(self._created_deal())
-        storage = _storage()
+        storage = _storage(request)
 
         with (
             patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
@@ -416,7 +427,7 @@ class TestResumeSSPDistribution:
             approval_id="apr-999", decision="approve", modifications={"selected_dsp_id": 52}
         )
         registry, _ = self._mock_registry(create_side_effect=RuntimeError("IX down"))
-        storage = _storage()
+        storage = _storage(request)
 
         with (
             patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
@@ -441,7 +452,7 @@ class TestResumeSSPDistributionHardening:
         registry, ssp = self._mock_registry(
             self._created_deal(), create_side_effect=create_side_effect
         )
-        storage = _storage()
+        storage = _storage(request)
         with (
             patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
             patch("ad_seller.storage.factory.get_storage", return_value=storage),
@@ -519,7 +530,7 @@ class TestResumeSSPDistributionHardening:
         ssp.find_deal_by_external_id = AsyncMock(
             return_value=find_result, side_effect=find_side_effect
         )
-        storage = _storage()
+        storage = _storage(request)
         self.storage = storage
         with (
             patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
@@ -554,7 +565,7 @@ class TestResumeSSPDistributionHardening:
             await self._resume_unknown(find_side_effect=SSPDealOutcomeUnknownError("still down"))
 
         assert exc_info.value.status_code == 502
-        assert "approval:apr-999" not in self.storage._store
+        assert self.storage._store["approval:apr-999"]["status"] == "outcome_unknown"
 
 
 class TestDecideTimeValidation:

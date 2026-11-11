@@ -111,6 +111,20 @@ class PostgresBackend(StorageBackend):
                 expires_at,
             )
 
+    async def compare_and_set(self, key: str, expected: Any, value: Any) -> bool:
+        # Bind serialized values as text so custom JSONB codecs cannot encode them twice.
+        self._ensure_pool()
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE kv_store SET value = $3::text::jsonb WHERE key = $1 "
+                "AND value = $2::text::jsonb AND (expires_at IS NULL OR expires_at > $4)",
+                key,
+                json.dumps(expected),
+                json.dumps(value),
+                time.time(),
+            )
+            return result == "UPDATE 1"
+
     async def delete(self, key: str) -> bool:
         """Delete a key. Returns True if key existed."""
         self._ensure_pool()
