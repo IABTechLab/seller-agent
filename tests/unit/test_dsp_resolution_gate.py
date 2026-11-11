@@ -499,7 +499,7 @@ class TestResumeSSPDistributionHardening:
         ssp.create_deal.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_outcome_unknown_leaves_approval_consumed(self):
+    async def test_outcome_unknown_marks_approval_outcome_unknown(self):
         from ad_seller.clients.ssp_base import SSPDealOutcomeUnknownError
 
         with pytest.raises(HTTPException) as exc_info:

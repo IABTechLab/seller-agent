@@ -152,10 +152,17 @@ async def _media_kit_service():
 
 
 async def _deny_unless_operator() -> Optional[str]:
+    """Enforce operator-key auth; see :func:`_authorize_operator`."""
+    denied, _record = await _authorize_operator()
+    return denied
+
+
+async def _authorize_operator() -> tuple[Optional[str], Any]:
     """Enforce operator-key auth on admin MCP tools over HTTP transports.
 
-    Returns None when the call is authorized, otherwise an error JSON
-    string the tool should return as-is.
+    Returns ``(None, record)`` when the call is authorized, where ``record``
+    is the operator's API key record, or None for stdio. Otherwise returns
+    ``(error_json, None)``; the tool should return the error as-is.
 
     - HTTP transports (Streamable HTTP at /mcp, legacy SSE): the client
       must send an OPERATOR-role API key via ``Authorization: Bearer``
@@ -169,7 +176,7 @@ async def _deny_unless_operator() -> Optional[str]:
     except Exception:
         request = None
     if request is None or not hasattr(request, "headers"):
-        return None  # stdio / in-process — local operator access
+        return None, None  # stdio / in-process — local operator access
 
     headers = request.headers
     raw_key = headers.get("x-api-key")
@@ -187,7 +194,7 @@ async def _deny_unless_operator() -> Optional[str]:
                 "'Authorization: Bearer <key>' or 'X-Api-Key: <key>'. Bootstrap "
                 "the first key with: ad-seller create-operator-key",
             }
-        )
+        ), None
 
     from ..models.api_key import ApiKeyRole
 
@@ -195,10 +202,10 @@ async def _deny_unless_operator() -> Optional[str]:
     try:
         record = await service.validate_key(raw_key)
     except ValueError as exc:  # revoked or expired
-        return _dumps({"error": "invalid_credential", "detail": str(exc)})
+        return _dumps({"error": "invalid_credential", "detail": str(exc)}), None
 
     if record is None:
-        return _dumps({"error": "invalid_credential", "detail": "Invalid API key"})
+        return _dumps({"error": "invalid_credential", "detail": "Invalid API key"}), None
     if record.role != ApiKeyRole.OPERATOR:
         return _dumps(
             {
@@ -206,8 +213,8 @@ async def _deny_unless_operator() -> Optional[str]:
                 "detail": "This tool requires an operator-role API key; the "
                 "provided key is a buyer credential.",
             }
-        )
-    return None
+        ), None
+    return None, record
 
 
 async def _pricing_policy(settings: Any, **operator_fields: Any) -> dict[str, Any]:
@@ -1034,10 +1041,11 @@ async def approve_or_reject(
     include any other field the SSP needs that wasn't set when the gate
     fired (e.g. "account_id", "name", "cpm", "targeting") in the same
     object — resume_approval applies all of them, not just selected_dsp_id."""
-    denied = await _deny_unless_operator()
+    denied, operator = await _authorize_operator()
     if denied:
         return denied
 
+    from ..auth.dependencies import principal_from_api_key
     from ..services import approval_service
 
     return await _service_json(
@@ -1046,6 +1054,9 @@ async def approve_or_reject(
             decision=decision,
             reason=reason,
             modifications=modifications,
+            decided_by_principal=(
+                principal_from_api_key(operator) if operator is not None else "local:mcp-stdio"
+            ),
         )
     )
 

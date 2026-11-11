@@ -28,6 +28,18 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+APPROVAL_DECISIONS = ("approve", "reject", "counter")
+
+
+def normalize_decision(decision: Any) -> str:
+    """Return the canonical decision, or raise ValueError for anything else."""
+    value = decision.strip().lower() if isinstance(decision, str) else ""
+    if value not in APPROVAL_DECISIONS:
+        raise ValueError(
+            f"Invalid decision {decision!r}; expected one of: {', '.join(APPROVAL_DECISIONS)}"
+        )
+    return value
+
 
 class ApprovalGate:
     """Manages approval requests and responses using the storage backend."""
@@ -142,8 +154,10 @@ class ApprovalGate:
             The approval response.
 
         Raises:
-            ValueError: If approval not found or already decided.
+            ValueError: If the decision is not approve/reject/counter, or the
+                approval is not found or already decided.
         """
+        decision = normalize_decision(decision)
         data = await self._storage.get(f"approval:{approval_id}")
         if not data:
             raise ValueError(f"Approval request not found: {approval_id}")
