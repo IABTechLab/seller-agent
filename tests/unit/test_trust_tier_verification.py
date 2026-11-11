@@ -527,7 +527,11 @@ class TestCounterEndpointCeiling:
 
 
 class TestNegotiationMessagesCeiling:
-    async def test_self_asserted_advertiser_identity_is_floored(self, client):
+    async def test_self_asserted_advertiser_identity_is_floored_and_cannot_mutate(
+        self, client, mock_storage
+    ):
+        from ad_seller.services.negotiation_service import verify_negotiation_owner
+
         counter = AsyncMock(
             return_value={
                 "negotiation_id": "neg-1",
@@ -542,7 +546,14 @@ class TestNegotiationMessagesCeiling:
                 "rounds_remaining": 4,
             }
         )
-        with patch("ad_seller.services.negotiation_service.counter_proposal", new=counter):
+        with (
+            patch("ad_seller.services.negotiation_service.counter_proposal", new=counter),
+            patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),
+            patch(
+                "ad_seller.services.negotiation_service.verify_negotiation_owner",
+                wraps=verify_negotiation_owner,
+            ) as owner,
+        ):
             async with client as c:
                 resp = await c.post(
                     "/api/v1/negotiations/messages",
@@ -558,8 +569,10 @@ class TestNegotiationMessagesCeiling:
                     },
                 )
 
-        assert resp.status_code == 200, resp.text
-        ctx = counter.await_args.kwargs["buyer_context"]
+        assert resp.status_code == 404, resp.text
+        counter.assert_not_awaited()
+        mock_storage.set_negotiation.assert_not_awaited()
+        ctx = owner.await_args.args[1]
         assert ctx.effective_tier == AccessTier.PUBLIC
 
 

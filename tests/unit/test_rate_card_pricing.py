@@ -118,6 +118,18 @@ def _public_context():
     return BuyerContext(identity=BuyerIdentity(), is_authenticated=False)
 
 
+def _verified_public_context():
+    from ad_seller.models.buyer_identity import AccessTier, BuyerContext, BuyerIdentity
+
+    # Ownership is verified while pricing keeps the original public-tier baseline.
+    return BuyerContext(
+        identity=BuyerIdentity(agency_id="rate-card-buyer"),
+        is_authenticated=True,
+        authentication_method="api_key",
+        max_access_tier=AccessTier.PUBLIC,
+    )
+
+
 def _quote_request(product_id, impressions=200_000, deal_type="PD"):
     request = MagicMock()
     request.product_id = product_id
@@ -456,6 +468,7 @@ class TestNegotiationAnchorReflectsOverride:
         mock_storage._store["rate_card:current"] = _rate_card(
             [{"inventory_type": "ctv", "base_cpm": 50.0}]
         )
+        mock_storage._store["quote_history:qt-neg1"] = {"buyer_id": "agency:rate-card-buyer"}
         mock_storage._store["quote:qt-neg1"] = {
             "quote_id": "qt-neg1",
             "product": {"product_id": "ctv-premium-sports"},
@@ -466,7 +479,7 @@ class TestNegotiationAnchorReflectsOverride:
             patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
         ):
             await negotiation_service.counter_proposal(
-                "qt-neg1", buyer_price=45.0, buyer_context=_public_context()
+                "qt-neg1", buyer_price=45.0, buyer_context=_verified_public_context()
             )
 
         stored = mock_storage._store["negotiation:qt-neg1"]
@@ -483,6 +496,7 @@ class TestNegotiationAnchorReflectsOverride:
         mock_storage._store["rate_card:current"] = _rate_card(
             [{"inventory_type": "ctv", "base_cpm": 5.0}]
         )
+        mock_storage._store["quote_history:qt-neg2"] = {"buyer_id": "agency:rate-card-buyer"}
         mock_storage._store["quote:qt-neg2"] = {
             "quote_id": "qt-neg2",
             "product": {"product_id": "ctv-premium-sports"},
@@ -493,7 +507,7 @@ class TestNegotiationAnchorReflectsOverride:
             patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
         ):
             await negotiation_service.counter_proposal(
-                "qt-neg2", buyer_price=15.0, buyer_context=_public_context()
+                "qt-neg2", buyer_price=15.0, buyer_context=_verified_public_context()
             )
 
         stored = mock_storage._store["negotiation:qt-neg2"]
@@ -507,6 +521,7 @@ class TestNegotiationAnchorReflectsOverride:
             "base_cpm": 35.0,
             "floor_cpm": 20.0,
         }
+        mock_storage._store["quote_history:qt-neg3"] = {"buyer_id": "agency:rate-card-buyer"}
         mock_storage._store["quote:qt-neg3"] = {
             "quote_id": "qt-neg3",
             "product": {"product_id": "ctv-premium-sports"},
@@ -517,7 +532,7 @@ class TestNegotiationAnchorReflectsOverride:
             patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
         ):
             await negotiation_service.counter_proposal(
-                "qt-neg3", buyer_price=30.0, buyer_context=_public_context()
+                "qt-neg3", buyer_price=30.0, buyer_context=_verified_public_context()
             )
 
         stored = mock_storage._store["negotiation:qt-neg3"]
@@ -543,6 +558,7 @@ class TestNegotiationAnchorReflectsOverride:
         mock_storage._store["rate_card:current"] = _rate_card(
             [{"inventory_type": "ctv", "base_cpm": -5.0}]
         )
+        mock_storage._store["quote_history:qt-neg4"] = {"buyer_id": "agency:rate-card-buyer"}
         mock_storage._store["quote:qt-neg4"] = {
             "quote_id": "qt-neg4",
             "product": {"product_id": "ctv-premium-sports"},
@@ -553,7 +569,7 @@ class TestNegotiationAnchorReflectsOverride:
             patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
         ):
             await negotiation_service.counter_proposal(
-                "qt-neg4", buyer_price=10.0, buyer_context=_public_context()
+                "qt-neg4", buyer_price=10.0, buyer_context=_verified_public_context()
             )
 
         stored = mock_storage._store["negotiation:qt-neg4"]
@@ -612,7 +628,7 @@ class TestNegotiationAnchorReflectsOverride:
                     "start_date": "2026-08-01",
                     "end_date": "2026-08-31",
                 },
-                buyer_context=_public_context(),
+                buyer_context=_verified_public_context(),
                 products={"ctv-premium-sports": _make_product()},
             )
 

@@ -165,6 +165,67 @@ async def _verify_quote_binding(storage: Any, quote_id: str, buyer_context: Any)
         raise HTTPException(status_code=404, detail=_quote_not_found_detail(quote_id))
 
 
+def _verified_buyer_key(buyer_context: Any) -> Optional[str]:
+    """Only a seller-issued credential establishes negotiation ownership."""
+    if (
+        buyer_context is None
+        or getattr(buyer_context, "authentication_method", None) != "api_key"
+        or getattr(buyer_context, "is_authenticated", False) is not True
+    ):
+        return None
+    key = buyer_context.get_pricing_key()
+    return key if isinstance(key, str) and key and key != "public" else None
+
+
+def _negotiation_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail="No negotiation found for this proposal")
+
+
+async def _require_negotiation_owner(
+    storage: Any,
+    proposal_id: str,
+    buyer_context: Any,
+    history: Optional[dict[str, Any]],
+) -> str:
+    """Resolve ownership from stored verified identity, before any mutation.
+
+    Legacy proposal buyer_id is request text. A quote supplied in the current
+    message, or bound by the old vulnerable path, cannot authenticate its owner.
+    A quote-led key can be recovered from that quote's own issuance history.
+    """
+    caller = _verified_buyer_key(buyer_context)
+    if caller is None:
+        raise _negotiation_not_found()
+    proposal = await storage.get_proposal(proposal_id)
+    owners = [
+        record["buyer_key"]
+        for record in (proposal, history)
+        if isinstance(record, dict) and record.get("buyer_key") is not None
+    ]
+    if owners:
+        if any(owner != caller for owner in owners):
+            raise _negotiation_not_found()
+        return caller
+    if isinstance(proposal, dict):
+        # Existing proposal bodies never proved who submitted them.
+        raise _negotiation_not_found()
+    from ..storage.quote_history import QuoteHistoryStore
+
+    issued = await QuoteHistoryStore(storage).get_quote(proposal_id)
+    if not isinstance(issued, dict) or issued.get("buyer_id") != caller:
+        raise _negotiation_not_found()
+    return caller
+
+
+async def verify_negotiation_owner(proposal_id: str, buyer_context: Any) -> None:
+    """Authorize an endpoint before returning an idempotent negotiation replay."""
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    history = await storage.get_negotiation(proposal_id)
+    await _require_negotiation_owner(storage, proposal_id, buyer_context, history)
+
+
 async def submit_proposal(
     request: Any, buyer_context: Any, catalog: dict[str, Any]
 ) -> dict[str, Any]:
@@ -231,6 +292,7 @@ async def submit_proposal(
         {
             **proposal_data,
             "proposal_id": proposal_id,
+            "buyer_key": _verified_buyer_key(buyer_context),
             "recommendation": result.get("recommendation"),
             "status": result.get("status"),
         },
@@ -246,6 +308,7 @@ async def submit_proposal(
     # round numbering) instead of silently starting over.
     flow_history = result.pop("_negotiation_history", None)
     if flow_history:
+        flow_history = {**flow_history, "buyer_key": _verified_buyer_key(buyer_context)}
         await _persist_negotiation(storage, proposal_id, flow_history)
     quote_history = QuoteHistoryStore(storage)
     verification = await quote_history.verify_pricing(
@@ -340,6 +403,7 @@ async def counter_proposal(
 
     # Load existing negotiation or start new one
     existing = await storage.get_negotiation(proposal_id)
+    buyer_key = await _require_negotiation_owner(storage, proposal_id, buyer_context, existing)
     if existing:
         history = NegotiationHistory(**existing)
         if history.status != "active":
@@ -398,6 +462,8 @@ async def counter_proposal(
                 "base_price": history.base_price,
             },
         )
+
+    history.buyer_key = buyer_key
 
     # Retain the quote this negotiation concerns. Backfills a negotiation
     # opened before the quote was named; first one seen wins. Binding is
@@ -491,7 +557,9 @@ async def apply_terminal_action(
     storage = await get_storage()
     data = await storage.get_negotiation(proposal_id)
     if data:
+        buyer_key = await _require_negotiation_owner(storage, proposal_id, buyer_context, data)
         history = NegotiationHistory(**data)
+        history.buyer_key = buyer_key
         if history.status == "active" and action in ("accept", "reject"):
             if quote_id and not history.quote_id:
                 await _verify_quote_binding(storage, quote_id, buyer_context)

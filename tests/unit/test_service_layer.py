@@ -74,7 +74,9 @@ def _make_catalog(products=None):
 def _make_buyer_context(buyer_tier="agency", agency_id="agency-1"):
     from ad_seller.interfaces.api.deps import _build_buyer_context
 
-    return _build_buyer_context(buyer_tier=buyer_tier, agency_id=agency_id)
+    context = _build_buyer_context(buyer_tier=buyer_tier, agency_id=agency_id)
+    context.authentication_method = "api_key"
+    return context
 
 
 @pytest.fixture
@@ -371,7 +373,10 @@ class TestOrderService:
 class TestNegotiationService:
     async def test_counter_proposal_starts_negotiation(self, mock_storage):
         """Happy: first counter creates a negotiation, records round 1."""
-        mock_storage._store["proposal:prop-1"] = {"product_id": "prod-1"}
+        mock_storage._store["proposal:prop-1"] = {
+            "product_id": "prod-1",
+            "buyer_key": "agency:agency-1",
+        }
         mock_storage._store["product:prod-1"] = {"base_cpm": 20.0, "floor_cpm": 10.0}
 
         with (

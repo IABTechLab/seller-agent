@@ -612,6 +612,7 @@ class TestRestNegotiationResponseIsBuyerFacing:
 
         engine = _make_engine()
         buyer_context = _make_buyer_context()
+        buyer_context.authentication_method = "api_key"
         history = engine.start_negotiation(
             proposal_id="prop-rest-rationale",
             product_id="ctv-premium-sports",
@@ -620,7 +621,9 @@ class TestRestNegotiationResponseIsBuyerFacing:
             floor_price=FLOOR_PRICE,
         )
 
+        history.buyer_key = buyer_context.get_pricing_key()
         mock_storage = AsyncMock()
+        mock_storage.get_proposal.return_value = {"buyer_key": history.buyer_key}
         mock_storage.get_negotiation.return_value = history.model_dump(mode="json")
         with (
             patch("ad_seller.storage.factory.get_storage", return_value=mock_storage),

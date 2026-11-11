@@ -72,6 +72,8 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- Bind proposal-led negotiation mutations and replays to the verified submitting buyer. Refuse ambiguous legacy proposal ownership instead of trusting buyer-supplied identity or a newly bound quote.
+
 - CSV/S3 inventory now keeps the `inventory_type` declared in the row
   instead of guessing it from the name, ad formats or sizes. Rows that
   declare `ctv` were being served as `display`, and `linear`,

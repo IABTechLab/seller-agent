@@ -50,6 +50,7 @@ from httpx import ASGITransport  # noqa: E402
 from ad_seller.config.settings import Settings  # noqa: E402
 from ad_seller.flows.proposal_handling_flow import ProposalHandlingFlow  # noqa: E402
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # noqa: E402
+from ad_seller.models.buyer_identity import BuyerIdentity  # noqa: E402
 from ad_seller.services import negotiation_service  # noqa: E402
 
 # =============================================================================
@@ -206,7 +207,9 @@ def mock_storage():
 
 @pytest.fixture
 def client():
-    app.dependency_overrides[_get_optional_api_key_record] = lambda: None
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: SimpleNamespace(
+        identity=BuyerIdentity(agency_id="agency-1")
+    )
     transport = ASGITransport(app=app)
     c = httpx.AsyncClient(transport=transport, base_url="http://test")
     yield c
@@ -395,6 +398,9 @@ class TestFallbackPersistence:
                 # the negotiation surface is reachable cold.
                 assert f"proposal:{proposal_id}" in mock_storage._store
                 assert "product:ctv-premium-sports" in mock_storage._store
+                assert (
+                    mock_storage._store[f"proposal:{proposal_id}"]["buyer_key"] == "agency:agency-1"
+                )
 
                 # Cold continuation: a counter on the REST surface opens a
                 # negotiation off the stored proposal (was previously a 404).
@@ -415,3 +421,4 @@ class TestFallbackPersistence:
         stored_history = mock_storage._store.get(f"negotiation:{proposal_id}")
         assert stored_history is not None
         assert stored_history["status"] == "active"
+        assert stored_history["buyer_key"] == "agency:agency-1"
