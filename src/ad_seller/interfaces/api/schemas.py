@@ -18,7 +18,7 @@ value are omitted, never null-padded (see
 ``tests/unit/test_avails_contract_adoption.py``).
 """
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from iab_agentic_primitives.protocol import (
     Avails as Avails,  # noqa: PLC0414 — explicit re-export
@@ -112,6 +112,8 @@ class ProposalResponse(BaseModel):
     pricing_verified: bool = False
     pricing_verification_reason: str = ""
     errors: list[ProposalErrorDetail] = []
+    evaluated_by: Optional[Literal["crew", "fallback"]] = None
+    fallback_reason: Optional[str] = None
 
 
 class DealRequest(BaseModel):

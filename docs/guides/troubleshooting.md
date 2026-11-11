@@ -289,6 +289,23 @@ Branch on `code`, not `detail` — the detail text is free-form and may change.
 | `run_crew_evaluation` | `crew_evaluation_error` | Crew evaluation failed and the deterministic fallback also errored |
 | `flow` | `internal` | Unattributed failure or whole-flow crash — check server logs |
 
+### Fallback decisions
+
+When the proposal-review crew can't produce a decision, the deterministic evaluation answers instead and the proposal still succeeds (`errors` is empty). Every `POST /proposals` response says which one decided:
+
+- `evaluated_by` — `crew` or `fallback`; `null` when the proposal failed before either ran
+- `fallback_reason` — why the crew didn't decide, or `null` when it did
+
+| `fallback_reason` | Likely cause |
+|-------------------|--------------|
+| `crew_error` | The crew raised, e.g. the model provider returned 401, 404, 429 or 5xx |
+| `crew_timeout` | The crew ran past `PROPOSAL_FLOW_TIME_BUDGET` |
+| `crew_skipped` | `PROPOSAL_FLOW_TIME_BUDGET` is below `PROPOSAL_CREW_MIN_BUDGET`, so the crew was not started |
+| `crew_not_configured` | No API key is configured for the crew's model |
+| `crew_no_structured_output` | The crew finished but returned no structured review |
+
+The response carries only the code. The underlying error text is in the approval request's `context.warnings` (operator-only, `GET /approvals/{approval_id}`) when the proposal needs approval, and in the server logs. The approval context also includes `evaluated_by` and `fallback_reason`, and the `proposal.evaluated` event includes both when the crew ran.
+
 ---
 
 ## Logs

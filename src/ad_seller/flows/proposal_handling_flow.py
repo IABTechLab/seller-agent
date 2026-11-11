@@ -55,6 +55,8 @@ class ProposalState(SellerFlowState):
     # Evaluation results
     evaluation: Optional[ProposalEvaluation] = None
     recommendation: str = ""  # accept, counter, reject
+    evaluated_by: Optional[str] = None  # crew, fallback
+    fallback_reason: Optional[str] = None
 
     # Counter proposal
     counter_terms: Optional[dict[str, Any]] = None
@@ -620,7 +622,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                 f"minimum for the proposal-review crew"
             )
             self.state.warnings.append(f"Crew evaluation skipped: {reason}")
-            self._fallback_evaluation_or_fail(reason)
+            self._fallback_evaluation_or_fail(reason, "crew_skipped")
             return
 
         # Create the proposal review crew in its own try so the two failure
@@ -634,7 +636,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             crew = create_proposal_review_crew(self.state.proposal_data)
         except MissingApiKeyError as e:
             self.state.warnings.append(f"Crew evaluation failed: {e}")
-            self._fallback_evaluation_or_fail(str(e))
+            self._fallback_evaluation_or_fail(str(e), "crew_not_configured")
             return
         except Exception as e:  # noqa: BLE001 — fail causefully, never silently
             self._fail_stage(
@@ -650,10 +652,14 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             review: Optional[ProposalReviewOutput] = result.pydantic
             if review is not None:
                 self.state.recommendation = review.decision.value
+                self.state.evaluated_by = "crew"
                 if self.state.evaluation:
                     self.state.evaluation.recommendation = self.state.recommendation
             else:
-                self._fallback_evaluation_or_fail("crew returned no structured review")
+                self.state.warnings.append("Crew evaluation returned no structured review")
+                self._fallback_evaluation_or_fail(
+                    "crew returned no structured review", "crew_no_structured_output"
+                )
 
             # Emit proposal.evaluated event
             await emit_event(
@@ -663,6 +669,8 @@ class ProposalHandlingFlow(Flow[ProposalState]):
                 proposal_id=self.state.proposal_id,
                 payload={
                     "recommendation": self.state.recommendation,
+                    "evaluated_by": self.state.evaluated_by,
+                    "fallback_reason": self.state.fallback_reason,
                     "evaluation": self.state.evaluation.model_dump()
                     if self.state.evaluation
                     else None,
@@ -673,14 +681,14 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             # Budget exceeded: deterministic fallback answers the
             # request within wire timeouts; the abandoned crew is logged.
             self.state.warnings.append(f"Crew evaluation exceeded time budget: {e}")
-            self._fallback_evaluation_or_fail(str(e))
+            self._fallback_evaluation_or_fail(str(e), "crew_timeout")
 
         except Exception as e:
             self.state.warnings.append(f"Crew evaluation failed: {e}")
             # Fall back to rule-based evaluation
-            self._fallback_evaluation_or_fail(str(e))
+            self._fallback_evaluation_or_fail(str(e), "crew_error")
 
-    def _fallback_evaluation_or_fail(self, cause: str) -> None:
+    def _fallback_evaluation_or_fail(self, cause: str, reason_code: str) -> None:
         """Run the deterministic fallback; if IT also errors, fail causefully.
 
         The fallback is the last evaluator standing — when it raises, the
@@ -688,8 +696,10 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         ``crew_evaluation_error`` (issue #34) instead of resolving failed
         with no detail (or raising a detail-less 500 out of the flow).
         """
+        self.state.fallback_reason = reason_code
         try:
             self._fallback_evaluation()
+            self.state.evaluated_by = "fallback"
         except Exception as fallback_exc:  # noqa: BLE001
             self._fail_stage(
                 "run_crew_evaluation",
@@ -1024,6 +1034,8 @@ class ProposalHandlingFlow(Flow[ProposalState]):
             "upsell_suggestions": self.state.upsell_suggestions,
             "errors": errors,
             "warnings": self.state.warnings,
+            "evaluated_by": self.state.evaluated_by,
+            "fallback_reason": self.state.fallback_reason,
         }
 
         if self.state.negotiation_history:

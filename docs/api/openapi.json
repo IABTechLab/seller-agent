@@ -9707,6 +9707,32 @@
             "type": "array",
             "title": "Errors",
             "default": []
+          },
+          "evaluated_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "crew",
+                  "fallback"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluated By"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
           }
         },
         "type": "object",
