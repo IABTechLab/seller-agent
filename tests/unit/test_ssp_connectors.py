@@ -20,6 +20,7 @@ from ad_seller.clients.ssp_base import (
     SSPClient,
     SSPDeal,
     SSPDealCreateRequest,
+    SSPDealNotCreatedError,
     SSPDealOutcomeUnknownError,
     SSPDealStatus,
     SSPDealType,
@@ -824,14 +825,16 @@ class TestIndexExchangeCreateDealAmbiguousFailure:
             await self._client(handler).create_deal(_valid_create_request())
 
     @pytest.mark.asyncio
-    async def test_timeout_after_post_reraises_when_deal_absent(self):
+    async def test_timeout_after_post_reports_not_created_when_deal_absent(self):
         def handler(request: httpx.Request) -> httpx.Response:
             if request.method == "POST":
                 raise httpx.ReadTimeout("lost response", request=request)
             return httpx.Response(200, json={"deals": [_ix_response(externalDealID="NOPE")]})
 
-        with pytest.raises(httpx.ReadTimeout):
+        with pytest.raises(SSPDealNotCreatedError) as exc_info:
             await self._client(handler).create_deal(_valid_create_request())
+        assert exc_info.value.upstream_status is None
+        assert isinstance(exc_info.value.__cause__, httpx.ReadTimeout)
 
     @pytest.mark.asyncio
     async def test_5xx_then_failed_lookup_raises_outcome_unknown(self):
@@ -850,8 +853,10 @@ class TestIndexExchangeCreateDealAmbiguousFailure:
             calls.append(request.method)
             return httpx.Response(status, json={})
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(SSPDealNotCreatedError) as exc_info:
             await self._client(handler).create_deal(_valid_create_request())
+        assert exc_info.value.upstream_status == status
+        assert isinstance(exc_info.value.__cause__, httpx.HTTPStatusError)
         assert calls == ["POST"]
 
     @pytest.mark.asyncio
@@ -862,8 +867,10 @@ class TestIndexExchangeCreateDealAmbiguousFailure:
             calls.append(request.method)
             raise httpx.ConnectError("refused", request=request)
 
-        with pytest.raises(httpx.ConnectError):
+        with pytest.raises(SSPDealNotCreatedError) as exc_info:
             await self._client(handler).create_deal(_valid_create_request())
+        assert exc_info.value.upstream_status is None
+        assert isinstance(exc_info.value.__cause__, httpx.ConnectError)
         assert calls == ["POST"]
 
     def test_create_request_accepts_dict_and_list_targeting(self):
@@ -919,8 +926,9 @@ class TestSSPErrors:
             account_id=12345,
             dsp_id=5551,
         )
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(SSPDealNotCreatedError) as exc_info:
             await client.create_deal(request)
+        assert exc_info.value.upstream_status == 400
 
 
 class _MockSSPClient(SSPClient):

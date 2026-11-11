@@ -19,7 +19,10 @@ from typing import Any, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+from ...clients.ssp_base import SSPDealNotCreatedError
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +95,14 @@ app.add_middleware(
     allow_credentials=False,
     expose_headers=["*"],
 )
+
+
+@app.exception_handler(SSPDealNotCreatedError)
+async def _ssp_deal_not_created(_request, exc: SSPDealNotCreatedError) -> JSONResponse:
+    from ...services.deal_service import ssp_not_created_http_exception
+
+    http_exc = ssp_not_created_http_exception(exc)
+    return JSONResponse(status_code=http_exc.status_code, content={"detail": http_exc.detail})
 
 
 # =============================================================================

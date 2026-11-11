@@ -30,6 +30,14 @@ class SSPDealOutcomeUnknownError(Exception):
     """create_deal may or may not have created the deal and this could not be confirmed."""
 
 
+class SSPDealNotCreatedError(Exception):
+    """create_deal failed and the SSP reported no deal was created."""
+
+    def __init__(self, message: str, *, upstream_status: Optional[int] = None) -> None:
+        super().__init__(message)
+        self.upstream_status = upstream_status
+
+
 # =============================================================================
 # SSP result models
 # =============================================================================

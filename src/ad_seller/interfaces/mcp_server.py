@@ -85,10 +85,15 @@ async def _service_json(coro) -> str:
     """
     from fastapi import HTTPException
 
+    from ..clients.ssp_base import SSPDealNotCreatedError
+    from ..services.deal_service import ssp_not_created_http_exception
+
     try:
         result = await coro
     except HTTPException as exc:
         return _dumps({"detail": exc.detail})
+    except SSPDealNotCreatedError as exc:
+        return _dumps({"detail": ssp_not_created_http_exception(exc).detail})
     return _dumps(result)
 
 
