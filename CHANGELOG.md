@@ -72,6 +72,17 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- Approval decisions are now validated (#120). `POST /approvals/{id}/decide`
+  and MCP `approve_or_reject` accept only `approve`, `reject` and `counter`
+  (any case, surrounding whitespace ignored) and store the lowercase form.
+  Anything else, such as a typo like `aprove`, previously recorded the
+  approval as rejected; it is now a 400 and the approval stays pending so
+  it can be decided again. A capitalised `Approve` previously also rejected,
+  and now approves.
+- MCP `approve_or_reject` now records the verified operator as
+  `decided_by_principal` (`apikey:<key_id>:<identity>` over HTTP,
+  `local:mcp-stdio` for local stdio access), so MCP decisions no longer
+  appear anonymous in the approval audit record and decision event (#120).
 - CSV/S3 inventory now keeps the `inventory_type` declared in the row
   instead of guessing it from the name, ad formats or sizes. Rows that
   declare `ctv` were being served as `display`, and `linear`,

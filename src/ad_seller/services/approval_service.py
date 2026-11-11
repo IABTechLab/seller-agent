@@ -59,8 +59,13 @@ async def decide_approval(
     by the caller (the REST router); it is stamped into the audit record so
     the trail cannot be forged via the request body.
     """
-    from ..events.approval import ApprovalGate
+    from ..events.approval import ApprovalGate, normalize_decision
     from ..storage.factory import get_storage
+
+    try:
+        decision = normalize_decision(decision)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     storage = await get_storage()
     gate = ApprovalGate(storage)
