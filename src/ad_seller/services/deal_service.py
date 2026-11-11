@@ -587,12 +587,18 @@ async def create_deal_from_template(
     request: Any,
     buyer_context: Any,
     catalog: dict[str, Any],
+    *,
+    idempotency_record: Optional[tuple[str, str]] = None,
 ) -> dict[str, Any]:
     """Create a deal directly from template parameters (quote + auto-book).
 
     Product resolution now reads the single cached catalog source
     (EP-3.3) instead of running ProductSetupFlow per request.
     Returns the created deal data dict (includes ``schain``).
+
+    ``idempotency_record`` is ``(storage_key, payload_hash)``. It is written
+    right after the deal is persisted and before ``deal.created`` is
+    emitted, so a retry replays the deal even if the event fails.
     """
     from ..engines.pricing_rules_engine import PricingRulesEngine
     from ..models.pricing_tiers import TieredPricingConfig
@@ -699,6 +705,18 @@ async def create_deal_from_template(
 
     storage = await get_storage()
     await storage.set_deal(deal_id, deal_data)
+    if idempotency_record is not None:
+        storage_key, payload_hash = idempotency_record
+        try:
+            await storage.set(
+                storage_key,
+                {"deal_id": deal_id, "payload_hash": payload_hash},
+                ttl=86400,
+            )
+        except Exception:
+            logger.warning(
+                "Could not record idempotency key for template deal %s", deal_id, exc_info=True
+            )
     await _emit_deal_created(deal_data, source="template")
 
     return deal_data

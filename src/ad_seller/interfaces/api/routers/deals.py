@@ -15,7 +15,7 @@ and handler behavior are otherwise unchanged.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from iab_agentic_primitives.primitives import DealStatus
@@ -410,11 +410,44 @@ async def create_deal_from_template(
         agent_url=request.agent_url,
     )
 
-    deal_data = await deal_service.create_deal_from_template(request, context, catalog)
+    idempotency_record = None
+    if request.idempotency_key is not None:
+        from ....storage.factory import get_storage
 
+        buyer_scope = cm.idempotency_buyer_scope(api_key_record.identity)
+        if buyer_scope == "public":
+            buyer_scope = f"key:{api_key_record.key_id}"
+        storage_key = f"idempotency:deal-template:{buyer_scope}:{request.idempotency_key}"
+        payload_hash = cm.request_payload_hash(
+            request.model_dump(mode="json", exclude={"idempotency_key"})
+        )
+        storage = await get_storage()
+        try:
+            prior = await storage.get(storage_key)
+        except Exception:
+            prior = None
+        if isinstance(prior, dict) and prior.get("deal_id"):
+            if prior.get("payload_hash") != payload_hash:
+                raise HTTPException(
+                    status_code=409,
+                    detail=cm.idempotency_conflict_detail(
+                        f"idempotency_key '{request.idempotency_key}' was already used "
+                        "for a different template booking request."
+                    ),
+                )
+            return _template_deal_response(await deal_service.get_deal(prior["deal_id"]))
+        idempotency_record = (storage_key, payload_hash)
+
+    deal_data = await deal_service.create_deal_from_template(
+        request, context, catalog, idempotency_record=idempotency_record
+    )
+    return _template_deal_response(deal_data)
+
+
+def _template_deal_response(deal_data: dict[str, Any]) -> DealFromTemplateResponse:
     return DealFromTemplateResponse(
         deal_id=deal_data["deal_id"],
-        status="confirmed",
+        status=deal_data.get("status", "confirmed"),
         deal_type=deal_data["deal_type"],
         product_id=deal_data["product_id"],
         actual_price_cpm=deal_data["actual_price_cpm"],

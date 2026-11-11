@@ -449,6 +449,7 @@ class DealFromTemplateRequest(BaseModel):
     # EP-5.2: buyer agent URL for registry trust verification. When present,
     # the registry-verified ceiling caps even the API key's identity tier.
     agent_url: Optional[str] = None
+    idempotency_key: Optional[str] = Field(default=None, min_length=1, max_length=255)
 
 
 class DealFromTemplateResponse(BaseModel):
