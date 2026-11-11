@@ -26,6 +26,11 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Changed
 
+- SSP approval resumes now claim an attempt atomically. `GET /approvals/{id}` responses include
+  `resume_token`, an attempt identifier that is not a resume credential.
+- Custom `StorageBackend` implementations must implement `compare_and_set` before
+  supporting SSP approval resumes. The default raises `NotImplementedError`.
+
 - Index Exchange SSP connector rewritten against the real `/v3/deals` API
   (create, get, list, update, clone, troubleshoot, seat-ID to DSP
   resolution). Seat IDs that resolve to several DSPs pause for operator

@@ -183,3 +183,36 @@ async def test_cancelled_create_requires_reconciliation(tmp_path):
             assert (await backend.get(key))["status"] == "consumed"
     finally:
         await backend.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_failed_reconciliation_never_retries_create(tmp_path):
+    backend = SQLiteBackend(str(tmp_path / "approval.db"))
+    await backend.connect()
+    try:
+        fixture = ResumeFixtures()
+        request = fixture._approval_request(status=ApprovalStatus.OUTCOME_UNKNOWN)
+        response = ApprovalResponse(
+            approval_id=request.approval_id,
+            decision="approve",
+            modifications={"selected_dsp_id": 52},
+        )
+        key = f"approval:{request.approval_id}"
+        await backend.set(key, request.model_dump(mode="json"))
+        await backend.set(
+            f"approval_response:{request.approval_id}", response.model_dump(mode="json")
+        )
+        registry, ssp = fixture._mock_registry(fixture._created_deal())
+        ssp.find_deal_by_external_id.side_effect = RuntimeError("lookup failed")
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=backend),
+            patch("ad_seller.clients.ssp_factory.build_ssp_registry", return_value=registry),
+        ):
+            for _ in range(2):
+                with pytest.raises(RuntimeError, match="lookup failed"):
+                    await resume_flow(request.approval_id)
+                assert (await backend.get(key))["status"] == "outcome_unknown"
+                ssp.create_deal.assert_not_awaited()
+        assert ssp.find_deal_by_external_id.await_count == 2
+    finally:
+        await backend.disconnect()
