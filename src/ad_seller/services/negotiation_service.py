@@ -233,6 +233,8 @@ async def submit_proposal(
             "proposal_id": proposal_id,
             "recommendation": result.get("recommendation"),
             "status": result.get("status"),
+            "evaluated_by": result.get("evaluated_by"),
+            "fallback_reason": result.get("fallback_reason"),
         },
     )
     product = catalog["products"].get(request.product_id)
@@ -268,6 +270,9 @@ async def submit_proposal(
             context={
                 "proposal_id": proposal_id,
                 "recommendation": result["recommendation"],
+                "evaluated_by": result.get("evaluated_by"),
+                "fallback_reason": result.get("fallback_reason"),
+                "warnings": result.get("warnings", []),
                 "evaluation": result.get("evaluation"),
                 "counter_terms": result.get("counter_terms"),
                 "pricing_verified": pricing_verified,
@@ -285,6 +290,8 @@ async def submit_proposal(
             "pricing_verified": pricing_verified,
             "pricing_verification_reason": pricing_verification_reason,
             "errors": result.get("errors", []),
+            "evaluated_by": result.get("evaluated_by"),
+            "fallback_reason": result.get("fallback_reason"),
         }
 
     # Wire commitment (issue #34): status=failed must never ship an empty
@@ -310,6 +317,8 @@ async def submit_proposal(
         "pricing_verified": pricing_verified,
         "pricing_verification_reason": pricing_verification_reason,
         "errors": errors,
+        "evaluated_by": result.get("evaluated_by"),
+        "fallback_reason": result.get("fallback_reason"),
     }
 
 

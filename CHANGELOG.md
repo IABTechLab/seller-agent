@@ -72,6 +72,18 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Fixed
 
+- `POST /proposals` now says whether the proposal-review crew or the
+  deterministic fallback produced the recommendation (#118). New response
+  fields `evaluated_by` (`crew` / `fallback`) and `fallback_reason`
+  (`crew_error`, `crew_timeout`, `crew_skipped`, `crew_not_configured`,
+  `crew_no_structured_output`) distinguish a fallback answer from a crew
+  answer, which previously returned an identical response. The response
+  carries only the code, never provider error text. The approval request's
+  `context` now also includes both fields plus the flow's `warnings` with
+  the full cause, so the approver can see why the crew didn't decide.
+  Both fields are stored with the proposal and added to the
+  `proposal.evaluated` event payload. A crew that finishes without a
+  structured review now records a warning instead of falling back silently.
 - CSV/S3 inventory now keeps the `inventory_type` declared in the row
   instead of guessing it from the name, ad formats or sizes. Rows that
   declare `ctv` were being served as `display`, and `linear`,
