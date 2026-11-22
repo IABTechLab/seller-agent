@@ -368,6 +368,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
     deal_expires = now + timedelta(days=30)
 
     from ..models.quotes import QuotePricing, QuoteProductInfo, QuoteTerms
+    from .deals_api import build_openrtb_deal_params
 
     deal = DealBookingResponse(
         deal_id=deal_id,
@@ -384,13 +385,12 @@ async def book_deal(request: Any) -> dict[str, Any]:
             "dv360": f"In DV360, add deal {deal_id} under Inventory > My Inventory > Deals",
             "xandr": f"In Xandr, navigate to Deals and enter Deal ID: {deal_id}",
         },
-        openrtb_params={
-            "id": deal_id,
-            "bidfloor": quote["pricing"]["final_cpm"],
-            "bidfloorcur": "USD",
-            "at": 3 if quote["deal_type"] == "PA" else 1,
-            "wseat": [],
-        },
+        openrtb_params=build_openrtb_deal_params(
+            deal_id,
+            quote["deal_type"],
+            quote["pricing"]["final_cpm"],
+            currency=quote["pricing"].get("currency") or "USD",
+        ),
         created_at=now.isoformat() + "Z",
     )
 
