@@ -46,6 +46,8 @@ class BuyerIdentity(BaseModel):
     seat_id: Optional[str] = None
     seat_name: Optional[str] = None
     dsp_platform: Optional[str] = None  # ttd, amazon, dv360, etc.
+    # Further DSP seat IDs allowed to bid on this buyer's deals (OpenRTB wseat)
+    seat_ids: list[str] = Field(default_factory=list)
 
     # Agency level
     agency_id: Optional[str] = None
@@ -56,6 +58,8 @@ class BuyerIdentity(BaseModel):
     advertiser_id: Optional[str] = None
     advertiser_name: Optional[str] = None
     advertiser_industry: Optional[str] = None
+    # Advertiser landing domains for this buyer's deals (OpenRTB wadomain)
+    advertiser_domains: list[str] = Field(default_factory=list)
 
     # Campaign level (optional, for campaign-specific deals)
     campaign_id: Optional[str] = None

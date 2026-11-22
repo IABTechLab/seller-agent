@@ -266,7 +266,7 @@ async def book_deal(
         existing = await deal_service.get_deal(prior)
         return cm.internal_deal_to_response(existing)
 
-    result = await deal_service.book_deal(internal_request)
+    result = await deal_service.book_deal(internal_request, buyer_context=context)
 
     try:
         await storage.set(

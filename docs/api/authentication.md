@@ -93,10 +93,14 @@ curl -X POST http://localhost:8000/auth/api-keys \
     "agency_name": "Mega Agency",
     "advertiser_id": "adv-widget-co",
     "advertiser_name": "Widget Co",
+    "seat_ids": ["seat-acme-002"],
+    "advertiser_domains": ["widget.example"],
     "label": "Widget Co production key",
     "expires_in_days": 365
   }'
 ```
+
+Deals booked with this key carry OpenRTB `wseat` (`seat_id` plus `seat_ids`) and `wadomain` (`advertiser_domains`); with neither set, both lists are empty and the deal is open to any seat.
 
 This endpoint always creates a **buyer** key. There is no `role` field — operator keys use a separate endpoint.
 

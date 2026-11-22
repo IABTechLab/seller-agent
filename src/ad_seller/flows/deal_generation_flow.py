@@ -171,6 +171,8 @@ class DealGenerationFlow(Flow[DealGenerationState]):
             deal.floor_price or deal.price,
             currency=deal.currency,
             guaranteed_impressions=deal.guaranteed_impressions,
+            seat_ids=self.state.proposal_data.get("wseat"),
+            advertiser_domains=self.state.proposal_data.get("wadomain"),
         )
 
     @listen(generate_openrtb_params)

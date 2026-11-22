@@ -114,6 +114,9 @@ class ApiKeyCreateRequest(BaseModel):
     agency_holding_company: Optional[str] = None
     advertiser_id: Optional[str] = None
     advertiser_name: Optional[str] = None
+    # OpenRTB deal allow-lists stamped on this buyer's deals
+    seat_ids: list[str] = Field(default_factory=list)
+    advertiser_domains: list[str] = Field(default_factory=list)
 
     # Key metadata
     label: str = ""

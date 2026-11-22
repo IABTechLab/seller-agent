@@ -117,6 +117,23 @@ def build_openrtb_deal_params(
     return params
 
 
+def verified_deal_allow_lists(buyer_context: Any) -> tuple[list[str], list[str]]:
+    """OpenRTB ``(wseat, wadomain)`` for a buyer's deal, from verified identity only.
+
+    Seats are the identity's ``seat_id`` plus ``seat_ids``; domains are its
+    ``advertiser_domains``. Only an API-key identity (issued by the seller)
+    counts: self-asserted request fields never restrict or widen a deal.
+    """
+    if buyer_context is None or getattr(buyer_context, "authentication_method", None) != (
+        "api_key"
+    ):
+        return [], []
+    identity = buyer_context.identity
+    seats = [s for s in [identity.seat_id, *identity.seat_ids] if s]
+    domains = [d.strip().lower() for d in identity.advertiser_domains if d and d.strip()]
+    return list(dict.fromkeys(seats)), list(dict.fromkeys(domains))
+
+
 # =============================================================================
 # IAB Deals API v1.0 models
 # =============================================================================

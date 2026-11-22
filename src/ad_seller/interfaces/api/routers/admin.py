@@ -111,6 +111,8 @@ async def create_api_key(
         agency_holding_company=request.agency_holding_company,
         advertiser_id=request.advertiser_id,
         advertiser_name=request.advertiser_name,
+        seat_ids=request.seat_ids,
+        advertiser_domains=request.advertiser_domains,
         label=request.label,
         expires_in_days=request.expires_in_days,
     )

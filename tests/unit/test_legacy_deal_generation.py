@@ -390,3 +390,17 @@ async def test_approval_decision_updates_the_stored_proposal(storage, decision, 
         await _resume_proposal_flow(request, response)
 
     assert storage._store["proposal:prop-1"]["status"] == status
+
+
+async def test_deal_carries_the_callers_verified_allow_lists(storage):
+    identity = BuyerIdentity(
+        agency_id="agency-1", seat_id="seat-1", advertiser_domains=["brand.test"]
+    )
+    storage._store["proposal:prop-1"] = _proposal(buyer_key=_owner_key(identity))
+
+    resp = await _post(storage, identity=identity)
+
+    assert resp.status_code == 200, resp.text
+    params = resp.json()["openrtb_params"]
+    assert params["wseat"] == ["seat-1"]
+    assert params["wadomain"] == ["brand.test"]
