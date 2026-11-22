@@ -124,6 +124,15 @@ async def resume_flow(approval_id: str) -> dict[str, Any]:
     if request.flow_type == "ssp_distribution" and request.gate_name == "dsp_resolution":
         return await _resume_ssp_distribution(request, response)
 
+    if request.flow_type == "deal_booking" and request.gate_name == "deal_booking":
+        # Nothing to re-run: the buyer re-submits POST /api/v1/deals, which
+        # books once the approval for those exact terms is approved.
+        return {
+            "quote_id": request.context.get("quote_id"),
+            "status": "approved" if response.decision == "approve" else "rejected",
+            "resumed_from_approval": request.approval_id,
+        }
+
     raise HTTPException(
         status_code=400,
         detail=f"Unknown flow_type/gate_name: {request.flow_type}/{request.gate_name}",

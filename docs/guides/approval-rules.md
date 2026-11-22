@@ -196,7 +196,17 @@ Currently supported:
 
 | Gate Name | Flow | When Triggered |
 |-----------|------|---------------|
-| `proposal_decision` | ProposalHandlingFlow | After crew evaluates a buyer proposal and recommends accept/counter/reject |
+| `proposal_decision` | ProposalHandlingFlow | After crew evaluates a buyer proposal and recommends accept/counter/reject. Also gates `POST /api/v1/deals` when the booked quote carries a proposal-led negotiated price |
+| `deal_booking` | `POST /api/v1/deals` | Every quote booking |
+
+Quote booking is also held whenever its gross value (final CPM x
+impressions / 1000) reaches `APPROVAL_REQUIRED_ABOVE_VALUE`, the same
+threshold `POST /proposals` uses. A held booking answers HTTP 202 with
+`status: pending_approval` and an `approval_id`; no deal is minted. Once an
+operator decides (`POST /approvals/{id}/decide`), the buyer re-submits the
+booking: an approval for the same price and impressions books the deal, a
+rejection is a 409 `booking_rejected`, and an approval for different terms
+raises a new request.
 
 Example:
 
