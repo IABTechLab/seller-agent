@@ -276,16 +276,12 @@ class TestTypedRoundsBlockReconstruction:
         # value itself appear anywhere.
         assert str(SELLER_BASE_PRICE) not in resp.text
 
-        # No round field names or narrates the floor. The one place the
-        # floor VALUE legitimately appears is seller_price: the engine
-        # counters every below-floor offer AT the floor, so the counter
-        # price numerically equals it. That is a price on the wire, not a
-        # disclosure — the leak was the rationale labeling it as the floor,
-        # and rationale is gone.
+        # No round field names or narrates the floor, and the below-floor
+        # counter sits above it, so the floor value appears nowhere.
         assert "floor" not in resp.text.lower()
         floor_str = f"{SELLER_FLOOR_PRICE:.2f}"
         for r in body["rounds"]:
-            assert r["seller_price"] == pytest.approx(SELLER_FLOOR_PRICE)
+            assert r["seller_price"] > SELLER_FLOOR_PRICE
             for key, value in r.items():
                 if key == "seller_price":
                     continue

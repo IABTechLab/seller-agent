@@ -727,7 +727,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         """A rejected offer that is really a below-floor opener.
 
         Policy: EVERY valid below-floor offer is
-        countered AT the floor instead of terminally rejected — there is
+        countered (above the floor) instead of terminally rejected — there is
         no deep-lowball walk-away threshold. Applied to BOTH evaluators —
         a crew reject is normalized exactly like the deterministic
         fallback's counter path. Nonpositive prices are not valid offers.
@@ -758,7 +758,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         if self.state.recommendation == "reject" and (
             self._lowball_counter_applies() or self._volume_counter_applies()
         ):
-            # ANY below-floor opener must be invited up to the floor, and
+            # ANY below-floor opener must be invited up with a counter, and
             # ANY volume shortfall with partial availability must be
             # countered with the available volume — not terminally
             # rejected — whichever evaluator (crew or fallback) said
@@ -791,16 +791,11 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         if not product:
             return
 
-        # Use NegotiationEngine for strategy-aware counter
-        from ..engines.negotiation_engine import NegotiationEngine
-        from ..engines.pricing_rules_engine import PricingRulesEngine
-        from ..engines.yield_optimizer import YieldOptimizer
-        from ..models.pricing_tiers import TieredPricingConfig
+        # Use NegotiationEngine for strategy-aware counter (same wiring as
+        # the REST negotiation path).
+        from ..services.negotiation_service import build_negotiation_engine
 
-        pricing_config = TieredPricingConfig(seller_organization_id="default")
-        pricing_engine = PricingRulesEngine(pricing_config)
-        yield_opt = YieldOptimizer()
-        neg_engine = NegotiationEngine(pricing_engine, yield_opt)
+        neg_engine = build_negotiation_engine()
 
         history = neg_engine.start_negotiation(
             proposal_id=self.state.proposal_id,

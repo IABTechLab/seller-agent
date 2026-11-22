@@ -1,8 +1,14 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""ALL below-floor openers must COUNTER at the floor, not terminally REJECT
+"""ALL below-floor openers must COUNTER, not terminally REJECT
 (universalized by).
+
+Engine-level tests in this module run the engine with
+``below_floor_counter_share=0`` (``NEGOTIATION_BELOW_FLOOR_COUNTER_SHARE=0``),
+which counters exactly at the floor. The default counters above the floor
+(see ``test_negotiation_below_floor_margin.py``); the flow and REST tests
+below exercise that default.
 
 The live S2 proof (docs/reports/S2_NEGOTIATION_LIVE_PROOF in agent_range)
 showed the buyer's Stage 3.5 only fires when its target is below the
@@ -66,11 +72,20 @@ from ad_seller.services import negotiation_service  # noqa: E402
 # Fixtures / helpers
 # =============================================================================
 
+# Default below-floor counter for the agency buyer on the 35/28 product:
+# 35.00 list -> 31.50 agency price; COLLABORATIVE keeps half the gap to the
+# 28.00 floor -> 29.75.
+DEFAULT_COUNTER = 29.75
+
 
 @pytest.fixture
 def engine():
     config = TieredPricingConfig(seller_organization_id="test-seller")
-    return NegotiationEngine(PricingRulesEngine(config=config), MagicMock(spec=YieldOptimizer))
+    return NegotiationEngine(
+        PricingRulesEngine(config=config),
+        MagicMock(spec=YieldOptimizer),
+        below_floor_counter_share=0.0,
+    )
 
 
 @pytest.fixture
@@ -419,13 +434,13 @@ class TestFlowPathsProduceCounter:
 
         assert result["recommendation"] == "counter"
         assert result["counter_terms"] is not None
-        assert result["counter_terms"]["proposed_price"] == 28.0
+        assert result["counter_terms"]["proposed_price"] == DEFAULT_COUNTER
         assert result["counter_terms"]["action"] == "counter"
 
         history = result.get("_negotiation_history")
         assert history is not None, "counter round was not exposed for persistence"
         assert history["status"] == "active"
-        assert history["rounds"][0]["seller_price"] == 28.0
+        assert history["rounds"][0]["seller_price"] == DEFAULT_COUNTER
         assert history["rounds"][0]["action"] == "counter"
 
     def test_crew_reject_of_counterable_lowball_is_countered(self):
@@ -443,7 +458,7 @@ class TestFlowPathsProduceCounter:
 
         assert result["recommendation"] == "counter"
         assert result["counter_terms"] is not None
-        assert result["counter_terms"]["proposed_price"] == 28.0
+        assert result["counter_terms"]["proposed_price"] == DEFAULT_COUNTER
         history = result.get("_negotiation_history")
         assert history is not None
         assert history["status"] == "active"
@@ -465,7 +480,7 @@ class TestFlowPathsProduceCounter:
 
         assert result["recommendation"] == "counter"
         assert result["counter_terms"] is not None
-        assert result["counter_terms"]["proposed_price"] == 28.0
+        assert result["counter_terms"]["proposed_price"] == DEFAULT_COUNTER
         history = result.get("_negotiation_history")
         assert history is not None
         assert history["status"] == "active"
@@ -494,7 +509,7 @@ class TestRestSurface:
     @pytest.mark.asyncio
     async def test_messages_endpoint_counters_below_floor_open(self, client, mock_storage):
         """POST /api/v1/negotiations/messages: a below-floor open must come
-        back as a counter at the floor (28), not a terminal reject."""
+        back as a counter above the floor (28), not a terminal reject."""
         mock_storage._store["proposal:prop-lb1"] = {
             "proposal_id": "prop-lb1",
             "product_id": "ctv-premium-sports",
@@ -524,12 +539,14 @@ class TestRestSurface:
         body = resp.json()
         assert body["status"] == "active"
         assert body["round"]["action"] == "counter"
-        assert body["round"]["seller_price"]["amount_micros"] == 28_000_000
+        # Keyless caller -> PUBLIC tier (AGGRESSIVE keeps 70% of the gap):
+        # 28.00 + (35.00 - 28.00) * 0.7 = 32.90.
+        assert body["round"]["seller_price"]["amount_micros"] == 32_900_000
         # Counter round persisted for the buyer's next message
         stored = mock_storage._store["negotiation:prop-lb1"]
         assert stored["status"] == "active"
         assert stored["rounds"][-1]["action"] == "counter"
-        assert stored["rounds"][-1]["seller_price"] == 28.0
+        assert stored["rounds"][-1]["seller_price"] == 32.9
 
     @pytest.mark.asyncio
     async def test_cold_continuation_buyer_accepts_floor_counter(self, mock_storage):
@@ -553,15 +570,15 @@ class TestRestSurface:
                 "prop-lb2", buyer_price=25.0, buyer_context=_make_buyer_context()
             )
             assert r1["action"] == "counter"
-            assert r1["seller_price"] == 28.0
+            assert r1["seller_price"] == DEFAULT_COUNTER
             assert r1["status"] == "active"
 
             r2 = await negotiation_service.counter_proposal(
-                "prop-lb2", buyer_price=28.0, buyer_context=_make_buyer_context()
+                "prop-lb2", buyer_price=DEFAULT_COUNTER, buyer_context=_make_buyer_context()
             )
 
         assert r2["action"] == "accept"
-        assert r2["seller_price"] == 28.0
+        assert r2["seller_price"] == DEFAULT_COUNTER
         assert r2["status"] == "accepted"
         assert r2["negotiation_id"] == r1["negotiation_id"]
         assert r2["round_number"] == 2

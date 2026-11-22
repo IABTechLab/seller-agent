@@ -240,7 +240,7 @@ class TestVolumeShortfallCounters:
 
     def test_volume_shortfall_with_below_floor_price_counters_both(self):
         """Volume over available AND price below floor: one counter fixes
-        both — floor price (lowball convention) + available volume."""
+        both — a price above the floor (lowball convention) + available volume."""
         result = _run_flow(
             "raise",
             price=25.0,
@@ -250,7 +250,8 @@ class TestVolumeShortfallCounters:
         assert result["recommendation"] == "counter"
         ct = result["counter_terms"]
         assert ct is not None
-        assert ct["proposed_price"] == 28.0  # counter-at-floor convention
+        # Agency tier: 35.00 list -> 31.50, countered halfway to the 28 floor.
+        assert ct["proposed_price"] == 29.75
         assert ct["max_impressions"] == 800_000
         assert ct["action"] == "counter"
         history = result.get("_negotiation_history")

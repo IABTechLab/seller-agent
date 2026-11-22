@@ -301,7 +301,7 @@ class TestCounterTermsDoesNotCarryFloor:
         dropping floor_price must not have disturbed them."""
         result = _run_flow(price=25.0)
         counter_terms = result["counter_terms"]
-        assert counter_terms["proposed_price"] == FLOOR_PRICE
+        assert counter_terms["proposed_price"] > FLOOR_PRICE
         assert counter_terms["negotiation_id"]
         assert counter_terms["action"] == "counter"
 
@@ -472,7 +472,7 @@ class TestEngineEmitsTwoRationales:
 
     def test_below_floor_counter(self):
         round_result, _ = _drive_engine_to(NegotiationAction.COUNTER, buyer_price=25.0)
-        assert round_result.seller_price == FLOOR_PRICE  # countering AT the floor
+        assert round_result.seller_price > FLOOR_PRICE  # countering above the floor
         _assert_buyer_facing(round_result.buyer_rationale, "the below-floor COUNTER")
         # Internal keeps the full story: floor value, the word, the budget.
         assert f"{FLOOR_PRICE:.2f}" in round_result.rationale
@@ -481,7 +481,7 @@ class TestEngineEmitsTwoRationales:
 
     def test_below_floor_final_offer(self):
         round_result, _ = _drive_engine_to(NegotiationAction.FINAL_OFFER, buyer_price=25.0)
-        assert round_result.seller_price == FLOOR_PRICE
+        assert round_result.seller_price > FLOOR_PRICE
         _assert_buyer_facing(round_result.buyer_rationale, "the below-floor FINAL_OFFER")
         assert f"{FLOOR_PRICE:.2f}" in round_result.rationale
         assert "floor" in round_result.rationale.lower()
