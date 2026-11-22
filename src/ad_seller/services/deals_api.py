@@ -29,6 +29,53 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# OpenRTB deal parameters
+# =============================================================================
+
+_DEAL_TYPE_CODES = {
+    "PG": "PG",
+    "PROGRAMMATICGUARANTEED": "PG",
+    "PD": "PD",
+    "PREFERREDDEAL": "PD",
+    "PA": "PA",
+    "PRIVATEAUCTION": "PA",
+}
+
+
+def build_openrtb_deal_params(
+    deal_id: str,
+    deal_type: Any,
+    price: float,
+    *,
+    currency: str = "USD",
+    seat_ids: Optional[list[str]] = None,
+    advertiser_domains: Optional[list[str]] = None,
+    guaranteed_impressions: Optional[int] = None,
+) -> dict[str, Any]:
+    """OpenRTB 2.x ``imp.pmp.deals[]`` parameters for a seller deal.
+
+    Single source for every deal path (quote booking, proposal deal
+    generation, Deals API sync). ``at`` follows OpenRTB: PG and PD are
+    fixed-price deals (``at=3``, ``bidfloor`` is the deal price); PA is an
+    auction (``at=1`` first price, ``bidfloor`` is the floor). ``wseat`` /
+    ``wadomain`` are allow-lists; empty means unrestricted.
+    """
+    raw = str(getattr(deal_type, "value", deal_type) or "").upper().replace("_", "")
+    code = _DEAL_TYPE_CODES.get(raw, "PD")
+    params: dict[str, Any] = {
+        "id": deal_id,
+        "bidfloor": price,
+        "bidfloorcur": currency,
+        "at": 1 if code == "PA" else 3,
+        "wseat": list(seat_ids or []),
+        "wadomain": list(advertiser_domains or []),
+    }
+    if code == "PG" and guaranteed_impressions:
+        params["ext"] = {"guaranteed": True, "impressions": guaranteed_impressions}
+    return params
+
+
+# =============================================================================
 # IAB Deals API v1.0 models
 # =============================================================================
 
@@ -164,15 +211,9 @@ class DealsAPIService:
         floor_price = None if is_fixed else price
         fixed_price = price if is_fixed else None
 
-        # OpenRTB params
-        openrtb = {
-            "id": deal_id,
-            "bidfloor": price,
-            "bidfloorcur": "USD",
-            "at": 3 if is_fixed else 1,  # 3=fixed, 1=first-price auction
-        }
-        if buyer_seat_ids:
-            openrtb["wseat"] = buyer_seat_ids
+        openrtb = build_openrtb_deal_params(
+            deal_id, normalized_type, price, seat_ids=buyer_seat_ids
+        )
 
         now = datetime.now(timezone.utc).isoformat()
 

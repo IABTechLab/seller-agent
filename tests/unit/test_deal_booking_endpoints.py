@@ -201,8 +201,23 @@ class TestBookDeal:
         assert stored_deal["deal_id"] == deal_id
         assert stored_deal["status"] == "proposed"
 
-    async def test_pa_deal_sets_auction_type_3(self, client, mock_storage):
+    async def test_pa_deal_sets_first_price_auction_type(self, client, mock_storage):
         quote = _make_available_quote(deal_type="PA")
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["deal"]["openrtb_params"]["at"] == 1
+
+    @pytest.mark.parametrize("deal_type", ["PG", "PD"])
+    async def test_fixed_price_deal_sets_fixed_auction_type(self, client, mock_storage, deal_type):
+        quote = _make_available_quote(deal_type=deal_type)
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
         _authenticate()
 
