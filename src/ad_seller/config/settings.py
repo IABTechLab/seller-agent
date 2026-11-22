@@ -239,6 +239,13 @@ class Settings(BaseSettings):
     # auto-finalize. 0.0 disables the threshold gate (opt-in behavior only).
     approval_required_above_value: float = 0.0
 
+    # Programmatic Guaranteed quotes hold their impressions against a
+    # capacity-capped product (maximum_impressions) for the quote TTL, and
+    # booked PG volume stays held until the flight ends, so the same
+    # guaranteed capacity cannot be quoted twice. Products without a cap
+    # are not tracked.
+    pg_quote_inventory_hold_enabled: bool = True
+
     # Session Configuration
     session_ttl_seconds: int = 604800  # 7 days
     session_max_messages: int = 200

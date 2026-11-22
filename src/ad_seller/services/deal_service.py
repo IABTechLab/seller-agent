@@ -420,6 +420,10 @@ async def book_deal(request: Any) -> dict[str, Any]:
     quote["deal_id"] = deal_id
     await storage.set_quote(request.quote_id, quote, ttl=86400)
 
+    from .quote_service import commit_pg_hold
+
+    await commit_pg_hold(storage, quote)
+
     # Store the deal in deal storage (coexists with proposal-based deals).
     # The snapshot fields land on the persisted record so
     # `honor_audience_plan_snapshot()` can read them at fulfillment time.
