@@ -216,16 +216,16 @@ async def discovery_query(
     # Product data from the single cached catalog source (EP-3.3)
     catalog = await deps.get_product_catalog()
 
-    # Enforce agent registry
-    _, max_tier = await deps._resolve_and_enforce_agent(request.agent_url)
-
-    # Create buyer context (API key identity overrides body params)
-    context = deps._build_buyer_context(
+    # Discovery answers carry tier pricing (exact CPMs for seat and above),
+    # so the tier is verified like every other price-revealing path: a
+    # self-asserted body tier without a key or registry-verified agent
+    # floors to PUBLIC (price ranges only).
+    context = await deps._verified_buyer_context(
+        endpoint="POST /discovery",
         buyer_tier=request.buyer_tier,
         agency_id=request.agency_id,
         api_key_record=api_key_record,
         agent_url=request.agent_url,
-        max_access_tier=max_tier,
     )
 
     # Process discovery

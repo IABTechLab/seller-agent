@@ -25,11 +25,11 @@ async def create_session(
     api_key_record=Depends(deps._get_optional_api_key_record),
 ):
     """Create a new buyer conversation session."""
-    # Enforce agent registry
-    _, max_tier = await deps._resolve_and_enforce_agent(request.agent_url)
-
-    # API key identity overrides body params; is_authenticated derived from key
-    context = deps._build_buyer_context(
+    # The session's buyer context drives tier pricing in chat answers, so
+    # self-asserted identity floors to PUBLIC unless a seller-issued key or
+    # a registry-verified agent backs it.
+    context = await deps._verified_buyer_context(
+        endpoint="POST /sessions",
         buyer_tier="advertiser"
         if request.advertiser_id
         else ("agency" if request.agency_id else ("seat" if request.seat_id else "public")),
@@ -38,7 +38,6 @@ async def create_session(
         seat_id=request.seat_id,
         api_key_record=api_key_record,
         agent_url=request.agent_url,
-        max_access_tier=max_tier,
     )
 
     return await session_service.create_session(buyer_context=context)

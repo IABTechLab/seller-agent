@@ -143,7 +143,8 @@ async def search_media_kit(
     """
     context = None
     if api_key_record is not None:
-        context = deps._build_buyer_context(
+        context = await deps._verified_buyer_context(
+            endpoint="POST /media-kit/search",
             buyer_tier=request.buyer_tier,
             agency_id=request.agency_id,
             advertiser_id=request.advertiser_id,
@@ -273,7 +274,8 @@ async def list_packages(
             layer=pkg_layer, audience_filter=audience_filter
         )
     else:
-        context = deps._build_buyer_context(
+        context = await deps._verified_buyer_context(
+            endpoint="GET /packages",
             buyer_tier=buyer_tier,
             agency_id=agency_id,
             advertiser_id=advertiser_id,
@@ -300,7 +302,8 @@ async def get_package(
     if api_key_record is None:
         package = await service.get_package_public(package_id)
     else:
-        context = deps._build_buyer_context(
+        context = await deps._verified_buyer_context(
+            endpoint="GET /packages/{package_id}",
             buyer_tier=buyer_tier,
             agency_id=agency_id,
             advertiser_id=advertiser_id,
