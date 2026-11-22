@@ -554,27 +554,98 @@ async def get_deal_performance(deal_id: str) -> dict[str, Any]:
 # =============================================================================
 
 
-def generate_deal_from_proposal(proposal_id: str) -> dict[str, Any]:
-    """Generate a deal from an accepted proposal (legacy demo flow)."""
+_BOOKABLE_PROPOSAL_STATUSES = ("accepted", "approved")
+
+
+async def generate_deal_from_proposal(proposal_id: str, buyer_context: Any) -> dict[str, Any]:
+    """Generate a deal from a stored, accepted proposal (legacy ``POST /deals``).
+
+    - Unknown proposal: 404 ``proposal_not_found``.
+    - Not submitted by the caller's API key: 409 ``proposal_not_bookable``.
+      Ownership is the key-derived pricing key recorded at submission; a
+      proposal submitted without a key has no owner and cannot be turned
+      into a deal here.
+    - Not accepted (the proposal decision, an approval, or an accepted
+      negotiation): 409 ``proposal_not_accepted``.
+
+    The deal carries the proposal's terms; an accepted negotiation's agreed
+    price replaces the proposed price. A repeat call returns the deal
+    already generated for the proposal.
+    """
     from ..flows import DealGenerationFlow
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    proposal = await storage.get_proposal(proposal_id)
+    if not isinstance(proposal, dict):
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "proposal_not_found",
+                "message": f"Proposal '{proposal_id}' not found.",
+            },
+        )
+
+    caller_key = (
+        buyer_context.get_pricing_key()
+        if getattr(buyer_context, "authentication_method", None) == "api_key"
+        else None
+    )
+    if (
+        caller_key is None
+        or proposal.get("buyer_auth") != "api_key"
+        or proposal.get("buyer_key") != caller_key
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proposal_not_bookable",
+                "message": f"Proposal '{proposal_id}' was not submitted by this API key.",
+            },
+        )
+
+    if isinstance(proposal.get("deal"), dict):
+        return proposal["deal"]
+
+    price = proposal.get("accepted_price", proposal.get("price"))
+    accepted = proposal.get("status") in _BOOKABLE_PROPOSAL_STATUSES
+    negotiation = await storage.get_negotiation(proposal_id)
+    if isinstance(negotiation, dict) and negotiation.get("status") == "accepted":
+        rounds = negotiation.get("rounds") or []
+        agreed = rounds[-1].get("seller_price") if rounds else None
+        if agreed is not None:
+            price, accepted = agreed, True
+    if not accepted:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proposal_not_accepted",
+                "message": (
+                    f"Proposal '{proposal_id}' is '{proposal.get('status')}'; only accepted "
+                    "or approved proposals can be turned into deals."
+                ),
+            },
+        )
 
     flow = DealGenerationFlow()
     result = flow.generate_deal(
         proposal_id=proposal_id,
         proposal_data={
             "status": "accepted",
-            "deal_type": "preferred_deal",
-            "price": 15.0,
-            "product_id": "display",
-            "impressions": 1000000,
-            "start_date": "2026-01-01",
-            "end_date": "2026-03-31",
+            "deal_type": proposal.get("deal_type"),
+            "price": price,
+            "product_id": proposal.get("product_id"),
+            "impressions": proposal.get("impressions"),
+            "start_date": proposal.get("start_date"),
+            "end_date": proposal.get("end_date"),
+            "buyer_id": proposal.get("buyer_id") or "",
         },
     )
 
     if not result.get("deal_id"):
         raise HTTPException(status_code=400, detail="Failed to generate deal")
 
+    await storage.set_proposal(proposal_id, {**proposal, "deal": result})
     return result
 
 

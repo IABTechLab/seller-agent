@@ -11,7 +11,7 @@ keep working — it is the SAME function object either way.
 import logging
 from typing import Any, Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,24 @@ async def _require_operator_api_key_record(
     from ...auth.dependencies import require_operator_key
 
     return await require_operator_key(authorization, x_api_key)
+
+
+async def _require_api_key_record(
+    record=Depends(_get_optional_api_key_record),
+):
+    """FastAPI dependency: require a valid API key (any role).
+
+    Builds on ``_get_optional_api_key_record`` (so test overrides of that
+    function apply here too) and rejects anonymous callers with 401. Use it
+    on buyer routes that create or change state.
+    """
+    if record is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return record
 
 
 def _build_buyer_context(

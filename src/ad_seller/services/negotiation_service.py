@@ -233,6 +233,10 @@ async def submit_proposal(
             "proposal_id": proposal_id,
             "recommendation": result.get("recommendation"),
             "status": result.get("status"),
+            # Who submitted it: legacy POST /deals only turns a proposal into
+            # a deal for the API key that submitted it.
+            "buyer_key": buyer_context.get_pricing_key(),
+            "buyer_auth": getattr(buyer_context, "authentication_method", None),
         },
     )
     product = catalog["products"].get(request.product_id)
