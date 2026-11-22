@@ -235,8 +235,9 @@ class TestAuthHeaderBinding:
         assert resp.status_code == 401
         assert "expired" in resp.json()["detail"]
 
+    @pytest.mark.usefixtures("anonymous_buyer_writes")
     async def test_no_credentials_still_anonymous_public(self, client, mock_storage):
-        """Requests without credentials keep the anonymous/PUBLIC path."""
+        """Requests without credentials keep the anonymous/PUBLIC path (when opted in)."""
         catalog_patch, storage_patch = _patches(mock_storage)
         with catalog_patch, storage_patch:
             resp = await client.post("/api/v1/quotes", json=QUOTE_BODY)

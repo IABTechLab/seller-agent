@@ -18,7 +18,7 @@ Authorization: Bearer <api_key>
 X-Api-Key: <api_key>
 ```
 
-When both headers are present, the system validates whichever is found first. Anonymous requests (no key) are allowed on most buyer-facing endpoints but receive public-tier access only.
+When both headers are present, the system validates whichever is found first. Anonymous requests (no key) are allowed on read-only buyer endpoints (discovery, pricing, avails, media-kit search, agentic audience match) and receive public-tier access only. Routes that create or change state need a key; see [Buyer Write Surface](#buyer-write-surface).
 
 ## Key Roles
 
@@ -71,6 +71,22 @@ These routes require a valid **operator** key (anonymous → 401, buyer key → 
 - Registry mutations: discover, trust update, delete
 - Package mutations: `POST/PUT/DELETE /packages`, `/packages/assemble`, `/packages/sync`
 - `POST /api/v1/curators`, `POST /api/v1/deals/push`, `POST /api/v1/deals/distribute`
+- `POST /api/v1/deals/curated`, `POST /api/v1/deals/{id}/deprecate`, `POST /api/v1/deals/{id}/migrate`, `POST /api/v1/deals/bulk`
+- `GET /api/v1/deals/{id}/buyer-status`, `GET /api/v1/deals/{id}/ssp-troubleshoot` (they call external systems)
+
+## Buyer Write Surface
+
+These routes need an API key (anonymous → 401 `authentication_required`):
+
+- `POST /api/v1/quotes`, `POST /api/v1/deals`, `POST /api/v1/deals/from-template`, `POST /deals`
+- `POST /proposals`, `POST /proposals/{id}/counter`, `POST /api/v1/negotiations/messages`
+- `POST /sessions`, `POST /api/v1/orders`, `POST /api/v1/change-requests`
+
+`ALLOW_ANONYMOUS_BUYER_WRITES=true` restores anonymous, public-tier access to quotes, proposals, negotiation, sessions, orders and change requests. Deal booking always needs a key.
+
+A session belongs to the key that opened it. `GET /sessions/{id}`, `POST /sessions/{id}/messages` and `POST /sessions/{id}/close` accept only that key or an operator key (anything else → 404). `GET /sessions` lists the caller's own sessions; operators may list or filter all of them.
+
+`GET /health`, `GET /.well-known/agent.json` and the read-only discovery routes stay public.
 
 Buyer-facing reads (`GET /packages`, `GET /registry/agents`, `GET /api/v1/rate-card`, media-kit search, etc.) stay public or buyer-authenticated as before.
 

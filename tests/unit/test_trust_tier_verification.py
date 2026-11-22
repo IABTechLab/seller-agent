@@ -75,6 +75,9 @@ from ad_seller.models.flow_state import ProductDefinition  # noqa: E402
 from ad_seller.registry.agent_registry import AgentRegistryService  # noqa: E402
 from ad_seller.storage.trust_verifications import TrustVerificationStore  # noqa: E402
 
+# Exercises the anonymous PUBLIC-tier path, which is opt-in.
+pytestmark = pytest.mark.usefixtures("anonymous_buyer_writes")
+
 BUYER_URL = "https://buyer.example.com"
 
 

@@ -239,6 +239,11 @@ class Settings(BaseSettings):
     # auto-finalize. 0.0 disables the threshold gate (opt-in behavior only).
     approval_required_above_value: float = 0.0
 
+    # Buyer write routes (quotes, proposals, negotiation, sessions, orders,
+    # change requests) require a seller-issued API key. Set true to let
+    # anonymous callers use them at the PUBLIC tier, as before.
+    allow_anonymous_buyer_writes: bool = False
+
     # Session Configuration
     session_ttl_seconds: int = 604800  # 7 days
     session_max_messages: int = 200

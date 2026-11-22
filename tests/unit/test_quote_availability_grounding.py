@@ -40,6 +40,9 @@ for _mod_name in _broken_flows:
 
 from ad_seller.services import quote_service  # noqa: E402
 
+# Exercises the anonymous PUBLIC-tier path, which is opt-in.
+pytestmark = pytest.mark.usefixtures("anonymous_buyer_writes")
+
 # =============================================================================
 # Helpers
 # =============================================================================

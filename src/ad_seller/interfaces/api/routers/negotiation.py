@@ -36,7 +36,7 @@ router = APIRouter()
 @router.post("/proposals", response_model=ProposalResponse, tags=["Proposals"])
 async def submit_proposal(
     request: ProposalRequest,
-    api_key_record=Depends(deps._get_optional_api_key_record),
+    api_key_record=Depends(deps._buyer_write_api_key_record),
 ):
     """Submit a proposal for review."""
     # Product data from the single cached catalog source (EP-3.3)
@@ -61,7 +61,7 @@ async def submit_proposal(
 async def counter_proposal(
     proposal_id: str,
     request: CounterOfferRequest,
-    api_key_record=Depends(deps._get_optional_api_key_record),
+    api_key_record=Depends(deps._buyer_write_api_key_record),
 ):
     """Submit a counter-offer in an ongoing negotiation.
 
@@ -134,7 +134,7 @@ async def get_negotiation_status(
 @router.post("/api/v1/negotiations/messages", tags=["Negotiation"])
 async def post_negotiation_message(
     message: NegotiationMessage,
-    api_key_record=Depends(deps._get_optional_api_key_record),
+    api_key_record=Depends(deps._buyer_write_api_key_record),
 ) -> NegotiationRoundResponse:
     """Canonical negotiation surface — accepts the shared NegotiationMessage.
 

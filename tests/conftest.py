@@ -44,6 +44,19 @@ from ad_seller.models.pricing_tiers import TieredPricingConfig  # noqa: E402
 _session_exit_status: int | None = None
 
 
+@pytest.fixture
+def anonymous_buyer_writes(monkeypatch):
+    """Opt in to keyless buyer writes (``ALLOW_ANONYMOUS_BUYER_WRITES``).
+
+    For tests of the anonymous PUBLIC-tier path on quotes, proposals,
+    negotiation, sessions, orders and change requests, which otherwise
+    require an API key.
+    """
+    from ad_seller.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "allow_anonymous_buyer_writes", True)
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Record the exit status for the hard-exit in ``pytest_unconfigure``."""
     global _session_exit_status

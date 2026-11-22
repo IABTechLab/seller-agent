@@ -11,7 +11,7 @@ keep working — it is the SAME function object either way.
 import logging
 from typing import Any, Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,54 @@ async def _require_operator_api_key_record(
     from ...auth.dependencies import require_operator_key
 
     return await require_operator_key(authorization, x_api_key)
+
+
+async def _require_api_key_record(
+    record=Depends(_get_optional_api_key_record),
+):
+    """FastAPI dependency: require a valid API key (any role).
+
+    Builds on ``_get_optional_api_key_record`` (so test overrides of that
+    function apply here too) and rejects anonymous callers with 401. Use it
+    on buyer routes that create or change state.
+    """
+    if record is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return record
+
+
+async def _buyer_write_api_key_record(
+    record=Depends(_get_optional_api_key_record),
+):
+    """FastAPI dependency for buyer routes that create or change state.
+
+    Requires an API key unless ``ALLOW_ANONYMOUS_BUYER_WRITES`` is set, in
+    which case anonymous callers pass through (as ``None``) and are priced
+    at the PUBLIC tier by the route.
+    """
+    if record is None:
+        from ...config import get_settings
+
+        if not getattr(get_settings(), "allow_anonymous_buyer_writes", False):
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "authentication_required",
+                    "message": "An API key is required for this request.",
+                },
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    return record
+
+
+def _is_operator(record: Any) -> bool:
+    from ...models.api_key import ApiKeyRole
+
+    return record is not None and getattr(record, "role", None) == ApiKeyRole.OPERATOR
 
 
 def _build_buyer_context(

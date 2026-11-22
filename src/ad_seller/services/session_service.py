@@ -77,6 +77,22 @@ async def list_sessions(
     return {"sessions": results}
 
 
+async def get_session_record(session_id: str) -> Optional[dict[str, Any]]:
+    """The raw stored session, or None."""
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    data = await storage.get_session(session_id)
+    return data if isinstance(data, dict) else None
+
+
+def owner_key(data: dict[str, Any]) -> str:
+    """Pricing key of the buyer that opened a stored session."""
+    from ..models.session import Session
+
+    return Session(**data).get_buyer_pricing_key()
+
+
 async def get_session(session_id: str) -> dict[str, Any]:
     """Get session details and conversation history."""
     from ..models.session import Session

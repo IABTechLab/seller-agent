@@ -22,7 +22,7 @@ router = APIRouter()
 @router.post("/api/v1/orders", tags=["Orders"])
 async def create_order(
     request: CreateOrderRequest,
-    _auth: None = Depends(deps._get_optional_api_key_record),
+    _auth: None = Depends(deps._buyer_write_api_key_record),
 ):
     """Create a new order and persist its state machine."""
     return await order_service.create_order(

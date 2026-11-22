@@ -62,6 +62,9 @@ from ad_seller.models.negotiation import NegotiationAction  # noqa: E402
 from ad_seller.models.pricing_tiers import TieredPricingConfig  # noqa: E402
 from ad_seller.services import negotiation_service  # noqa: E402
 
+# Exercises the anonymous PUBLIC-tier path, which is opt-in.
+pytestmark = pytest.mark.usefixtures("anonymous_buyer_writes")
+
 # =============================================================================
 # Fixtures / helpers
 # =============================================================================
