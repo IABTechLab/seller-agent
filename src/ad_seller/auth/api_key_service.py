@@ -56,6 +56,8 @@ class ApiKeyService:
             agency_holding_company=request.agency_holding_company,
             advertiser_id=request.advertiser_id,
             advertiser_name=request.advertiser_name,
+            seat_ids=request.seat_ids,
+            advertiser_domains=request.advertiser_domains,
         )
         return await self._mint(
             identity=identity,

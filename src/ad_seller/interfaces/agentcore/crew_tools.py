@@ -261,6 +261,7 @@ class CreateDealTool(BaseTool):
 
         try:
             from ad_seller.models.core import DealType
+            from ad_seller.services.deals_api import build_openrtb_deal_params
 
             deal_type_map = {
                 "PG": DealType.PROGRAMMATIC_GUARANTEED,
@@ -417,12 +418,12 @@ class CreateDealTool(BaseTool):
                 "start_date": now.strftime("%Y-%m-%d"),
                 "end_date": (now + timedelta(days=30)).strftime("%Y-%m-%d"),
                 "created_at": now.isoformat(),
-                "openrtb_params": {
-                    "id": deal_id,
-                    "bidfloor": round(final_cpm, 2),
-                    "bidfloorcur": "USD",
-                    "at": 3 if dt_str in ("PG", "PD") else 1,
-                },
+                "openrtb_params": build_openrtb_deal_params(
+                    deal_id,
+                    dt_str,
+                    round(final_cpm, 2),
+                    guaranteed_impressions=impressions or None,
+                ),
                 "activation_instructions": {
                     "dsp": f"Use Deal ID {deal_id} in your DSP bid request",
                     "deal_type": dt_str,

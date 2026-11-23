@@ -99,6 +99,8 @@ Operator keys have no buyer identity fields — only `label` and optional
 | `agency_holding_company` | No | Holding company (e.g., WPP, Omnicom) |
 | `advertiser_id` | No | Advertiser identifier |
 | `advertiser_name` | No | Advertiser display name |
+| `seat_ids` | No | Further DSP seat IDs allowed to bid on this buyer's deals. With `seat_id`, becomes the deal's OpenRTB `wseat` |
+| `advertiser_domains` | No | Advertiser landing domains, stamped as the deal's OpenRTB `wadomain` |
 | `label` | No | Human-readable label for this key |
 | `expires_in_days` | No | Days until expiry (`null` = never expires) |
 

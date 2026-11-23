@@ -53,7 +53,12 @@ async def submit_proposal(
         agent_url=request.agent_url,
     )
 
-    result = await negotiation_service.submit_proposal(request, context, catalog)
+    result = await negotiation_service.submit_proposal(
+        request,
+        context,
+        catalog,
+        api_key_id=api_key_record.key_id if api_key_record is not None else None,
+    )
     return ProposalResponse(**result)
 
 

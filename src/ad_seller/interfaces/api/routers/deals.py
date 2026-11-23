@@ -55,9 +55,20 @@ _TIER_ORDER = ("public", "seat", "agency", "advertiser")
 
 
 @router.post("/deals", response_model=DealResponse, tags=["Deals"])
-async def generate_deal(request: DealRequest):
-    """Generate a deal from an accepted proposal."""
-    result = deal_service.generate_deal_from_proposal(request.proposal_id)
+async def generate_deal(
+    request: DealRequest,
+    api_key_record=Depends(deps._require_api_key_record),
+):
+    """Generate a deal from an accepted proposal.
+
+    Requires an API key. The proposal must exist (404), be accepted or
+    approved, and belong to the calling key's buyer (409 otherwise); the
+    deal carries the proposal's own terms.
+    """
+    buyer_context = deps._build_buyer_context(api_key_record=api_key_record)
+    result = await deal_service.generate_deal_from_proposal(
+        request.proposal_id, buyer_context, api_key_id=api_key_record.key_id
+    )
 
     return DealResponse(
         deal_id=result["deal_id"],
@@ -255,7 +266,7 @@ async def book_deal(
         existing = await deal_service.get_deal(prior)
         return cm.internal_deal_to_response(existing)
 
-    result = await deal_service.book_deal(internal_request)
+    result = await deal_service.book_deal(internal_request, buyer_context=context)
 
     try:
         await storage.set(

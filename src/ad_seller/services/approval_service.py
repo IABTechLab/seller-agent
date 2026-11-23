@@ -315,6 +315,15 @@ async def _resume_proposal_flow(request, response):
 
     flow.state.completed_at = datetime.utcnow()
 
+    if response.decision in ("approve", "reject"):
+        from ..storage.factory import get_storage
+
+        storage = await get_storage()
+        stored = await storage.get_proposal(flow.state.proposal_id)
+        if isinstance(stored, dict):
+            stored["status"] = "approved" if response.decision == "approve" else "rejected"
+            await storage.set_proposal(flow.state.proposal_id, stored)
+
     # Emit event for the decision
     event_map = {
         "approve": EventType.PROPOSAL_ACCEPTED,
