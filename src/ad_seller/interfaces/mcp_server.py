@@ -915,7 +915,8 @@ async def bulk_deal_operations(operations: str) -> str:
         )
         for o in parsed
     ]
-    results = await deal_service.bulk_deal_operations(ops)
+    catalog = await _static_catalog() if any(op.action == "create" for op in ops) else None
+    results = await deal_service.bulk_deal_operations(ops, catalog)
     succeeded = sum(1 for r in results if r["success"])
     return _dumps(
         {

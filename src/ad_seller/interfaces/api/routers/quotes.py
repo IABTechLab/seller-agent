@@ -107,8 +107,21 @@ async def create_quote(
         existing = await quote_service.get_quote(prior["quote_id"])
         return cm.internal_quote_to_response(existing, media_type=request.media_type)
 
+    # Only a seller-issued key may hold PG capacity (#150): anonymous quotes
+    # are capacity-checked but hold nothing.
+    hold_owner = None
+    if api_key_record is not None:
+        key_id = getattr(api_key_record, "key_id", None)
+        hold_owner = (
+            f"key:{key_id}"
+            if isinstance(key_id, str) and key_id
+            else f"buyer:{context.get_pricing_key()}"
+        )
+
     internal_request = cm.quote_request_to_internal(request)
-    result = await quote_service.create_quote(internal_request, context, catalog)
+    result = await quote_service.create_quote(
+        internal_request, context, catalog, hold_owner=hold_owner
+    )
 
     try:
         await storage.set(
