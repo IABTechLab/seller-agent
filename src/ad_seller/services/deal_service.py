@@ -1158,10 +1158,23 @@ async def export_deals(format: str = "generic", status: Optional[str] = None) ->
         }
     else:
         # Generic format
+        from .deals_api import with_derived_auction_type
+
+        deals = [
+            {
+                **d,
+                "openrtb_params": with_derived_auction_type(
+                    d["openrtb_params"], d.get("deal_type")
+                ),
+            }
+            if d.get("openrtb_params")
+            else d
+            for d in all_deals
+        ]
         return {
             "format": "generic",
-            "deals": all_deals,
-            "count": len(all_deals),
+            "deals": deals,
+            "count": len(deals),
         }
 
 

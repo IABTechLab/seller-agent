@@ -79,3 +79,94 @@ async def test_proposal_deal_path_uses_the_builder(deal_type, code):
     )
     await flow.generate_openrtb_params()
     assert flow.state.openrtb_deal_params["at"] == EXPECTED_AT[code]
+
+
+# Deals booked before the fix stored the reversed ``at``; reads derive it.
+_LEGACY_AT = {"PG": 1, "PD": 1, "PA": 3}
+
+
+def _legacy_stored_deal(code: str) -> dict:
+    deal_id = f"DEMO-LEGACY{code}"
+    return {
+        "deal_id": deal_id,
+        "deal_type": code,
+        "status": "proposed",
+        "quote_id": f"qt-{code}",
+        "product": {"product_id": "ctv-1", "name": "CTV", "inventory_type": "ctv"},
+        "pricing": {"base_cpm": 30.0, "final_cpm": 25.0, "currency": "USD"},
+        "terms": {"impressions": 1000, "flight_start": "2026-04-01", "flight_end": "2026-04-30"},
+        "buyer_tier": "public",
+        "expires_at": "2099-01-01T00:00:00Z",
+        "openrtb_params": {
+            "id": deal_id,
+            "bidfloor": 25.0,
+            "bidfloorcur": "USD",
+            "at": _LEGACY_AT[code],
+            "wseat": [],
+        },
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+
+
+@pytest.fixture
+def legacy_storage():
+    from unittest.mock import AsyncMock
+
+    store = {f"deal:{d['deal_id']}": d for d in map(_legacy_stored_deal, EXPECTED_AT)}
+    storage = AsyncMock()
+    storage.get_deal = AsyncMock(side_effect=lambda did: store.get(f"deal:{did}"))
+    storage.list_deals = AsyncMock(side_effect=lambda: list(store.values()))
+    storage._store = store
+    return storage
+
+
+@pytest.fixture
+async def api_client():
+    import httpx
+
+    from ad_seller.interfaces.api import deps
+    from ad_seller.interfaces.api.main import app
+
+    app.dependency_overrides[deps._require_operator_api_key_record] = lambda: None
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("code", ["PG", "PD", "PA"])
+async def test_get_deal_derives_auction_type_for_legacy_record(code, legacy_storage, api_client):
+    from unittest.mock import patch
+
+    with patch("ad_seller.storage.factory.get_storage", return_value=legacy_storage):
+        resp = await api_client.get(f"/api/v1/deals/DEMO-LEGACY{code}")
+
+    assert resp.status_code == 200
+    assert resp.json()["deal"]["openrtb_params"]["at"] == EXPECTED_AT[code]
+    stored = legacy_storage._store[f"deal:DEMO-LEGACY{code}"]
+    assert stored["openrtb_params"]["at"] == _LEGACY_AT[code]
+
+
+async def test_list_deals_derives_auction_type_for_legacy_records(legacy_storage, api_client):
+    from unittest.mock import patch
+
+    with patch("ad_seller.storage.factory.get_storage", return_value=legacy_storage):
+        resp = await api_client.get("/api/v1/deals")
+
+    assert resp.status_code == 200
+    got = {d["deal"]["deal_type"]: d["deal"]["openrtb_params"]["at"] for d in resp.json()["deals"]}
+    assert got == EXPECTED_AT
+
+
+async def test_generic_export_derives_auction_type_for_legacy_records(legacy_storage):
+    from unittest.mock import patch
+
+    from ad_seller.services import deal_service
+
+    with patch("ad_seller.storage.factory.get_storage", return_value=legacy_storage):
+        result = await deal_service.export_deals(format="generic")
+
+    got = {d["deal_type"]: d["openrtb_params"]["at"] for d in result["deals"]}
+    assert got == EXPECTED_AT
+    assert legacy_storage._store["deal:DEMO-LEGACYPG"]["openrtb_params"]["at"] == 1

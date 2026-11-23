@@ -41,6 +41,36 @@ _DEAL_TYPE_CODES = {
     "PRIVATEAUCTION": "PA",
 }
 
+_AUCTION_TYPE_BY_CODE = {"PG": 3, "PD": 3, "PA": 1}
+
+
+def _deal_type_code(deal_type: Any) -> Optional[str]:
+    raw = str(getattr(deal_type, "value", deal_type) or "").upper().replace("_", "")
+    return _DEAL_TYPE_CODES.get(raw)
+
+
+def auction_type_for(deal_type: Any) -> Optional[int]:
+    """OpenRTB ``at`` for a deal type: 3 for PG/PD, 1 for PA, ``None`` if unknown."""
+    code = _deal_type_code(deal_type)
+    return _AUCTION_TYPE_BY_CODE[code] if code else None
+
+
+def with_derived_auction_type(
+    params: Optional[dict[str, Any]], deal_type: Any
+) -> Optional[dict[str, Any]]:
+    """Return stored OpenRTB params with ``at`` derived from the deal type.
+
+    Deals booked before the auction-type fix stored the reversed ``at``.
+    Reads report the value the deal type implies without rewriting storage;
+    params for an unknown deal type are returned unchanged.
+    """
+    if not params:
+        return params
+    at = auction_type_for(deal_type)
+    if at is None or params.get("at") == at:
+        return params
+    return {**params, "at": at}
+
 
 def build_openrtb_deal_params(
     deal_id: str,
@@ -60,13 +90,12 @@ def build_openrtb_deal_params(
     auction (``at=1`` first price, ``bidfloor`` is the floor). ``wseat`` /
     ``wadomain`` are allow-lists; empty means unrestricted.
     """
-    raw = str(getattr(deal_type, "value", deal_type) or "").upper().replace("_", "")
-    code = _DEAL_TYPE_CODES.get(raw, "PD")
+    code = _deal_type_code(deal_type) or "PD"
     params: dict[str, Any] = {
         "id": deal_id,
         "bidfloor": price,
         "bidfloorcur": currency,
-        "at": 1 if code == "PA" else 3,
+        "at": _AUCTION_TYPE_BY_CODE[code],
         "wseat": list(seat_ids or []),
         "wadomain": list(advertiser_domains or []),
     }
