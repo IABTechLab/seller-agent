@@ -206,7 +206,10 @@ threshold `POST /proposals` uses. A held booking answers HTTP 202 with
 operator decides (`POST /approvals/{id}/decide`), the buyer re-submits the
 booking: an approval for the same price and impressions books the deal, a
 rejection is a 409 `booking_rejected`, and an approval for different terms
-raises a new request.
+raises a new request. A `deal_booking` approval approves the terms as
+requested: approving it with `modifications` is a 400
+`modifications_not_supported` (the approval stays pending). To change the
+terms, reject it and let the buyer re-quote or negotiate.
 
 A quote whose agreed price came from negotiating a proposal follows that
 proposal's own decision: when an operator rejected the proposal's

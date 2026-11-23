@@ -213,6 +213,48 @@ class TestOptInGate:
         }
 
 
+async def _decide(storage, approval_id, body):
+    from ad_seller.auth.dependencies import require_operator_key
+
+    app.dependency_overrides[require_operator_key] = lambda: SimpleNamespace(
+        key_id="op-1", identity=None
+    )
+    try:
+        with patch("ad_seller.storage.factory.get_storage", return_value=storage):
+            async with httpx.AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as c:
+                return await c.post(f"/approvals/{approval_id}/decide", json=body)
+    finally:
+        app.dependency_overrides.pop(require_operator_key, None)
+
+
+class TestBookingApprovalModifications:
+    async def test_approving_with_modifications_is_rejected(self, client, storage):
+        settings = _settings(approval_required_above_value=250_000)
+        held = (await _book(client, storage, settings)).json()
+
+        resp = await _decide(
+            storage,
+            held["approval_id"],
+            {"decision": "approve", "modifications": {"final_cpm": 20.0, "impressions": 10}},
+        )
+
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"]["error"] == "modifications_not_supported"
+        assert storage._store[f"approval:{held['approval_id']}"]["status"] == "pending"
+
+    async def test_plain_approval_still_books(self, client, storage):
+        settings = _settings(approval_required_above_value=250_000)
+        held = (await _book(client, storage, settings)).json()
+
+        resp = await _decide(storage, held["approval_id"], {"decision": "approve"})
+        booked = await _book(_fresh(client), storage, settings)
+
+        assert resp.status_code == 200, resp.text
+        assert booked.status_code == 200, booked.text
+
+
 def _proposal_led_negotiation(storage):
     storage._store[f"quote:{QUOTE_ID}"] = _quote(impressions=100_000)
     storage._store[f"negotiation_by_quote:{QUOTE_ID}"] = "prop-1"

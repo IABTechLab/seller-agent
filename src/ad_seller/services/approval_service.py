@@ -77,6 +77,26 @@ async def decide_approval(
     ):
         _build_dsp_resolution_create_request(pending_request, modifications or {})
 
+    # A booking approval approves the exact terms the buyer re-submits; it
+    # cannot rewrite them, so modifications would be silently dropped.
+    if (
+        pending_request
+        and decision == "approve"
+        and modifications
+        and pending_request.flow_type == "deal_booking"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "modifications_not_supported",
+                "message": (
+                    "A deal_booking approval approves the booking's terms as requested and "
+                    "cannot modify them. Approve without modifications, or reject it so the "
+                    "buyer can re-quote or negotiate the terms you want."
+                ),
+            },
+        )
+
     try:
         response = await gate.submit_decision(
             approval_id=approval_id,
