@@ -219,6 +219,10 @@ class TestSessionOwnership:
         resp = await _call("POST", "/sessions/does-not-exist/close", record=OWNER)
         assert resp.status_code == 404
 
+    async def test_operator_closing_unknown_session_is_404(self):
+        resp = await _call("POST", "/sessions/does-not-exist/close", record=OPERATOR)
+        assert resp.status_code == 404, resp.text
+
     async def test_buyers_list_only_their_own_sessions(self):
         mine = await self._open()
         theirs = (await _call("POST", "/sessions", {}, record=OTHER)).json()["session_id"]

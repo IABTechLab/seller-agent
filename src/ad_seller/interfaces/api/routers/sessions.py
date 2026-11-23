@@ -51,14 +51,16 @@ async def _owned_session(session_id: str, api_key_record: Any) -> None:
     route admits may use it. Not-yours reads as 404, the same as a missing
     session.
     """
+    data = await session_service.get_session_record(session_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Session not found")
     if deps._is_operator(api_key_record):
         return
-    data = await session_service.get_session_record(session_id)
-    if data is not None and not _opened_with_key(data):
+    if not _opened_with_key(data):
         if deps._get_api_settings().allow_anonymous_buyer_writes:
             return
         raise HTTPException(status_code=404, detail="Session not found")
-    if data is None or not _key_owns(data, api_key_record):
+    if not _key_owns(data, api_key_record):
         raise HTTPException(status_code=404, detail="Session not found")
 
 
