@@ -16,6 +16,7 @@ import httpx
 import pytest
 from httpx import ASGITransport
 
+from ad_seller.config import get_settings
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app
 from ad_seller.models.api_key import ApiKeyRole
 from ad_seller.models.buyer_identity import BuyerIdentity
@@ -165,6 +166,46 @@ class TestSessionOwnership:
         assert sid in await _listed(OWNER)
         assert (await _call("GET", f"/sessions/{sid}", record=OTHER)).status_code == 404
         assert sid not in await _listed(OTHER)
+
+    async def test_legacy_identity_less_keyed_session_is_operator_only(self):
+        sid = await self._open(_record(key_id="key-c"))
+        await _drop_owner_key_id(sid)
+
+        for method, path, body in _session_calls(sid):
+            resp = await _call(method, path, body, record=_record(key_id="key-d"))
+            assert resp.status_code == 404, (path, resp.text)
+        assert (await _call("GET", f"/sessions/{sid}", record=OPERATOR)).status_code == 200
+
+    async def _open_keyless(self, monkeypatch):
+        settings = get_settings()
+        monkeypatch.setattr(settings, "allow_anonymous_buyer_writes", True)
+        sid = await self._open(record=None)
+        monkeypatch.setattr(settings, "allow_anonymous_buyer_writes", False)
+        return sid
+
+    async def test_keyless_session_is_operator_only_by_default(self, monkeypatch):
+        sid = await self._open_keyless(monkeypatch)
+
+        for method, path, body in _session_calls(sid):
+            assert (await _call(method, path, body)).status_code == 401, path
+            resp = await _call(method, path, body, record=OWNER)
+            assert resp.status_code == 404, (path, resp.text)
+        assert sid not in await _listed(OWNER)
+
+        assert (await _call("GET", f"/sessions/{sid}", record=OPERATOR)).status_code == 200
+        assert sid in await _listed(OPERATOR)
+        resp = await _call("POST", f"/sessions/{sid}/close", record=OPERATOR)
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "closed"
+
+    async def test_keyless_session_stays_shared_when_anonymous_writes_allowed(
+        self, anonymous_buyer_writes
+    ):
+        sid = await self._open(record=None)
+
+        assert (await _call("GET", f"/sessions/{sid}")).status_code == 200
+        assert (await _call("GET", f"/sessions/{sid}", record=OWNER)).status_code == 200
+        assert (await _call("POST", f"/sessions/{sid}/close")).status_code == 200
 
     async def test_owner_and_operator_can_read_and_close(self):
         sid = await self._open()

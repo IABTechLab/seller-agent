@@ -45,16 +45,19 @@ def _key_owns(data: dict[str, Any], api_key_record: Any) -> bool:
 async def _owned_session(session_id: str, api_key_record: Any) -> None:
     """Allow the key that opened the session or an operator key; 404 otherwise.
 
-    A session opened anonymously (only possible with
-    ALLOW_ANONYMOUS_BUYER_WRITES) has no owning key, so any caller allowed
-    to write may use it. Not-yours reads as 404, the same as a missing
+    A session opened without a key (anonymously, before keys were required
+    or with ALLOW_ANONYMOUS_BUYER_WRITES) has no owner. It is operator-only,
+    unless ALLOW_ANONYMOUS_BUYER_WRITES is on, in which case any caller the
+    route admits may use it. Not-yours reads as 404, the same as a missing
     session.
     """
     if deps._is_operator(api_key_record):
         return
     data = await session_service.get_session_record(session_id)
     if data is not None and not _opened_with_key(data):
-        return
+        if deps._get_api_settings().allow_anonymous_buyer_writes:
+            return
+        raise HTTPException(status_code=404, detail="Session not found")
     if data is None or not _key_owns(data, api_key_record):
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -107,7 +110,7 @@ async def list_sessions(
 @router.get("/sessions/{session_id}", tags=["Sessions"])
 async def get_session(
     session_id: str,
-    api_key_record=Depends(deps._get_optional_api_key_record),
+    api_key_record=Depends(deps._buyer_write_api_key_record),
 ):
     """Get session details and conversation history (owner or operator)."""
     await _owned_session(session_id, api_key_record)
