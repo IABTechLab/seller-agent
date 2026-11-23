@@ -12,10 +12,12 @@ exactly as the endpoints raised them, and imports of storage/flows/clients
 stay function-level so existing test patch points keep working.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
 import uuid
+import weakref
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -286,6 +288,23 @@ def _booking_approval_key(quote_id: str) -> str:
     return f"approval_index:quote_booking:{quote_id}"
 
 
+_booking_locks: "weakref.WeakValueDictionary[str, asyncio.Lock]" = weakref.WeakValueDictionary()
+
+
+def _booking_lock(key: str) -> asyncio.Lock:
+    """Lock serialising the check-then-book section for one quote or template approval.
+
+    Storage has no compare-and-set, so two bookings of one quote could both
+    read it ``available`` and each mint a deal. This lock is process-local:
+    it covers a single worker process only. A multi-worker deployment needs
+    a storage-level compare-and-set on the quote status.
+    """
+    lock = _booking_locks.get(key)
+    if lock is None:
+        lock = _booking_locks[key] = asyncio.Lock()
+    return lock
+
+
 async def _apply_booking_gate(
     storage: Any,
     *,
@@ -493,7 +512,15 @@ async def book_deal(request: Any) -> dict[str, Any]:
 
     A booking that the approval gate holds returns a ``pending_approval``
     payload (no deal is minted; see ``_gate_quote_booking``).
+
+    Bookings of one quote are serialised (``_booking_lock``), so concurrent
+    bookings mint one deal and the rest see the quote booked (409).
     """
+    async with _booking_lock(f"quote:{request.quote_id}"):
+        return await _book_quote(request)
+
+
+async def _book_quote(request: Any) -> dict[str, Any]:
     from ..models.quotes import DealBookingResponse, DealBookingStatus, QuoteStatus
     from ..storage.factory import get_storage
 
@@ -868,6 +895,8 @@ async def create_deal_from_template(
         )
 
     storage = await get_storage()
+    now = datetime.utcnow()
+    deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
 
     # Approval gate: the same rules quote booking applies, at the priced
     # terms. With no quote to hang the approval on, it is indexed by the
@@ -888,21 +917,27 @@ async def create_deal_from_template(
         fingerprint = hashlib.sha256(
             json.dumps(terms, sort_keys=True, default=str).encode("utf-8")
         ).hexdigest()[:32]
-        held_id, approved = await _apply_booking_gate(
-            storage,
-            index_key=f"approval_index:template_booking:{fingerprint}",
-            flow_id=f"template-booking-{fingerprint}",
-            terms=terms,
-            context={
-                "quote_id": None,
-                "product_id": request.product_id,
-                "deal_type": deal_type_str,
-                "buyer_tier": buyer_context.effective_tier.value,
-                "gross_value": round(gross_value, 2),
-            },
-            snapshot={"template_fingerprint": fingerprint},
-            rejected_message="The seller declined to book this deal.",
-        )
+        async with _booking_lock(f"template:{fingerprint}"):
+            held_id, approved = await _apply_booking_gate(
+                storage,
+                index_key=f"approval_index:template_booking:{fingerprint}",
+                flow_id=f"template-booking-{fingerprint}",
+                terms=terms,
+                context={
+                    "quote_id": None,
+                    "product_id": request.product_id,
+                    "deal_type": deal_type_str,
+                    "buyer_tier": buyer_context.effective_tier.value,
+                    "gross_value": round(gross_value, 2),
+                },
+                snapshot={"template_fingerprint": fingerprint},
+                rejected_message="The seller declined to book this deal.",
+            )
+            if approved is not None:
+                # One approval books one deal (a template has no quote to mark
+                # booked): claim it before minting so a concurrent re-submit
+                # of the same request cannot book with it too.
+                await _consume_approval(storage, approved, deal_id)
         if held_id is not None:
             return {
                 "status": "pending_approval",
@@ -916,9 +951,6 @@ async def create_deal_from_template(
             }
 
     # Auto-book: generate deal directly (skip separate quote step)
-    now = datetime.utcnow()
-    deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
-
     flight_start = request.flight_start or now.strftime("%Y-%m-%d")
     flight_end = request.flight_end or (now + timedelta(days=30)).strftime("%Y-%m-%d")
 
@@ -946,10 +978,16 @@ async def create_deal_from_template(
     # Build schain for the deal response
     deal_data["schain"] = _build_seller_schain()
 
-    await storage.set_deal(deal_id, deal_data)
-    if approved is not None:
-        # One approval books one deal: a template has no quote to mark booked.
-        await _consume_approval(storage, approved, deal_id)
+    try:
+        await storage.set_deal(deal_id, deal_data)
+    except Exception:
+        if approved is not None:
+            from ..events.models import ApprovalStatus
+
+            approved.status = ApprovalStatus.APPROVED
+            approved.deal_id = ""
+            await storage.set(f"approval:{approved.approval_id}", approved.model_dump(mode="json"))
+        raise
     await _emit_deal_created(deal_data, source="template")
 
     return deal_data
@@ -1051,65 +1089,68 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
                     )
                     continue
 
-                quote = await storage.get_quote(op.quote_id)
-                if not quote:
-                    results.append(
-                        _result(i, "create", False, error=f"Quote '{op.quote_id}' not found")
-                    )
-                    continue
-
-                if quote.get("status") != QuoteStatus.AVAILABLE.value:
-                    results.append(
-                        _result(
-                            i,
-                            "create",
-                            False,
-                            error=f"Quote status is '{quote.get('status')}', expected 'available'",
+                async with _booking_lock(f"quote:{op.quote_id}"):
+                    quote = await storage.get_quote(op.quote_id)
+                    if not quote:
+                        results.append(
+                            _result(i, "create", False, error=f"Quote '{op.quote_id}' not found")
                         )
+                        continue
+
+                    if quote.get("status") != QuoteStatus.AVAILABLE.value:
+                        results.append(
+                            _result(
+                                i,
+                                "create",
+                                False,
+                                error=f"Quote status is '{quote.get('status')}', expected 'available'",
+                            )
+                        )
+                        continue
+
+                    # Same price and approval gate as POST /api/v1/deals, so bulk
+                    # create cannot book a quote that booking is holding.
+                    quote, negotiation = await _apply_accepted_negotiation(
+                        storage, op.quote_id, quote
                     )
-                    continue
+                    pending = await _gate_quote_booking(storage, op.quote_id, quote, negotiation)
+                    if pending is not None:
+                        results.append(
+                            {
+                                **_result(i, "create", False, error=pending["message"]),
+                                "status": pending["status"],
+                                "approval_id": pending["approval_id"],
+                            }
+                        )
+                        continue
 
-                # Same price and approval gate as POST /api/v1/deals, so bulk
-                # create cannot book a quote that booking is holding.
-                quote, negotiation = await _apply_accepted_negotiation(storage, op.quote_id, quote)
-                pending = await _gate_quote_booking(storage, op.quote_id, quote, negotiation)
-                if pending is not None:
-                    results.append(
-                        {
-                            **_result(i, "create", False, error=pending["message"]),
-                            "status": pending["status"],
-                            "approval_id": pending["approval_id"],
-                        }
-                    )
-                    continue
+                    # Generate deal
+                    now = datetime.utcnow()
+                    deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
 
-                # Generate deal
-                now = datetime.utcnow()
-                deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
+                    deal_data = {
+                        "deal_id": deal_id,
+                        "quote_id": op.quote_id,
+                        "status": DealBookingStatus.CONFIRMED.value,
+                        # Carry the booked terms from the quote so the deal is
+                        # readable through GET /api/v1/deals/{deal_id} (the
+                        # shared Deal primitive requires deal_type; issue #73).
+                        "deal_type": quote.get("deal_type"),
+                        "product": quote.get("product", {}),
+                        "pricing": quote.get("pricing", {}),
+                        "terms": quote.get("terms", {}),
+                        "buyer_tier": quote.get("buyer_tier", "public"),
+                        "created_at": now.isoformat() + "Z",
+                        "notes": op.notes,
+                    }
+                    await storage.set_deal(deal_id, deal_data)
 
-                deal_data = {
-                    "deal_id": deal_id,
-                    "quote_id": op.quote_id,
-                    "status": DealBookingStatus.CONFIRMED.value,
-                    # Carry the booked terms from the quote so the deal is
-                    # readable through GET /api/v1/deals/{deal_id} (the
-                    # shared Deal primitive requires deal_type; issue #73).
-                    "deal_type": quote.get("deal_type"),
-                    "product": quote.get("product", {}),
-                    "pricing": quote.get("pricing", {}),
-                    "terms": quote.get("terms", {}),
-                    "buyer_tier": quote.get("buyer_tier", "public"),
-                    "created_at": now.isoformat() + "Z",
-                    "notes": op.notes,
-                }
-                await storage.set_deal(deal_id, deal_data)
+                    # Mark quote as booked
+                    quote["status"] = QuoteStatus.BOOKED.value
+                    await storage.set_quote(op.quote_id, quote)
+                    await _emit_deal_created(deal_data, source="bulk")
 
-                # Mark quote as booked
-                quote["status"] = QuoteStatus.BOOKED.value
-                await storage.set_quote(op.quote_id, quote)
-                await _emit_deal_created(deal_data, source="bulk")
-
-                results.append(_result(i, "create", True, deal_id=deal_id))
+                    results.append(_result(i, "create", True, deal_id=deal_id))
 
             elif op.action == "cancel":
                 if not op.deal_id:

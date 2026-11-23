@@ -231,6 +231,14 @@ Every path that books a deal applies the same gate:
   impressions and flight dates as sent); re-submitting the same request after
   approval books one deal, and the approval is then consumed.
 
+Concurrent bookings of one quote (for example several buyer re-submits after
+an approval) mint exactly one deal; the others get a 409
+`quote_already_booked`. Concurrent re-submits of one approved template
+request book once; the others raise a new approval (202). This is enforced
+by a lock inside one seller process. The storage layer has no
+compare-and-set yet, so a deployment running several worker processes
+against shared storage can still double-book under a race.
+
 Example:
 
 ```bash

@@ -8,6 +8,7 @@ at the price actually booked: a held booking answers 202
 re-submits once an operator approves.
 """
 
+import asyncio
 import json
 import sys
 from datetime import datetime, timedelta
@@ -211,6 +212,123 @@ class TestOptInGate:
             "status": "approved",
             "resumed_from_approval": held["approval_id"],
         }
+
+
+@pytest.fixture
+async def sqlite_storage(tmp_path):
+    from ad_seller.events.bus import InMemoryEventBus
+    from ad_seller.storage.sqlite_backend import SQLiteBackend
+
+    s = SQLiteBackend(f"sqlite:///{tmp_path}/race.db")
+    await s.connect()
+    await s.set_quote(QUOTE_ID, _quote())
+    with patch("ad_seller.events.bus.get_event_bus", AsyncMock(return_value=InMemoryEventBus())):
+        yield s
+    await s.disconnect()
+
+
+class TestConcurrentBookings:
+    """Storage has no compare-and-set; a per-quote lock keeps one deal per quote."""
+
+    N = 8
+
+    async def _approve_held_quote(self, client, storage, settings):
+        held = (await _book(client, storage, settings)).json()
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+
+    async def _race_rest(self, storage, settings):
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.config.get_settings", return_value=settings),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            async with httpx.AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as c:
+                return await asyncio.gather(
+                    *(
+                        c.post(
+                            "/api/v1/deals",
+                            json={"idempotency_key": f"idem-race-{n}", "quote_id": QUOTE_ID},
+                        )
+                        for n in range(self.N)
+                    )
+                )
+
+    async def test_concurrent_resubmits_after_approval_mint_one_deal(self, client, sqlite_storage):
+        settings = _settings(approval_required_above_value=250_000)
+        await self._approve_held_quote(client, sqlite_storage, settings)
+
+        responses = await self._race_rest(sqlite_storage, settings)
+
+        codes = sorted(r.status_code for r in responses)
+        assert codes == [200] + [409] * (self.N - 1), [r.text for r in responses]
+        assert all(
+            r.json()["detail"]["error"] == "quote_already_booked"
+            for r in responses
+            if r.status_code == 409
+        )
+        assert len(await sqlite_storage.list_deals()) == 1
+
+    async def test_concurrent_ungated_bookings_mint_one_deal(self, client, sqlite_storage):
+        responses = await self._race_rest(
+            sqlite_storage, _settings(approval_required_above_value=0.0)
+        )
+
+        assert sorted(r.status_code for r in responses) == [200] + [409] * (self.N - 1)
+        assert len(await sqlite_storage.list_deals()) == 1
+
+    async def test_concurrent_rest_and_bulk_bookings_mint_one_deal(self, client, sqlite_storage):
+        from ad_seller.services import deal_service
+
+        settings = _settings(approval_required_above_value=250_000)
+        await self._approve_held_quote(client, sqlite_storage, settings)
+        op = SimpleNamespace(action="create", quote_id=QUOTE_ID, deal_id=None, notes=None)
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=sqlite_storage),
+            patch("ad_seller.config.get_settings", return_value=settings),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        ):
+            bulk = await asyncio.gather(
+                *(deal_service.bulk_deal_operations([op]) for _ in range(self.N // 2)),
+                self._race_rest(sqlite_storage, settings),
+            )
+
+        rest_booked = [r for r in bulk[-1] if r.status_code == 200]
+        bulk_booked = [r[0] for r in bulk[:-1] if r[0]["success"]]
+        assert len(rest_booked) + len(bulk_booked) == 1
+        assert len(await sqlite_storage.list_deals()) == 1
+
+    async def test_concurrent_template_resubmits_after_approval_mint_one_deal(
+        self, template_client, sqlite_storage
+    ):
+        settings = _settings(approval_required_above_value=1000)
+        held = (await _template_rest(template_client, sqlite_storage, settings)).json()
+        await ApprovalGate(sqlite_storage).submit_decision(
+            held["approval_id"], "approve", "operator"
+        )
+
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=sqlite_storage),
+            patch("ad_seller.config.get_settings", return_value=settings),
+            patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                return_value=_catalog(),
+            ),
+        ):
+            async with template_client() as c:
+                responses = await asyncio.gather(
+                    *(
+                        c.post("/api/v1/deals/from-template", json=TEMPLATE_BODY)
+                        for _ in range(self.N)
+                    )
+                )
+
+        codes = sorted(r.status_code for r in responses)
+        assert codes == [201] + [202] * (self.N - 1), [r.text for r in responses]
+        assert len(await sqlite_storage.list_deals()) == 1
 
 
 async def _decide(storage, approval_id, body):
