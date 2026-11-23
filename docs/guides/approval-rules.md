@@ -208,6 +208,13 @@ booking: an approval for the same price and impressions books the deal, a
 rejection is a 409 `booking_rejected`, and an approval for different terms
 raises a new request.
 
+A quote whose agreed price came from negotiating a proposal follows that
+proposal's own decision: when an operator rejected the proposal's
+`proposal_decision` approval, booking the quote is a 409 `proposal_rejected`
+and no booking approval is raised (whether or not the booking itself would be
+gated). A pending or approved proposal decision does not book by itself; the
+booking is still gated on its own terms.
+
 Every path that books a deal applies the same gate:
 
 - `POST /api/v1/deals/bulk` and the MCP `bulk_deal_operations` tool, for

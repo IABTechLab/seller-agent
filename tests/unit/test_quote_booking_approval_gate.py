@@ -213,6 +213,108 @@ class TestOptInGate:
         }
 
 
+def _proposal_led_negotiation(storage):
+    storage._store[f"quote:{QUOTE_ID}"] = _quote(impressions=100_000)
+    storage._store[f"negotiation_by_quote:{QUOTE_ID}"] = "prop-1"
+    storage._store["negotiation:prop-1"] = {
+        "negotiation_id": "neg-1",
+        "proposal_id": "prop-1",
+        "status": "accepted",
+        "rounds": [{"seller_price": 40.25}],
+    }
+
+
+async def _proposal_approval(storage, decision=None):
+    gate = ApprovalGate(storage)
+    approval = await gate.request_approval(
+        flow_id="flow-prop-1",
+        flow_type="proposal_handling",
+        gate_name="proposal_decision",
+        context={"proposal_id": "prop-1"},
+        flow_state_snapshot={},
+        proposal_id="prop-1",
+    )
+    storage._store["approval_index:proposal:prop-1"] = approval.approval_id
+    if decision:
+        await gate.submit_decision(approval.approval_id, decision, "operator")
+    return approval.approval_id
+
+
+_PROPOSAL_GATE = dict(
+    approval_required_above_value=0.0,
+    approval_gate_enabled=True,
+    approval_required_flows="proposal_decision",
+)
+
+
+class TestRejectedProposal:
+    async def test_submit_proposal_records_its_approval(self, storage):
+        from ad_seller.services import negotiation_service
+
+        flow = MagicMock()
+        flow.handle_proposal_async = AsyncMock(
+            return_value={
+                "recommendation": "accept",
+                "status": "pending_approval",
+                "pending_approval": True,
+                "flow_id": "flow-1",
+                "_flow_state_snapshot": {},
+            }
+        )
+        verification = MagicMock(pricing_verified=True, reason="ok")
+        history = MagicMock(verify_pricing=AsyncMock(return_value=verification))
+        request = MagicMock(product_id="ctv-1", price=40.0, impressions=100_000)
+        context = MagicMock(get_pricing_key=MagicMock(return_value="agency-1"))
+        with (
+            patch("ad_seller.flows.ProposalHandlingFlow", return_value=flow),
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch("ad_seller.storage.quote_history.QuoteHistoryStore", return_value=history),
+        ):
+            result = await negotiation_service.submit_proposal(request, context, {"products": {}})
+
+        assert result["status"] == "pending_approval"
+        key = f"approval_index:proposal:{result['proposal_id']}"
+        assert storage._store[key] == result["approval_id"]
+
+    @pytest.mark.parametrize(
+        "gate",
+        [_PROPOSAL_GATE, dict(approval_required_above_value=0.0)],
+        ids=["proposal_gate_on", "booking_not_gated"],
+    )
+    async def test_booking_a_rejected_proposal_is_refused(self, client, storage, gate):
+        _proposal_led_negotiation(storage)
+        await _proposal_approval(storage, "reject")
+
+        resp = await _book(client, storage, _settings(**gate))
+
+        assert resp.status_code == 409, resp.text
+        assert resp.json()["detail"]["error"] == "proposal_rejected"
+        assert f"approval_index:quote_booking:{QUOTE_ID}" not in storage._store
+        assert _deals(storage) == []
+
+    async def test_bulk_create_of_a_rejected_proposal_is_refused(self, client, storage):
+        _proposal_led_negotiation(storage)
+        await _proposal_approval(storage, "reject")
+
+        result = await _bulk_rest(client, storage, _settings(**_PROPOSAL_GATE))
+
+        assert result["success"] is False
+        assert "proposal_rejected" in result["error"]
+        assert _deals(storage) == []
+
+    @pytest.mark.parametrize("decision", [None, "approve"], ids=["pending", "approved"])
+    async def test_open_or_approved_proposal_still_gates_the_booking(
+        self, client, storage, decision
+    ):
+        _proposal_led_negotiation(storage)
+        proposal_approval_id = await _proposal_approval(storage, decision)
+
+        resp = await _book(client, storage, _settings(**_PROPOSAL_GATE))
+
+        assert resp.status_code == 202, resp.text
+        assert resp.json()["approval_id"] != proposal_approval_id
+
+
 def _deals(storage):
     return [k for k in storage._store if k.startswith("deal:")]
 

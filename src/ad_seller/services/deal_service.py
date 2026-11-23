@@ -365,6 +365,8 @@ async def _gate_quote_booking(
     proposal_led = bool(
         negotiation and negotiation.get("proposal_id") and negotiation["proposal_id"] != quote_id
     )
+    if proposal_led:
+        await _refuse_if_proposal_rejected(storage, negotiation["proposal_id"])
     if not _booking_approval_required(gross_value, proposal_led):
         return None
 
@@ -388,6 +390,31 @@ async def _gate_quote_booking(
     if held_id is not None:
         return _pending_booking_payload(quote_id, held_id)
     return None
+
+
+async def _refuse_if_proposal_rejected(storage: Any, proposal_id: str) -> None:
+    """409 when an operator rejected the proposal this quote was negotiated from.
+
+    A pending or approved proposal decision does not book by itself: the
+    booking is still gated on its own terms.
+    """
+    from ..events.approval import ApprovalGate
+    from ..events.models import ApprovalStatus
+    from ..storage.base import proposal_approval_key
+
+    approval_id = await storage.get(proposal_approval_key(proposal_id))
+    if not isinstance(approval_id, str):
+        return
+    approval = await ApprovalGate(storage).get_request(approval_id)
+    if approval is not None and approval.status == ApprovalStatus.REJECTED:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proposal_rejected",
+                "message": "The seller rejected the proposal this quote was negotiated from.",
+                "proposal_id": proposal_id,
+            },
+        )
 
 
 def _pending_booking_payload(quote_id: str, approval_id: str) -> dict[str, Any]:
