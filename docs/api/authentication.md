@@ -78,19 +78,40 @@ These routes require a valid **operator** key (anonymous → 401, buyer key → 
 
 These routes need an API key (anonymous → 401 `authentication_required`):
 
-- `POST /api/v1/quotes`, `POST /api/v1/deals`, `POST /api/v1/deals/from-template`, `POST /deals`
+- `POST /api/v1/quotes`
 - `POST /proposals`, `POST /proposals/{id}/counter`, `POST /api/v1/negotiations/messages`
-- `POST /sessions`, `POST /api/v1/orders`, `POST /api/v1/change-requests`
+- `POST /sessions`, `GET /sessions/{id}`, `POST /sessions/{id}/messages`, `POST /sessions/{id}/close`
+- `POST /api/v1/orders`, `POST /api/v1/change-requests`
 
-`ALLOW_ANONYMOUS_BUYER_WRITES=true` restores anonymous, public-tier access to quotes, proposals, negotiation, sessions, orders and change requests. Deal booking always needs a key.
+`ALLOW_ANONYMOUS_BUYER_WRITES=true` lets anonymous callers use these routes again. It does not mean they are always priced at the public tier: on quotes, proposals and negotiation, identity fields claimed in the body are capped by the registry trust of the caller's `agent_url` (public without one), while `POST /sessions` still prices on body identity claims. Treat the flag as a compatibility switch, not a pricing control.
 
-A session belongs to the key that opened it. `GET /sessions/{id}`, `POST /sessions/{id}/messages` and `POST /sessions/{id}/close` accept only that key or an operator key (anything else → 404). `GET /sessions` lists the caller's own sessions; operators may list or filter all of them.
+Deal booking through `POST /api/v1/deals` and `POST /api/v1/deals/from-template` checks for a verified buyer key in the route itself, so it needs a key whether or not the flag is set. The legacy `POST /deals` (deal from an accepted proposal) is not changed here and still accepts anonymous callers.
+
+### Session ownership
+
+A session opened with an API key records that key's id and belongs to that key alone. Two keys with the same advertiser, agency or seat (or with no identity at all) do not share sessions. `GET /sessions/{id}`, `POST /sessions/{id}/messages` and `POST /sessions/{id}/close` accept only the opening key or an operator key; any other key gets 404, the same as for an unknown id. `GET /sessions` lists the caller's own sessions; operators may list or filter all of them.
+
+- Sessions opened with a key before key ids were recorded fall back to matching the key's buyer identity (advertiser, agency or seat). Ones opened with an identity-less key can't be attributed and are operator-only.
+- Sessions opened without a key (on an earlier release, or while `ALLOW_ANONYMOUS_BUYER_WRITES` was on) have no owner. With the flag off they are operator-only: anonymous callers get 401 and buyer keys get 404. With the flag on, anyone the route admits, anonymous callers included, can read, message and close them.
+
+### MCP tools
+
+Over HTTP transports (Streamable HTTP at `/mcp`, SSE), the MCP twins of these routes apply the same checks, using the same `Authorization` / `X-Api-Key` headers:
+
+- `bulk_deal_operations`, `create_curated_deal`, `migrate_deal`, `deprecate_deal` and `troubleshoot_deal` need an operator key.
+- `request_quote` and `create_order` need a valid API key (buyer or operator) unless `ALLOW_ANONYMOUS_BUYER_WRITES=true`. They still price at the public tier, key or not.
+
+A denied tool call returns a JSON error (`authentication_required`, `invalid_credential` or `operator_required`) instead of running. Local stdio access stays trusted.
+
+### Upgrading
+
+Buyer agents need a seller-issued API key before you upgrade. Without one, quotes, proposals, negotiation, sessions, orders and change requests fail with 401 `authentication_required`, and a buyer agent that has no key stored stops at the quote step. Mint keys with `POST /auth/api-keys` (operator key required) and hand them to each buyer before rolling out, or set `ALLOW_ANONYMOUS_BUYER_WRITES=true` for the transition.
 
 `GET /health`, `GET /.well-known/agent.json` and the read-only discovery routes stay public.
 
 Buyer-facing reads (`GET /packages`, `GET /registry/agents`, `GET /api/v1/rate-card`, media-kit search, etc.) stay public or buyer-authenticated as before.
 
-Admin MCP tools over HTTP (Streamable HTTP / SSE) enforce the same operator check via `Authorization` / `X-Api-Key`. Local stdio MCP access is trusted like the CLI.
+Admin MCP tools over HTTP (Streamable HTTP / SSE) enforce the same operator check via `Authorization` / `X-Api-Key`, and buyer write tools need a key (see [MCP tools](#mcp-tools)). Local stdio MCP access is trusted like the CLI.
 
 ## API Key Lifecycle
 

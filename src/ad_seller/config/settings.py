@@ -240,8 +240,8 @@ class Settings(BaseSettings):
     approval_required_above_value: float = 0.0
 
     # Buyer write routes (quotes, proposals, negotiation, sessions, orders,
-    # change requests) require a seller-issued API key. Set true to let
-    # anonymous callers use them at the PUBLIC tier, as before.
+    # change requests, and their MCP tools) require a seller-issued API key.
+    # Set true to let anonymous callers use them again, as before.
     allow_anonymous_buyer_writes: bool = False
 
     # Session Configuration

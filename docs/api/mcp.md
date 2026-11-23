@@ -45,8 +45,11 @@ inventory sync, deal push/distribute, GAM reporting, etc.) require an
 **operator** API key over HTTP transports. Pass it as
 `Authorization: Bearer <key>` or `X-Api-Key: <key>` (see Cursor/Codex examples
 above). Bootstrap the first key with `ad-seller create-operator-key` —
-[Authentication](authentication.md). Local stdio MCP access is trusted like
-the CLI and does not require a header.
+[Authentication](authentication.md). This includes `create_curated_deal`,
+`migrate_deal`, `deprecate_deal`, `bulk_deal_operations` and
+`troubleshoot_deal`. Buyer write tools (`request_quote`, `create_order`) need
+any valid API key over HTTP unless `ALLOW_ANONYMOUS_BUYER_WRITES=true`. Local
+stdio MCP access is trusted like the CLI and does not require a header.
 
 ## Available Tools (41)
 
