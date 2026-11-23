@@ -166,9 +166,15 @@ async def _verify_quote_binding(storage: Any, quote_id: str, buyer_context: Any)
 
 
 async def submit_proposal(
-    request: Any, buyer_context: Any, catalog: dict[str, Any]
+    request: Any,
+    buyer_context: Any,
+    catalog: dict[str, Any],
+    api_key_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Evaluate a submitted proposal.
+
+    ``api_key_id`` is the submitting API key's ``key_id`` (None when
+    keyless); it is stored as the proposal's owner for legacy ``POST /deals``.
 
     Product data now comes from the single cached catalog source (EP-3.3)
     instead of running ProductSetupFlow per request. Returns the response
@@ -235,6 +241,7 @@ async def submit_proposal(
         # a deal for the API key that submitted it.
         "buyer_key": buyer_context.get_pricing_key(),
         "buyer_auth": getattr(buyer_context, "authentication_method", None),
+        "buyer_key_id": api_key_id,
     }
     await storage.set_proposal(proposal_id, proposal_record)
     product = catalog["products"].get(request.product_id)

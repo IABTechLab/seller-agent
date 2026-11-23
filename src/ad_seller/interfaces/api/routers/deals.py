@@ -66,7 +66,9 @@ async def generate_deal(
     deal carries the proposal's own terms.
     """
     buyer_context = deps._build_buyer_context(api_key_record=api_key_record)
-    result = await deal_service.generate_deal_from_proposal(request.proposal_id, buyer_context)
+    result = await deal_service.generate_deal_from_proposal(
+        request.proposal_id, buyer_context, api_key_id=api_key_record.key_id
+    )
 
     return DealResponse(
         deal_id=result["deal_id"],

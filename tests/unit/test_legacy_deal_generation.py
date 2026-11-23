@@ -40,6 +40,7 @@ def _proposal(status="accepted", **overrides):
         "status": status,
         "buyer_key": _owner_key(),
         "buyer_auth": "api_key",
+        "buyer_key_id": "key-a",
         **overrides,
     }
 
@@ -57,8 +58,8 @@ def storage():
     return s
 
 
-async def _post(storage, identity=OWNER, proposal_id="prop-1"):
-    record = MagicMock(identity=identity) if identity else None
+async def _post(storage, identity=OWNER, proposal_id="prop-1", key_id="key-a"):
+    record = MagicMock(identity=identity, key_id=key_id) if identity else None
     app.dependency_overrides[_get_optional_api_key_record] = lambda: record
     try:
         with (
@@ -99,16 +100,90 @@ async def test_unaccepted_proposal_is_409(storage, status):
 
 async def test_other_buyers_proposal_is_409(storage):
     storage._store["proposal:prop-1"] = _proposal()
-    resp = await _post(storage, identity=OTHER)
+    resp = await _post(storage, identity=OTHER, key_id="key-b")
     assert resp.status_code == 409
     assert resp.json()["detail"]["error"] == "proposal_not_bookable"
 
 
 async def test_keyless_proposal_has_no_owner(storage):
-    storage._store["proposal:prop-1"] = _proposal(buyer_key="public", buyer_auth=None)
+    storage._store["proposal:prop-1"] = _proposal(
+        buyer_key="public", buyer_auth=None, buyer_key_id=None
+    )
     resp = await _post(storage)
     assert resp.status_code == 409
     assert resp.json()["detail"]["error"] == "proposal_not_bookable"
+
+
+async def test_key_sharing_the_owners_advertiser_cannot_book(storage):
+    key_a = BuyerIdentity(agency_id="ag-1", advertiser_id="adv-1")
+    key_b = BuyerIdentity(agency_id="ag-2", advertiser_id="adv-1")
+    storage._store["proposal:prop-1"] = _proposal(buyer_key=_owner_key(key_a))
+    resp = await _post(storage, identity=key_b, key_id="key-b")
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "proposal_not_bookable"
+
+
+async def test_identityless_keys_cannot_book_each_others_proposals(storage):
+    storage._store["proposal:prop-1"] = _proposal(
+        buyer_key=_owner_key(BuyerIdentity()), buyer_key_id="key-c"
+    )
+    resp = await _post(storage, identity=BuyerIdentity(), key_id="key-d")
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "proposal_not_bookable"
+
+    resp = await _post(storage, identity=BuyerIdentity(), key_id="key-c")
+    assert resp.status_code == 200, resp.text
+
+
+async def test_record_without_key_id_falls_back_to_the_pricing_key(storage):
+    legacy = _proposal()
+    del legacy["buyer_key_id"]
+    storage._store["proposal:prop-1"] = legacy
+
+    other = await _post(storage, identity=OTHER, key_id="key-b")
+    assert other.status_code == 409
+    assert other.json()["detail"]["error"] == "proposal_not_bookable"
+
+    resp = await _post(storage, key_id="key-new")
+    assert resp.status_code == 200, resp.text
+
+
+async def test_submit_proposal_route_records_the_submitting_key_id(storage):
+    from ad_seller.services import negotiation_service
+
+    submit = AsyncMock(
+        return_value={"proposal_id": "prop-1", "recommendation": "accept", "status": "accepted"}
+    )
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
+        identity=OWNER, key_id="key-a"
+    )
+    try:
+        with (
+            patch.object(negotiation_service, "submit_proposal", new=submit),
+            patch(
+                "ad_seller.interfaces.api.deps.get_product_catalog",
+                new=AsyncMock(return_value={"products": {}}),
+            ),
+        ):
+            async with httpx.AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as c:
+                resp = await c.post(
+                    "/proposals",
+                    json={
+                        "product_id": "ctv-premium",
+                        "deal_type": "preferred_deal",
+                        "price": 12.0,
+                        "impressions": 1_000_000,
+                        "start_date": "2027-03-01",
+                        "end_date": "2027-03-31",
+                    },
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 200, resp.text
+    assert submit.await_args.kwargs["api_key_id"] == "key-a"
 
 
 @pytest.mark.parametrize("status", ["accepted", "approved"])
@@ -224,10 +299,13 @@ async def test_submit_proposal_records_the_approval_id(storage):
         patch("ad_seller.storage.factory.get_storage", return_value=storage),
         patch("ad_seller.storage.quote_history.QuoteHistoryStore", return_value=quote_history),
     ):
-        result = await negotiation_service.submit_proposal(request, context, {"products": {}})
+        result = await negotiation_service.submit_proposal(
+            request, context, {"products": {}}, api_key_id="key-a"
+        )
 
     stored = storage._store[f"proposal:{result['proposal_id']}"]
     assert stored["approval_id"] == result["approval_id"]
+    assert stored["buyer_key_id"] == "key-a"
 
 
 async def test_repeat_call_returns_the_same_deal(storage):

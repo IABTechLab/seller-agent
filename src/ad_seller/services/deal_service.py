@@ -586,14 +586,18 @@ async def _blocking_approval_status(storage: Any, proposal: dict[str, Any]) -> O
     return None
 
 
-async def generate_deal_from_proposal(proposal_id: str, buyer_context: Any) -> dict[str, Any]:
+async def generate_deal_from_proposal(
+    proposal_id: str, buyer_context: Any, api_key_id: Optional[str] = None
+) -> dict[str, Any]:
     """Generate a deal from a stored, accepted proposal (legacy ``POST /deals``).
 
     - Unknown proposal: 404 ``proposal_not_found``.
     - Not submitted by the caller's API key: 409 ``proposal_not_bookable``.
-      Ownership is the key-derived pricing key recorded at submission; a
-      proposal submitted without a key has no owner and cannot be turned
-      into a deal here.
+      Ownership is the submitting key's ``key_id`` recorded at submission
+      (``buyer_key_id``); records without one fall back to the key-derived
+      pricing key (``buyer_key``). Keys get no override here, operator keys
+      included. A proposal submitted without a key has no owner and cannot
+      be turned into a deal here.
     - Not accepted (the proposal decision, an approval, or an accepted
       negotiation): 409 ``proposal_not_accepted``. A pending, timed-out or
       rejected approval wins over an accepted negotiation.
@@ -616,16 +620,17 @@ async def generate_deal_from_proposal(proposal_id: str, buyer_context: Any) -> d
             },
         )
 
-    caller_key = (
-        buyer_context.get_pricing_key()
-        if getattr(buyer_context, "authentication_method", None) == "api_key"
-        else None
-    )
-    if (
-        caller_key is None
-        or proposal.get("buyer_auth") != "api_key"
-        or proposal.get("buyer_key") != caller_key
-    ):
+    keyed_caller = getattr(buyer_context, "authentication_method", None) == "api_key"
+    owner_key_id = proposal.get("buyer_key_id")
+    if owner_key_id:
+        owned = keyed_caller and api_key_id is not None and api_key_id == owner_key_id
+    else:
+        owned = (
+            keyed_caller
+            and proposal.get("buyer_auth") == "api_key"
+            and proposal.get("buyer_key") == buyer_context.get_pricing_key()
+        )
+    if not owned:
         raise HTTPException(
             status_code=409,
             detail={
