@@ -51,6 +51,8 @@ def storage():
     s.get_proposal = AsyncMock(side_effect=lambda p: store.get(f"proposal:{p}"))
     s.set_proposal = AsyncMock(side_effect=lambda p, d: store.__setitem__(f"proposal:{p}", d))
     s.get_negotiation = AsyncMock(side_effect=lambda p: store.get(f"negotiation:{p}"))
+    s.get = AsyncMock(side_effect=lambda k: store.get(k))
+    s.set = AsyncMock(side_effect=lambda k, v, *a, **kw: store.__setitem__(k, v))
     s._store = store
     return s
 
@@ -134,6 +136,98 @@ async def test_accepted_negotiation_price_is_used(storage):
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["price"] == 32.5
+
+
+async def _gated_proposal(storage, decision=None):
+    """Store a proposal behind a proposal_decision approval, optionally decided."""
+    from ad_seller.events.approval import ApprovalGate
+
+    gate = ApprovalGate(storage)
+    approval = await gate.request_approval(
+        flow_id="flow-1",
+        flow_type="proposal_handling",
+        gate_name="proposal_decision",
+        context={"proposal_id": "prop-1"},
+        flow_state_snapshot={},
+        proposal_id="prop-1",
+    )
+    status = "pending_approval"
+    if decision is not None:
+        with patch("ad_seller.events.bus.get_event_bus", new=AsyncMock()):
+            await gate.submit_decision(approval.approval_id, decision, decided_by="op")
+        status = {"approve": "approved", "reject": "rejected"}.get(decision, status)
+    storage._store["proposal:prop-1"] = _proposal(status=status, approval_id=approval.approval_id)
+    storage._store["negotiation:prop-1"] = {
+        "status": "accepted",
+        "rounds": [{"buyer_price": 11.0, "seller_price": 11.98}],
+    }
+
+
+@pytest.mark.parametrize("decision", [None, "reject"])
+async def test_unapproved_proposal_stays_unbookable_after_accepted_negotiation(storage, decision):
+    await _gated_proposal(storage, decision)
+    resp = await _post(storage)
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "proposal_not_accepted"
+    assert "deal" not in storage._store["proposal:prop-1"]
+
+
+@pytest.mark.parametrize("decision", ["approve", "counter"])
+async def test_approved_or_countered_proposal_books_at_negotiated_price(storage, decision):
+    await _gated_proposal(storage, decision)
+    resp = await _post(storage)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["price"] == 11.98
+
+
+async def test_pending_proposal_without_approval_id_is_409(storage):
+    storage._store["proposal:prop-1"] = _proposal(status="pending_approval")
+    storage._store["negotiation:prop-1"] = {
+        "status": "accepted",
+        "rounds": [{"buyer_price": 11.0, "seller_price": 11.98}],
+    }
+    resp = await _post(storage)
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "proposal_not_accepted"
+
+
+async def test_submit_proposal_records_the_approval_id(storage):
+    from types import SimpleNamespace
+
+    from ad_seller.services import negotiation_service
+
+    flow = MagicMock()
+    flow.handle_proposal_async = AsyncMock(
+        return_value={
+            "proposal_id": "ignored",
+            "recommendation": "accept",
+            "status": "pending_approval",
+            "pending_approval": True,
+            "flow_id": "flow-1",
+            "_flow_state_snapshot": {},
+        }
+    )
+    verification = SimpleNamespace(pricing_verified=True, reason=None)
+    quote_history = MagicMock(verify_pricing=AsyncMock(return_value=verification))
+    request = SimpleNamespace(
+        product_id="ctv-premium",
+        deal_type="preferred_deal",
+        price=12.0,
+        impressions=1_000_000,
+        start_date="2027-03-01",
+        end_date="2027-03-31",
+        buyer_id="buyer-1",
+    )
+    context = BuyerContext(identity=OWNER, is_authenticated=True, authentication_method="api_key")
+    with (
+        patch("ad_seller.flows.ProposalHandlingFlow", return_value=flow),
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch("ad_seller.storage.quote_history.QuoteHistoryStore", return_value=quote_history),
+    ):
+        result = await negotiation_service.submit_proposal(request, context, {"products": {}})
+
+    stored = storage._store[f"proposal:{result['proposal_id']}"]
+    assert stored["approval_id"] == result["approval_id"]
 
 
 async def test_repeat_call_returns_the_same_deal(storage):

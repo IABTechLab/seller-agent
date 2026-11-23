@@ -557,6 +557,35 @@ async def get_deal_performance(deal_id: str) -> dict[str, Any]:
 _BOOKABLE_PROPOSAL_STATUSES = ("accepted", "approved")
 
 
+async def _blocking_approval_status(storage: Any, proposal: dict[str, Any]) -> Optional[str]:
+    """Return the approval status that bars booking ``proposal``, or None.
+
+    A ``proposal_decision`` approval that is pending, timed out or rejected
+    bars booking even when a negotiation on the proposal was accepted. An
+    operator ``counter`` decision is stored as ``rejected`` too, but it hands
+    the proposal back to negotiation, so it does not bar booking.
+    """
+    from ..events.approval import ApprovalGate
+    from ..events.models import ApprovalStatus
+
+    approval_id = proposal.get("approval_id")
+    if not approval_id:
+        # Gated proposals stored before approval_id was recorded.
+        return "pending" if proposal.get("status") == "pending_approval" else None
+
+    gate = ApprovalGate(storage)
+    request = await gate.get_request(approval_id)
+    if request is None:
+        return None
+    if request.status in (ApprovalStatus.PENDING, ApprovalStatus.TIMED_OUT):
+        return request.status.value
+    if request.status == ApprovalStatus.REJECTED:
+        response = await gate.get_response(approval_id)
+        if response is None or response.decision != "counter":
+            return request.status.value
+    return None
+
+
 async def generate_deal_from_proposal(proposal_id: str, buyer_context: Any) -> dict[str, Any]:
     """Generate a deal from a stored, accepted proposal (legacy ``POST /deals``).
 
@@ -566,7 +595,8 @@ async def generate_deal_from_proposal(proposal_id: str, buyer_context: Any) -> d
       proposal submitted without a key has no owner and cannot be turned
       into a deal here.
     - Not accepted (the proposal decision, an approval, or an accepted
-      negotiation): 409 ``proposal_not_accepted``.
+      negotiation): 409 ``proposal_not_accepted``. A pending, timed-out or
+      rejected approval wins over an accepted negotiation.
 
     The deal carries the proposal's terms; an accepted negotiation's agreed
     price replaces the proposed price. A repeat call returns the deal
@@ -606,6 +636,19 @@ async def generate_deal_from_proposal(proposal_id: str, buyer_context: Any) -> d
 
     if isinstance(proposal.get("deal"), dict):
         return proposal["deal"]
+
+    approval_status = await _blocking_approval_status(storage, proposal)
+    if approval_status is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proposal_not_accepted",
+                "message": (
+                    f"Proposal '{proposal_id}' has a '{approval_status}' approval; only "
+                    "approved proposals can be turned into deals."
+                ),
+            },
+        )
 
     price = proposal.get("accepted_price", proposal.get("price"))
     accepted = proposal.get("status") in _BOOKABLE_PROPOSAL_STATUSES
