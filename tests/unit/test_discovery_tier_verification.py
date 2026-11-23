@@ -268,3 +268,36 @@ class TestBlockedAgentRejected:
 
         assert resp.status_code == 403, resp.text
         create.assert_not_awaited()
+
+
+class TestFlooredSessionFiling:
+    """A session floored to PUBLIC must not be filed under the claimed buyer key."""
+
+    async def test_anonymous_advertiser_claim_is_filed_under_public(
+        self, client_factory, storage, wired
+    ):
+        async with client_factory(None) as c:
+            resp = await c.post(
+                "/sessions",
+                json={"advertiser_id": "adv-x", "agency_id": "agency-x"},
+            )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["buyer_pricing_key"] == "public"
+        session_id = body["session_id"]
+
+        stored = await storage.get_session(session_id)
+        assert stored["buyer_identity"]["advertiser_id"] is None
+        assert stored["buyer_identity"]["agency_id"] is None
+        assert [s["session_id"] for s in await storage.get_buyer_sessions("public")] == [session_id]
+        assert await storage.get_buyer_sessions("advertiser:adv-x") == []
+        assert await storage.get_buyer_sessions("agency:agency-x") == []
+
+    async def test_keyed_session_stays_under_key_identity(self, client_factory, storage, wired):
+        async with client_factory(_agency_key_record()) as c:
+            resp = await c.post("/sessions", json={})
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["buyer_pricing_key"] == "agency:agency-verified"
+        assert len(await storage.get_buyer_sessions("agency:agency-verified")) == 1

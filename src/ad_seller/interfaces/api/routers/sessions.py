@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 
+from ....models.buyer_identity import AccessTier, BuyerIdentity
 from ....services import session_service
 from .. import deps
 from ..schemas import CreateSessionRequest, SessionMessageRequest
@@ -39,6 +40,10 @@ async def create_session(
         api_key_record=api_key_record,
         agent_url=request.agent_url,
     )
+    # The session is indexed by the identity's pricing key, so an
+    # unverified claim floored to PUBLIC must not file it under that buyer.
+    if api_key_record is None and context.effective_tier == AccessTier.PUBLIC:
+        context = context.model_copy(update={"identity": BuyerIdentity()})
 
     return await session_service.create_session(buyer_context=context)
 
