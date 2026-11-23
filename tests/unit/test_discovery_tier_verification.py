@@ -8,16 +8,24 @@ self-asserted identity floors to PUBLIC unless a seller-issued API key (or a
 registry-verified agent) backs it.
 """
 
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from httpx import ASGITransport
 
+from ad_seller.clients.agent_registry_client import BaseRegistryClient
+from ad_seller.events.bus import InMemoryEventBus
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app
+from ad_seller.models.agent_registry import AgentCard, AgentProvider, TrustStatus
 from ad_seller.models.buyer_identity import BuyerIdentity
 from ad_seller.models.core import DealType, PricingModel
 from ad_seller.models.flow_state import ProductDefinition
+from ad_seller.registry.agent_registry import AgentRegistryService
+from ad_seller.storage.sqlite_backend import SQLiteBackend
+
+AGENT_URL = "https://buyer-agent.example.test"
 
 
 def _catalog():
@@ -52,6 +60,87 @@ def client_factory():
 
     yield _make
     app.dependency_overrides.clear()
+
+
+class _UnregisteredRegistryClient(BaseRegistryClient):
+    """Registry double that knows no agents (no network)."""
+
+    def __init__(self):
+        super().__init__(
+            registry_id="fake_registry",
+            registry_name="Fake Registry",
+            registry_url="http://registry.test",
+        )
+
+    async def verify_registration(self, agent_url):
+        return False, None
+
+    async def lookup_agent(self, agent_id):
+        return None
+
+    async def search_agents(self, agent_type=None, inventory_types=None):
+        return []
+
+
+@pytest.fixture
+async def storage(tmp_path):
+    backend = SQLiteBackend(f"sqlite:///{tmp_path}/discovery.db")
+    await backend.connect()
+    yield backend
+    await backend.disconnect()
+
+
+@pytest.fixture
+def registry(storage):
+    return AgentRegistryService(storage, registry_clients=[_UnregisteredRegistryClient()])
+
+
+@pytest.fixture
+def wired(storage, registry):
+    """Route storage, registry, catalog and event bus to in-process doubles."""
+    with ExitStack() as stack:
+        stack.enter_context(patch("ad_seller.storage.factory.get_storage", return_value=storage))
+        stack.enter_context(
+            patch(
+                "ad_seller.interfaces.api.deps._get_registry_service",
+                new=AsyncMock(return_value=registry),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ad_seller.interfaces.api.main._get_static_product_catalog",
+                new=AsyncMock(return_value=_catalog()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ad_seller.services.catalog_service.get_static_product_catalog",
+                new=AsyncMock(return_value=_catalog()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ad_seller.events.bus.get_event_bus",
+                new=AsyncMock(return_value=InMemoryEventBus()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ad_seller.registry.agent_registry.fetch_agent_card",
+                new=AsyncMock(return_value=None),
+            )
+        )
+        yield
+
+
+async def _register(registry, trust_status):
+    card = AgentCard(
+        name="Fictional Buyer Agent",
+        description="A buyer agent",
+        url=AGENT_URL,
+        provider=AgentProvider(name="Fictional DSP"),
+    )
+    return await registry.register_agent(agent_card=card, trust_status=trust_status)
 
 
 async def _discover(client):
@@ -149,3 +238,33 @@ class TestMediaKitSearchTierVerification:
         assert resp.status_code == 200, resp.text
         ctx = service.search_packages.await_args.kwargs["buyer_context"]
         assert ctx.effective_tier.value == "agency"
+
+
+class TestBlockedAgentRejected:
+    """Discovery and sessions left ``_resolve_and_enforce_agent``; the 403 must survive."""
+
+    async def test_blocked_agent_gets_403_on_discovery(self, client_factory, registry, wired):
+        await _register(registry, TrustStatus.BLOCKED)
+
+        async with client_factory(None) as c:
+            resp = await c.post(
+                "/discovery",
+                json={"query": "how much does CTV cost?", "agent_url": AGENT_URL},
+            )
+
+        assert resp.status_code == 403, resp.text
+        assert "pricing" not in resp.json()
+
+    async def test_blocked_agent_gets_403_on_sessions(self, client_factory, registry, wired):
+        await _register(registry, TrustStatus.BLOCKED)
+        create = AsyncMock(return_value={"session_id": "s-blocked"})
+
+        with patch("ad_seller.services.session_service.create_session", new=create):
+            async with client_factory(None) as c:
+                resp = await c.post(
+                    "/sessions",
+                    json={"agency_id": "agency-x", "agent_url": AGENT_URL},
+                )
+
+        assert resp.status_code == 403, resp.text
+        create.assert_not_awaited()
