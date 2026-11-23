@@ -705,6 +705,10 @@ async def create_deal_from_template(
     deal_data["schain"] = _build_seller_schain()
 
     storage = await get_storage()
+    if deal_type_str == "PG":
+        from .quote_service import commit_pg_booking
+
+        await commit_pg_booking(storage, product, deal_id, request.impressions, flight_end)
     await storage.set_deal(deal_id, deal_data)
     await _emit_deal_created(deal_data, source="template")
 
@@ -777,14 +781,19 @@ def _build_seller_schain() -> dict[str, Any]:
 # =============================================================================
 
 
-async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
+async def bulk_deal_operations(
+    operations: list[Any], catalog: Optional[dict[str, Any]] = None
+) -> list[dict[str, Any]]:
     """Process a batch of deal operations (create/update/cancel).
 
     Each operation is processed independently; returns per-operation
-    result dicts (index/action/success/deal_id/error).
+    result dicts (index/action/success/deal_id/error). A create commits PG
+    volume through the same ledger as ``book_deal`` (``catalog`` is used to
+    re-check capacity when the quote holds none).
     """
     from ..models.quotes import DealBookingStatus, QuoteStatus
     from ..storage.factory import get_storage
+    from .quote_service import commit_pg_hold
 
     storage = await get_storage()
     results: list[dict[str, Any]] = []
@@ -844,6 +853,19 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
                     "created_at": now.isoformat() + "Z",
                     "notes": op.notes,
                 }
+                try:
+                    await commit_pg_hold(storage, quote, catalog)
+                except HTTPException as exc:
+                    detail = exc.detail if isinstance(exc.detail, dict) else {}
+                    results.append(
+                        _result(
+                            i,
+                            "create",
+                            False,
+                            error=f"{detail.get('error')}: {detail.get('message')}",
+                        )
+                    )
+                    continue
                 await storage.set_deal(deal_id, deal_data)
 
                 # Mark quote as booked

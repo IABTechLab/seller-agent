@@ -17,7 +17,7 @@ import logging
 import uuid
 import weakref
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from fastapi import HTTPException
 
@@ -214,17 +214,48 @@ async def _reserve_pg_hold(
         await storage.set(key, ledger)
 
 
+async def _commit_pg_entry(
+    storage: Any,
+    product_id: str,
+    entry_id: str,
+    impressions: int,
+    flight_end: Any,
+    get_product: Callable[[], Awaitable[Any]],
+) -> None:
+    """Record ``entry_id`` as booked PG volume until its flight ends.
+
+    A live hold is converted as is. Without one (anonymous quote, lapsed
+    or lost hold, or a booking that never had a quote) the volume is
+    re-checked against the remaining capacity first and refused with 409
+    ``insufficient_avails`` if it no longer fits.
+    """
+    try:
+        until = datetime.fromisoformat(str(flight_end)) + timedelta(days=1)
+    except ValueError:
+        until = datetime.utcnow() + timedelta(days=30)
+    key = _inventory_hold_key(product_id)
+    async with _ledger_lock(product_id):
+        ledger = _active_holds(await storage.get(key), datetime.utcnow())
+        entry = ledger.get(entry_id)
+        if entry is None:
+            product = await get_product()
+            if not _tracks_capacity(product):
+                return
+            entry = {"impressions": impressions}
+            _check_pg_capacity(product, ledger, impressions)
+        ledger[entry_id] = {**entry, "state": "booked", "until": until.isoformat() + "Z"}
+        await storage.set(key, ledger)
+
+
 async def commit_pg_hold(
     storage: Any, quote: dict[str, Any], catalog: Optional[dict[str, Any]] = None
 ) -> None:
     """Turn a booked PG quote's capacity into a booked commitment.
 
-    Called when the quote is booked, before the booking is persisted: the
-    entry no longer lapses but stays counted against capacity until the
-    flight ends. A quote with no live hold (anonymous, its hold lapsed,
-    or its entry lost) is re-checked against the remaining capacity
-    first and refused with 409 ``insufficient_avails`` if it no longer
-    fits. ``catalog`` defaults to the static product catalog.
+    Called by every quote-booking path before the booking is persisted:
+    the entry no longer lapses but stays counted against capacity until
+    the flight ends. A quote with no live hold is re-checked (see
+    ``_commit_pg_entry``). ``catalog`` defaults to the static catalog.
     """
     from ..config import get_settings
 
@@ -235,26 +266,38 @@ async def commit_pg_hold(
     if not get_settings().pg_quote_inventory_hold_enabled:
         return
     terms = quote.get("terms") or {}
-    try:
-        until = datetime.fromisoformat(str(terms.get("flight_end"))) + timedelta(days=1)
-    except ValueError:
-        until = datetime.utcnow() + timedelta(days=30)
-    key = _inventory_hold_key(product_id)
-    async with _ledger_lock(product_id):
-        ledger = _active_holds(await storage.get(key), datetime.utcnow())
-        entry = ledger.get(quote_id)
-        if entry is None:
-            if catalog is None:
-                from . import catalog_service
 
-                catalog = await catalog_service.get_static_product_catalog()
-            product = (catalog.get("products") or {}).get(product_id)
-            if not _tracks_capacity(product):
-                return
-            entry = {"impressions": int(terms.get("impressions") or 0)}
-            _check_pg_capacity(product, ledger, entry["impressions"])
-        ledger[quote_id] = {**entry, "state": "booked", "until": until.isoformat() + "Z"}
-        await storage.set(key, ledger)
+    async def _product() -> Any:
+        source = catalog
+        if source is None:
+            from . import catalog_service
+
+            source = await catalog_service.get_static_product_catalog()
+        return (source.get("products") or {}).get(product_id)
+
+    await _commit_pg_entry(
+        storage,
+        product_id,
+        quote_id,
+        int(terms.get("impressions") or 0),
+        terms.get("flight_end"),
+        _product,
+    )
+
+
+async def commit_pg_booking(
+    storage: Any, product: Any, booking_id: str, impressions: int, flight_end: Any
+) -> None:
+    """Reserve and commit PG volume booked without a quote (from-template)."""
+    if not _tracks_capacity(product):
+        return
+
+    async def _product() -> Any:
+        return product
+
+    await _commit_pg_entry(
+        storage, product.product_id, booking_id, impressions, flight_end, _product
+    )
 
 
 async def create_quote(

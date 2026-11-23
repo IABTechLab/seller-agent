@@ -11,7 +11,7 @@ fit in what is left is refused with 409 ``insufficient_avails``.
 import asyncio
 import json
 import sys
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -342,3 +342,112 @@ def test_hold_ttl_cannot_exceed_the_quote_ttl():
 
     with pytest.raises(ValidationError):
         Settings(pg_hold_ttl_seconds=86401)
+
+
+@contextmanager
+def _mcp(storage):
+    from ad_seller.interfaces import mcp_server
+
+    with (
+        patch(
+            "ad_seller.services.catalog_service.get_static_product_catalog",
+            new=AsyncMock(return_value=_catalog()),
+        ),
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch(
+            "ad_seller.services.rate_card_service.get_rate_card_entries",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        # No MCP request context: treated as the in-process operator.
+        patch.object(mcp_server.mcp, "get_context", side_effect=LookupError),
+    ):
+        yield mcp_server
+
+
+async def _bulk_create(storage, quote_id):
+    return await _post(
+        storage, "/api/v1/deals/bulk", {"operations": [{"action": "create", "quote_id": quote_id}]}
+    )
+
+
+async def _from_template(storage, impressions, **kw):
+    return await _post(
+        storage,
+        "/api/v1/deals/from-template",
+        {
+            "deal_type": "PG",
+            "product_id": "ctv-1",
+            "impressions": impressions,
+            "flight_start": "2027-01-01",
+            "flight_end": "2027-01-31",
+        },
+        **kw,
+    )
+
+
+async def test_bulk_create_commits_the_pg_hold(storage):
+    quote_id = (await _quote(storage, 3_000_000)).json()["quote"]["quote_id"]
+
+    result = (await _bulk_create(storage, quote_id)).json()["results"][0]
+
+    assert result["success"], result
+    entry = storage._store[HOLD_KEY][quote_id]
+    assert entry["state"] == "booked"
+    assert entry["until"].startswith("2027-02-01")
+
+
+async def test_bulk_create_rechecks_capacity_when_the_hold_lapsed(storage):
+    quote_id = (await _quote(storage, 3_000_000)).json()["quote"]["quote_id"]
+    storage._store[HOLD_KEY][quote_id]["until"] = "2020-01-01T00:00:00Z"
+    assert (await _quote(storage, 3_000_000, key_id="key-b")).status_code == 200
+
+    result = (await _bulk_create(storage, quote_id)).json()["results"][0]
+
+    assert not result["success"]
+    assert result["error"].startswith("insufficient_avails")
+    assert storage._store[f"quote:{quote_id}"]["status"] == "available"
+    assert not any(k.startswith("deal:") for k in storage._store)
+
+
+async def test_mcp_bulk_create_commits_the_pg_hold(storage):
+    quote_id = (await _quote(storage, 3_000_000)).json()["quote"]["quote_id"]
+
+    with _mcp(storage) as mcp_server:
+        out = json.loads(
+            await mcp_server.bulk_deal_operations(
+                json.dumps([{"action": "create", "quote_id": quote_id}])
+            )
+        )
+
+    assert out["succeeded"] == 1, out
+    assert storage._store[HOLD_KEY][quote_id]["state"] == "booked"
+
+
+async def test_from_template_pg_reserves_and_commits_capacity(storage):
+    created = await _from_template(storage, 4_000_000)
+    assert created.status_code == 201, created.text
+    deal_id = created.json()["deal_id"]
+    assert storage._store[HOLD_KEY][deal_id]["state"] == "booked"
+
+    refused = await _from_template(storage, 2_000_000)
+
+    assert refused.status_code == 409
+    assert refused.json()["detail"]["error"] == "insufficient_avails"
+    assert (await _quote(storage, 2_000_000)).status_code == 409
+    assert [k for k in storage._store if k.startswith("deal:")] == [f"deal:{deal_id}"]
+
+
+async def test_mcp_from_template_pg_reserves_and_commits_capacity(storage):
+    with _mcp(storage) as mcp_server:
+        created = json.loads(
+            await mcp_server.create_deal_from_template(
+                "PG", "ctv-1", impressions=4_000_000, flight_end="2027-01-31"
+            )
+        )
+        refused = json.loads(
+            await mcp_server.create_deal_from_template("PG", "ctv-1", impressions=2_000_000)
+        )
+
+    assert storage._store[HOLD_KEY][created["deal_id"]]["state"] == "booked"
+    assert refused["detail"]["error"] == "insufficient_avails"
