@@ -160,6 +160,7 @@ async def _verified_buyer_context(
     seat_id: Optional[str] = None,
     api_key_record: Optional[Any] = None,
     agent_url: Optional[str] = None,
+    audit_unknown_agents: bool = True,
 ):
     """Build a BuyerContext with the trust-tier ceiling VERIFIED (EP-5.2).
 
@@ -184,7 +185,14 @@ async def _verified_buyer_context(
 
     Args:
         endpoint: Audit label for the calling path (e.g. "POST /api/v1/quotes").
+        audit_unknown_agents: When False, skip the ``VerifiedTrust`` record
+            for agents with trust status UNKNOWN (no registry record, or a card
+            that no registry vouches for). Anonymous read-only routes pass
+            False: any caller can send any ``agent_url`` there and each record
+            is a new storage row. Registered, approved, preferred and blocked
+            outcomes are still recorded.
     """
+    from ...models.agent_registry import TrustStatus
     from ...models.buyer_identity import AccessTier
     from ...storage.factory import get_storage
     from ...storage.trust_verifications import TrustVerificationStore
@@ -205,14 +213,15 @@ async def _verified_buyer_context(
             agent_url=agent_url,
         )
         # Persist the auditable verification outcome (fail-closed store).
-        store = TrustVerificationStore(await get_storage())
-        await store.record_verification(
-            verdict,
-            agent_url=agent_url,
-            claimed_tier=claimed_context.effective_tier.value,
-            effective_ceiling=tier.value if tier is not None else None,
-            endpoint=endpoint,
-        )
+        if audit_unknown_agents or verdict.verification_status != TrustStatus.UNKNOWN.value:
+            store = TrustVerificationStore(await get_storage())
+            await store.record_verification(
+                verdict,
+                agent_url=agent_url,
+                claimed_tier=claimed_context.effective_tier.value,
+                effective_ceiling=tier.value if tier is not None else None,
+                endpoint=endpoint,
+            )
 
         if agent is not None and agent.is_blocked:
             raise HTTPException(

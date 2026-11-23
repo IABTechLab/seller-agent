@@ -301,3 +301,79 @@ class TestFlooredSessionFiling:
         assert resp.status_code == 200, resp.text
         assert resp.json()["buyer_pricing_key"] == "agency:agency-verified"
         assert len(await storage.get_buyer_sessions("agency:agency-verified")) == 1
+
+
+async def _trust_keys(storage):
+    return await storage.keys("verified_trust*")
+
+
+class TestDiscoveryTrustAudit:
+    """Anonymous discovery must not persist an audit row per call for unknown agents."""
+
+    @pytest.mark.parametrize("card_fetchable", [False, True])
+    async def test_anonymous_discovery_with_unknown_agent_writes_no_audit(
+        self, client_factory, storage, wired, card_fetchable
+    ):
+        card = AgentCard(
+            name="Unknown Buyer Agent",
+            description="A buyer agent",
+            url=AGENT_URL,
+            provider=AgentProvider(name="Fictional DSP"),
+        )
+        with patch(
+            "ad_seller.registry.agent_registry.fetch_agent_card",
+            new=AsyncMock(return_value=card if card_fetchable else None),
+        ):
+            for _ in range(5):
+                async with client_factory(None) as c:
+                    resp = await c.post(
+                        "/discovery",
+                        json={
+                            "query": "how much does CTV cost?",
+                            "buyer_tier": "agency",
+                            "agency_id": "agency-x",
+                            "agent_url": AGENT_URL,
+                        },
+                    )
+                assert resp.status_code == 200, resp.text
+                assert resp.json()["access_tier"] == "public"
+
+        assert await _trust_keys(storage) == []
+
+    async def test_anonymous_discovery_with_registered_agent_still_audits(
+        self, client_factory, storage, registry, wired
+    ):
+        await _register(registry, TrustStatus.REGISTERED)
+
+        async with client_factory(None) as c:
+            resp = await c.post(
+                "/discovery",
+                json={"query": "how much does CTV cost?", "agent_url": AGENT_URL},
+            )
+
+        assert resp.status_code == 200, resp.text
+        records = [k for k in await _trust_keys(storage) if k.startswith("verified_trust:")]
+        assert len(records) == 1
+
+    async def test_quote_with_unknown_agent_still_audits(self, client_factory, storage, wired):
+        async with client_factory(None) as c:
+            resp = await c.post(
+                "/api/v1/quotes",
+                json={
+                    "idempotency_key": "idem-unknown-agent",
+                    "product_id": "ctv-premium-sports",
+                    "deal_type": "PD",
+                    "impressions": 1000000,
+                    "agent_url": AGENT_URL,
+                },
+            )
+
+        assert resp.status_code == 200, resp.text
+        records = [
+            await storage.get(k)
+            for k in await _trust_keys(storage)
+            if k.startswith("verified_trust:")
+        ]
+        assert len(records) == 1
+        assert records[0]["endpoint"] == "POST /api/v1/quotes"
+        assert records[0]["verified_trust"]["verified"] is False

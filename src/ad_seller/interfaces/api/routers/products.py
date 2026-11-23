@@ -226,6 +226,7 @@ async def discovery_query(
         agency_id=request.agency_id,
         api_key_record=api_key_record,
         agent_url=request.agent_url,
+        audit_unknown_agents=api_key_record is not None,
     )
 
     # Process discovery
