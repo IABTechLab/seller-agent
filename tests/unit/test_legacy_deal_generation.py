@@ -315,6 +315,49 @@ async def test_repeat_call_returns_the_same_deal(storage):
     assert second["deal_id"] == first["deal_id"]
 
 
+async def test_concurrent_calls_mint_one_deal(storage):
+    import asyncio
+
+    storage._store["proposal:prop-1"] = _proposal()
+    read, write = storage.get_proposal.side_effect, storage.set_proposal.side_effect
+
+    async def slow_get(p):
+        await asyncio.sleep(0)
+        return read(p)
+
+    async def slow_set(p, d):
+        await asyncio.sleep(0)
+        write(p, d)
+
+    storage.get_proposal = AsyncMock(side_effect=slow_get)
+    storage.set_proposal = AsyncMock(side_effect=slow_set)
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
+        identity=OWNER, key_id="key-a"
+    )
+    try:
+        with (
+            patch("ad_seller.storage.factory.get_storage", return_value=storage),
+            patch(
+                "ad_seller.flows.deal_generation_flow.DealGenerationFlow._od_register_deal",
+                new=AsyncMock(),
+            ),
+            patch("ad_seller.flows.deal_generation_flow.emit_event", new=AsyncMock()),
+        ):
+            async with httpx.AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as c:
+                responses = await asyncio.gather(
+                    *(c.post("/deals", json={"proposal_id": "prop-1"}) for _ in range(6))
+                )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert all(r.status_code == 200 for r in responses), [r.text for r in responses]
+    deal_ids = {r.json()["deal_id"] for r in responses}
+    assert len(deal_ids) == 1
+    assert storage._store["proposal:prop-1"]["deal"]["deal_id"] in deal_ids
+
+
 @pytest.mark.parametrize("decision, status", [("approve", "approved"), ("reject", "rejected")])
 async def test_approval_decision_updates_the_stored_proposal(storage, decision, status):
     from types import SimpleNamespace

@@ -12,9 +12,11 @@ exactly as the endpoints raised them, and imports of storage/flows/clients
 stay function-level so existing test patch points keep working.
 """
 
+import asyncio
 import hashlib
 import logging
 import uuid
+import weakref
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -556,6 +558,13 @@ async def get_deal_performance(deal_id: str) -> dict[str, Any]:
 
 _BOOKABLE_PROPOSAL_STATUSES = ("accepted", "approved")
 
+# Serializes the read-check-mint-store sequence per proposal. Process-local:
+# it does not cover several worker processes, which would need a storage-level
+# compare-and-set on the proposal's ``deal`` slot.
+_proposal_deal_locks: "weakref.WeakValueDictionary[str, asyncio.Lock]" = (
+    weakref.WeakValueDictionary()
+)
+
 
 async def _blocking_approval_status(storage: Any, proposal: dict[str, Any]) -> Optional[str]:
     """Return the approval status that bars booking ``proposal``, or None.
@@ -603,9 +612,17 @@ async def generate_deal_from_proposal(
       rejected approval wins over an accepted negotiation.
 
     The deal carries the proposal's terms; an accepted negotiation's agreed
-    price replaces the proposed price. A repeat call returns the deal
-    already generated for the proposal.
+    price replaces the proposed price. A repeat call, including a concurrent
+    one, returns the deal already generated for the proposal.
     """
+    lock = _proposal_deal_locks.setdefault(proposal_id, asyncio.Lock())
+    async with lock:
+        return await _generate_deal_from_proposal_locked(proposal_id, buyer_context, api_key_id)
+
+
+async def _generate_deal_from_proposal_locked(
+    proposal_id: str, buyer_context: Any, api_key_id: Optional[str]
+) -> dict[str, Any]:
     from ..flows import DealGenerationFlow
     from ..storage.factory import get_storage
 
