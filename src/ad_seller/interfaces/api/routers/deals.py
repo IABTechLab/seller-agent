@@ -384,6 +384,10 @@ async def create_deal_from_template(
     against the floor price, and auto-books the deal if acceptable.
 
     Returns 201 with the created deal on success.
+    Returns 202 ``pending_approval`` with an ``approval_id`` when the
+    approval gate holds the booking (same rules as ``POST /api/v1/deals``);
+    nothing is minted, and re-submitting the same request after approval
+    books it. A rejected booking is a 409 ``booking_rejected``.
     Returns 422 when max_cpm is below the seller's floor price, including
     the seller's minimum price in the response.
     Returns 401 for unauthenticated requests.
@@ -424,6 +428,8 @@ async def create_deal_from_template(
     )
 
     deal_data = await deal_service.create_deal_from_template(request, context, catalog)
+    if deal_data.get("status") == "pending_approval":
+        return JSONResponse(status_code=202, content=deal_data)
 
     return DealFromTemplateResponse(
         deal_id=deal_data["deal_id"],

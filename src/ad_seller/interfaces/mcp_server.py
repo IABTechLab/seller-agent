@@ -694,6 +694,8 @@ async def create_deal_from_template(
         )
     except HTTPException as exc:
         return _dumps({"detail": exc.detail})
+    if deal_data.get("status") == "pending_approval":
+        return _dumps(deal_data)
 
     # Mirror the REST DealFromTemplateResponse projection (single source of I/O).
     return _dumps(

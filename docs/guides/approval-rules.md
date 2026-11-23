@@ -197,7 +197,7 @@ Currently supported:
 | Gate Name | Flow | When Triggered |
 |-----------|------|---------------|
 | `proposal_decision` | ProposalHandlingFlow | After crew evaluates a buyer proposal and recommends accept/counter/reject. Also gates `POST /api/v1/deals` when the booked quote carries a proposal-led negotiated price |
-| `deal_booking` | `POST /api/v1/deals` | Every quote booking |
+| `deal_booking` | `POST /api/v1/deals`, bulk create, from-template | Every quote or template booking |
 
 Quote booking is also held whenever its gross value (final CPM x
 impressions / 1000) reaches `APPROVAL_REQUIRED_ABOVE_VALUE`, the same
@@ -207,6 +207,19 @@ operator decides (`POST /approvals/{id}/decide`), the buyer re-submits the
 booking: an approval for the same price and impressions books the deal, a
 rejection is a 409 `booking_rejected`, and an approval for different terms
 raises a new request.
+
+Every path that books a deal applies the same gate:
+
+- `POST /api/v1/deals/bulk` and the MCP `bulk_deal_operations` tool, for
+  `create` operations: a held item is reported with `success: false`,
+  `status: pending_approval` and its `approval_id`. Bulk create and
+  `POST /api/v1/deals` share one approval per quote, so an approval raised
+  through either is honoured by both.
+- `POST /api/v1/deals/from-template` and the MCP `create_deal_from_template`
+  tool: a held request answers 202 (the MCP tool returns the same body).
+  The approval is tied to the priced terms (buyer, product, deal type, CPM,
+  impressions and flight dates as sent); re-submitting the same request after
+  approval books one deal, and the approval is then consumed.
 
 Example:
 

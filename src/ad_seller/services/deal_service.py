@@ -13,6 +13,7 @@ stay function-level so existing test patch points keep working.
 """
 
 import hashlib
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -285,6 +286,65 @@ def _booking_approval_key(quote_id: str) -> str:
     return f"approval_index:quote_booking:{quote_id}"
 
 
+async def _apply_booking_gate(
+    storage: Any,
+    *,
+    index_key: str,
+    flow_id: str,
+    terms: dict[str, Any],
+    context: dict[str, Any],
+    snapshot: dict[str, Any],
+    rejected_message: str,
+) -> tuple[Optional[str], Optional[Any]]:
+    """Find or raise the ``deal_booking`` approval for a gated booking.
+
+    Returns ``(approval_id, None)`` while the booking is held (an existing
+    pending request for these exact terms, or a freshly raised one), and
+    ``(None, approval)`` when an operator approved these exact terms. A
+    rejection is a 409 ``booking_rejected``. An approval for different
+    terms, or one already consumed by a booking, does not carry over: a
+    fresh request is raised.
+    """
+    from ..events.approval import ApprovalGate
+    from ..events.models import ApprovalStatus
+
+    gate = ApprovalGate(storage)
+    existing_id = await storage.get(index_key)
+    existing = await gate.get_request(existing_id) if isinstance(existing_id, str) else None
+    if existing is not None and existing.context.get("terms") == terms:
+        if existing.status == ApprovalStatus.APPROVED:
+            return None, existing
+        if existing.status == ApprovalStatus.REJECTED:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "booking_rejected",
+                    "message": rejected_message,
+                    "approval_id": existing.approval_id,
+                },
+            )
+        if existing.status == ApprovalStatus.PENDING:
+            return existing.approval_id, None
+
+    approval = await gate.request_approval(
+        flow_id=flow_id,
+        flow_type="deal_booking",
+        gate_name="deal_booking",
+        context={**context, "terms": terms},
+        flow_state_snapshot={**snapshot, "terms": terms},
+    )
+    await storage.set(index_key, approval.approval_id)
+    return approval.approval_id, None
+
+
+async def _consume_approval(storage: Any, approval: Any, deal_id: str) -> None:
+    from ..events.models import ApprovalStatus
+
+    approval.status = ApprovalStatus.CONSUMED
+    approval.deal_id = deal_id
+    await storage.set(f"approval:{approval.approval_id}", approval.model_dump(mode="json"))
+
+
 async def _gate_quote_booking(
     storage: Any, quote_id: str, quote: dict[str, Any], negotiation: Optional[dict[str, Any]]
 ) -> Optional[dict[str, Any]]:
@@ -296,10 +356,11 @@ async def _gate_quote_booking(
     after the decision. A rejected booking is a 409. An approval granted
     for different terms (the negotiated price moved after the decision)
     does not carry over: a fresh request is raised for the new terms.
-    """
-    from ..events.approval import ApprovalGate
-    from ..events.models import ApprovalStatus
 
+    Every path that books a quote (``book_deal``, bulk create) shares the
+    per-quote approval index, so an approval raised through one path is
+    honoured by the others.
+    """
     final_cpm, impressions, gross_value = _quote_booking_terms(quote)
     proposal_led = bool(
         negotiation and negotiation.get("proposal_id") and negotiation["proposal_id"] != quote_id
@@ -307,43 +368,26 @@ async def _gate_quote_booking(
     if not _booking_approval_required(gross_value, proposal_led):
         return None
 
-    gate = ApprovalGate(storage)
-    terms = {"final_cpm": final_cpm, "impressions": impressions}
-    existing_id = await storage.get(_booking_approval_key(quote_id))
-    existing = await gate.get_request(existing_id) if isinstance(existing_id, str) else None
-    if existing is not None and existing.context.get("terms") == terms:
-        if existing.status == ApprovalStatus.APPROVED:
-            return None
-        if existing.status == ApprovalStatus.REJECTED:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "error": "booking_rejected",
-                    "message": "The seller declined to book this quote.",
-                    "approval_id": existing.approval_id,
-                },
-            )
-        if existing.status == ApprovalStatus.PENDING:
-            return _pending_booking_payload(quote_id, existing.approval_id)
-
-    approval = await gate.request_approval(
+    held_id, _approved = await _apply_booking_gate(
+        storage,
+        index_key=_booking_approval_key(quote_id),
         flow_id=f"booking-{quote_id}",
-        flow_type="deal_booking",
-        gate_name="deal_booking",
+        terms={"final_cpm": final_cpm, "impressions": impressions},
         context={
             "quote_id": quote_id,
             "product_id": (quote.get("product") or {}).get("product_id"),
             "deal_type": quote.get("deal_type"),
             "buyer_tier": quote.get("buyer_tier"),
-            "terms": terms,
             "gross_value": round(gross_value, 2),
             "negotiation_id": (negotiation or {}).get("negotiation_id"),
             "proposal_id": (negotiation or {}).get("proposal_id") if proposal_led else None,
         },
-        flow_state_snapshot={"quote_id": quote_id, "terms": terms},
+        snapshot={"quote_id": quote_id},
+        rejected_message="The seller declined to book this quote.",
     )
-    await storage.set(_booking_approval_key(quote_id), approval.approval_id)
-    return _pending_booking_payload(quote_id, approval.approval_id)
+    if held_id is not None:
+        return _pending_booking_payload(quote_id, held_id)
+    return None
 
 
 def _pending_booking_payload(quote_id: str, approval_id: str) -> dict[str, Any]:
@@ -355,6 +399,60 @@ def _pending_booking_payload(quote_id: str, approval_id: str) -> dict[str, Any]:
             "This booking requires seller approval. Re-submit the booking once it is approved."
         ),
     }
+
+
+async def _apply_accepted_negotiation(
+    storage: Any, quote_id: str, quote: dict[str, Any]
+) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
+    """Return ``(quote, negotiation)`` with the quote priced at the agreed CPM.
+
+    When a negotiation about this quote concluded accepted, the booking
+    strikes the AGREED price, not the stale quoted price. A quote with no
+    accepted negotiation (including a re-quote at the agreed price, the
+    buyer's historical workaround) books unchanged.
+
+    Resolution goes through the quote index an accepted negotiation writes
+    (``negotiation_by_quote:{quote_id}`` -> the key its record is stored
+    under). Passing the quote id straight to get_negotiation only ever
+    worked for a QUOTE-LED negotiation, which happens to be stored under the
+    quote id; a proposal-led one is stored under its ``prop-`` id, so the
+    lookup missed every time and the agreed price was silently dropped. The
+    direct read is kept as a fallback so quote-led negotiations recorded
+    before this index existed are still honored.
+    """
+    negotiation = await _resolve_accepted_negotiation(storage, quote_id)
+    if not negotiation:
+        return quote, None
+    rounds = negotiation.get("rounds") or []
+    agreed_cpm = rounds[-1].get("seller_price") if rounds else None
+    if agreed_cpm is None:
+        # A negotiation that concluded accepted with no price is a corrupt
+        # record. Booking it at list price is the worst available outcome —
+        # it is exactly the silent overpayment this whole path exists to
+        # prevent — so refuse instead.
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "negotiation_price_unresolved",
+                "message": (
+                    f"Negotiation '{negotiation.get('negotiation_id')}' for quote "
+                    f"'{quote_id}' is accepted but carries no agreed price. "
+                    "Refusing to book at the un-negotiated quoted price."
+                ),
+            },
+        )
+    quote = {
+        **quote,
+        "pricing": {
+            **quote["pricing"],
+            "final_cpm": agreed_cpm,
+            "rationale": (
+                f"{quote['pricing'].get('rationale', '')} | Negotiated to "
+                f"${agreed_cpm:.2f} CPM ({negotiation.get('negotiation_id')})"
+            ).strip(" |"),
+        },
+    }
+    return quote, negotiation
 
 
 async def book_deal(request: Any) -> dict[str, Any]:
@@ -409,51 +507,9 @@ async def book_deal(request: Any) -> dict[str, Any]:
             },
         )
 
-    # Honor ACCEPTED negotiation state on this quote: when a negotiation about
-    # this quote concluded accepted, the booking strikes the AGREED price, not
-    # the stale quoted price. A quote with no accepted negotiation (including a
-    # re-quote at the agreed price, the buyer's historical workaround) books
-    # unchanged.
-    #
-    # Resolution goes through the quote index an accepted negotiation writes
-    # (`negotiation_by_quote:{quote_id}` -> the key its record is stored
-    # under). Passing the quote id straight to get_negotiation only ever
-    # worked for a QUOTE-LED negotiation, which happens to be stored under the
-    # quote id; a proposal-led one is stored under its `prop-` id, so the
-    # lookup missed every time and the agreed price was silently dropped. The
-    # direct read is kept as a fallback so quote-led negotiations recorded
-    # before this index existed are still honored.
-    negotiation = await _resolve_accepted_negotiation(storage, request.quote_id)
-    if negotiation:
-        rounds = negotiation.get("rounds") or []
-        agreed_cpm = rounds[-1].get("seller_price") if rounds else None
-        if agreed_cpm is None:
-            # A negotiation that concluded accepted with no price is a corrupt
-            # record. Booking it at list price is the worst available outcome —
-            # it is exactly the silent overpayment this whole path exists to
-            # prevent — so refuse instead.
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "negotiation_price_unresolved",
-                    "message": (
-                        f"Negotiation '{negotiation.get('negotiation_id')}' for quote "
-                        f"'{request.quote_id}' is accepted but carries no agreed price. "
-                        "Refusing to book at the un-negotiated quoted price."
-                    ),
-                },
-            )
-        quote = {
-            **quote,
-            "pricing": {
-                **quote["pricing"],
-                "final_cpm": agreed_cpm,
-                "rationale": (
-                    f"{quote['pricing'].get('rationale', '')} | Negotiated to "
-                    f"${agreed_cpm:.2f} CPM ({negotiation.get('negotiation_id')})"
-                ).strip(" |"),
-            },
-        }
+    # Honor ACCEPTED negotiation state on this quote (see
+    # _apply_accepted_negotiation).
+    quote, negotiation = await _apply_accepted_negotiation(storage, request.quote_id, quote)
 
     # Pre-flight: if the buyer sent an audience_plan with this booking, validate
     # it against the seller's capability block. Per proposal §5.7 layer 3, any
@@ -784,6 +840,54 @@ async def create_deal_from_template(
             },
         )
 
+    storage = await get_storage()
+
+    # Approval gate: the same rules quote booking applies, at the priced
+    # terms. With no quote to hang the approval on, it is indexed by the
+    # terms themselves (buyer, product, deal type, CPM, volume, flight), so
+    # the buyer re-submitting the same request after approval books it.
+    approved = None
+    gross_value = final_cpm * (request.impressions or 0) / 1000.0
+    if _booking_approval_required(gross_value, proposal_led=False):
+        terms = {
+            "buyer": buyer_context.get_pricing_key(),
+            "product_id": request.product_id,
+            "deal_type": deal_type_str,
+            "final_cpm": final_cpm,
+            "impressions": request.impressions,
+            "flight_start": request.flight_start,
+            "flight_end": request.flight_end,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(terms, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()[:32]
+        held_id, approved = await _apply_booking_gate(
+            storage,
+            index_key=f"approval_index:template_booking:{fingerprint}",
+            flow_id=f"template-booking-{fingerprint}",
+            terms=terms,
+            context={
+                "quote_id": None,
+                "product_id": request.product_id,
+                "deal_type": deal_type_str,
+                "buyer_tier": buyer_context.effective_tier.value,
+                "gross_value": round(gross_value, 2),
+            },
+            snapshot={"template_fingerprint": fingerprint},
+            rejected_message="The seller declined to book this deal.",
+        )
+        if held_id is not None:
+            return {
+                "status": "pending_approval",
+                "approval_id": held_id,
+                "product_id": request.product_id,
+                "deal_type": deal_type_str,
+                "message": (
+                    "This deal requires seller approval. Re-submit the same request "
+                    "once it is approved."
+                ),
+            }
+
     # Auto-book: generate deal directly (skip separate quote step)
     now = datetime.utcnow()
     deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
@@ -815,8 +919,10 @@ async def create_deal_from_template(
     # Build schain for the deal response
     deal_data["schain"] = _build_seller_schain()
 
-    storage = await get_storage()
     await storage.set_deal(deal_id, deal_data)
+    if approved is not None:
+        # One approval books one deal: a template has no quote to mark booked.
+        await _consume_approval(storage, approved, deal_id)
     await _emit_deal_created(deal_data, source="template")
 
     return deal_data
@@ -933,6 +1039,20 @@ async def bulk_deal_operations(operations: list[Any]) -> list[dict[str, Any]]:
                             False,
                             error=f"Quote status is '{quote.get('status')}', expected 'available'",
                         )
+                    )
+                    continue
+
+                # Same price and approval gate as POST /api/v1/deals, so bulk
+                # create cannot book a quote that booking is holding.
+                quote, negotiation = await _apply_accepted_negotiation(storage, op.quote_id, quote)
+                pending = await _gate_quote_booking(storage, op.quote_id, quote, negotiation)
+                if pending is not None:
+                    results.append(
+                        {
+                            **_result(i, "create", False, error=pending["message"]),
+                            "status": pending["status"],
+                            "approval_id": pending["approval_id"],
+                        }
                     )
                     continue
 

@@ -8,9 +8,10 @@ at the price actually booked: a held booking answers 202
 re-submits once an operator approves.
 """
 
+import json
 import sys
 from datetime import datetime, timedelta
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 _broken_flows = ["ad_seller.flows.execution_activation_flow"]
@@ -210,3 +211,238 @@ class TestOptInGate:
             "status": "approved",
             "resumed_from_approval": held["approval_id"],
         }
+
+
+def _deals(storage):
+    return [k for k in storage._store if k.startswith("deal:")]
+
+
+async def _bulk_rest(client, storage, settings):
+    with (
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch("ad_seller.config.get_settings", return_value=settings),
+        patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+    ):
+        async with client as c:
+            resp = await c.post(
+                "/api/v1/deals/bulk",
+                json={"operations": [{"action": "create", "quote_id": QUOTE_ID}]},
+            )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["results"][0]
+
+
+async def _bulk_mcp(storage, settings):
+    from ad_seller.interfaces import mcp_server
+
+    with (
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch("ad_seller.config.get_settings", return_value=settings),
+        patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+    ):
+        out = await mcp_server.bulk_deal_operations(
+            json.dumps([{"action": "create", "quote_id": QUOTE_ID}])
+        )
+    return json.loads(out)["results"][0]
+
+
+class TestBulkCreateGate:
+    async def test_bulk_create_cannot_book_a_held_quote(self, client, storage):
+        settings = _settings(approval_required_above_value=250_000)
+        held = (await _book(client, storage, settings)).json()
+
+        result = await _bulk_rest(_fresh(client), storage, settings)
+
+        assert result["success"] is False
+        assert result["status"] == "pending_approval"
+        assert result["approval_id"] == held["approval_id"]
+        assert _deals(storage) == []
+        assert storage._store[f"quote:{QUOTE_ID}"]["status"] == "available"
+
+    async def test_bulk_create_books_after_the_booking_approval(self, client, storage):
+        settings = _settings(approval_required_above_value=250_000)
+        held = (await _book(client, storage, settings)).json()
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+
+        result = await _bulk_rest(_fresh(client), storage, settings)
+
+        assert result["success"] is True, result
+        assert _deals(storage) == [f"deal:{result['deal_id']}"]
+        assert storage._store[f"quote:{QUOTE_ID}"]["status"] == "booked"
+
+    async def test_bulk_create_rejected_booking_is_not_booked(self, client, storage):
+        settings = _settings(approval_required_above_value=250_000)
+        held = await _bulk_rest(client, storage, settings)
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "reject", "operator")
+
+        result = await _bulk_rest(_fresh(client), storage, settings)
+
+        assert result["success"] is False
+        assert "booking_rejected" in result["error"]
+        assert _deals(storage) == []
+
+    async def test_bulk_create_books_at_the_negotiated_price_it_gated(self, client, storage):
+        storage._store[f"negotiation:{QUOTE_ID}"] = {
+            "negotiation_id": "neg-1",
+            "status": "accepted",
+            "rounds": [{"seller_price": 38.0}],
+        }
+        settings = _settings(approval_required_above_value=250_000)
+        held = await _bulk_rest(client, storage, settings)
+        approval = storage._store[f"approval:{held['approval_id']}"]
+        assert approval["context"]["terms"]["final_cpm"] == 38.0
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+
+        result = await _bulk_rest(_fresh(client), storage, settings)
+
+        assert result["success"] is True, result
+        assert storage._store[f"deal:{result['deal_id']}"]["pricing"]["final_cpm"] == 38.0
+
+    async def test_mcp_bulk_create_is_gated_then_books(self, storage):
+        settings = _settings(approval_required_above_value=250_000)
+
+        held = await _bulk_mcp(storage, settings)
+        assert held["status"] == "pending_approval"
+        assert _deals(storage) == []
+
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+        booked = await _bulk_mcp(storage, settings)
+
+        assert booked["success"] is True, booked
+        assert _deals(storage) == [f"deal:{booked['deal_id']}"]
+
+
+TEMPLATE_BODY = {"deal_type": "PG", "product_id": "ctv-premium-sports", "impressions": 1_000_000}
+
+
+@pytest.fixture
+def template_client():
+    from ad_seller.models.api_key import ApiKeyRole
+
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: SimpleNamespace(
+        key_id="k-test",
+        role=ApiKeyRole.BUYER,
+        identity=BuyerIdentity(agency_id="agency-1", agency_name="Agency One"),
+    )
+    yield lambda: httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    app.dependency_overrides.clear()
+
+
+def _catalog():
+    from tests.unit.test_trust_tier_verification import _mock_catalog
+
+    return _mock_catalog()
+
+
+async def _template_rest(template_client, storage, settings, body=TEMPLATE_BODY):
+    with (
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch("ad_seller.config.get_settings", return_value=settings),
+        patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+        patch(
+            "ad_seller.interfaces.api.main._get_static_product_catalog",
+            return_value=_catalog(),
+        ),
+    ):
+        async with template_client() as c:
+            return await c.post("/api/v1/deals/from-template", json=body)
+
+
+class TestFromTemplateGate:
+    async def test_high_value_template_booking_is_held(self, template_client, storage):
+        settings = _settings(approval_required_above_value=1000)
+
+        resp = await _template_rest(template_client, storage, settings)
+
+        assert resp.status_code == 202, resp.text
+        body = resp.json()
+        assert body["status"] == "pending_approval"
+        assert body["approval_id"]
+        assert _deals(storage) == []
+        approval = storage._store[f"approval:{body['approval_id']}"]
+        assert approval["flow_type"] == "deal_booking"
+
+    async def test_resubmit_while_pending_reuses_the_request(self, template_client, storage):
+        settings = _settings(approval_required_above_value=1000)
+        first = (await _template_rest(template_client, storage, settings)).json()
+        second = (await _template_rest(template_client, storage, settings)).json()
+
+        assert second["approval_id"] == first["approval_id"]
+        assert storage._store["approval_index:pending"] == [first["approval_id"]]
+
+    async def test_approved_template_books_once(self, template_client, storage):
+        settings = _settings(approval_required_above_value=1000)
+        held = (await _template_rest(template_client, storage, settings)).json()
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+
+        booked = await _template_rest(template_client, storage, settings)
+        again = await _template_rest(template_client, storage, settings)
+
+        assert booked.status_code == 201, booked.text
+        assert _deals(storage) == [f"deal:{booked.json()['deal_id']}"]
+        assert storage._store[f"approval:{held['approval_id']}"]["status"] == "consumed"
+        assert again.status_code == 202
+        assert again.json()["approval_id"] != held["approval_id"]
+
+    async def test_rejected_template_booking_is_refused(self, template_client, storage):
+        settings = _settings(approval_required_above_value=1000)
+        held = (await _template_rest(template_client, storage, settings)).json()
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "reject", "operator")
+
+        resp = await _template_rest(template_client, storage, settings)
+
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["error"] == "booking_rejected"
+        assert _deals(storage) == []
+
+    async def test_approval_for_other_terms_does_not_carry_over(self, template_client, storage):
+        settings = _settings(approval_required_above_value=1000)
+        held = (await _template_rest(template_client, storage, settings)).json()
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+
+        resp = await _template_rest(
+            template_client, storage, settings, {**TEMPLATE_BODY, "impressions": 2_000_000}
+        )
+
+        assert resp.status_code == 202
+        assert resp.json()["approval_id"] != held["approval_id"]
+        assert _deals(storage) == []
+
+    async def test_below_threshold_books_immediately(self, template_client, storage):
+        resp = await _template_rest(
+            template_client, storage, _settings(approval_required_above_value=1_000_000)
+        )
+
+        assert resp.status_code == 201, resp.text
+
+    async def test_mcp_template_tool_is_gated_then_books(self, storage):
+        from ad_seller.interfaces import mcp_server
+
+        settings = _settings(approval_required_above_value=1000)
+
+        async def _call():
+            with (
+                patch("ad_seller.storage.factory.get_storage", return_value=storage),
+                patch("ad_seller.config.get_settings", return_value=settings),
+                patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+                patch(
+                    "ad_seller.services.catalog_service.get_static_product_catalog",
+                    AsyncMock(return_value=_catalog()),
+                ),
+                patch.object(mcp_server.mcp, "get_context", side_effect=LookupError),
+            ):
+                return json.loads(
+                    await mcp_server.create_deal_from_template(
+                        deal_type="PG", product_id="ctv-premium-sports", impressions=1_000_000
+                    )
+                )
+
+        held = await _call()
+        assert held["status"] == "pending_approval"
+        assert _deals(storage) == []
+
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+        booked = await _call()
+
+        assert booked["status"] == "confirmed", booked
+        assert _deals(storage) == [f"deal:{booked['deal_id']}"]
