@@ -128,21 +128,24 @@ async def _post(storage, path, body, **kw):
         return await c.post(path, json=body)
 
 
-def _quote_body(impressions, deal_type="PG", key="idem-quote"):
+JANUARY = ("2027-01-01", "2027-01-31")
+
+
+def _quote_body(impressions, deal_type="PG", key="idem-quote", flight=JANUARY):
     return {
         "idempotency_key": key,
         "product_id": "ctv-1",
         "deal_type": deal_type,
         "impressions": impressions,
-        "flight_start": "2027-01-01",
-        "flight_end": "2027-01-31",
+        "flight_start": flight[0],
+        "flight_end": flight[1],
     }
 
 
-async def _quote(storage, impressions, deal_type="PG", key=None, **kw):
+async def _quote(storage, impressions, deal_type="PG", key=None, flight=JANUARY, **kw):
     key = key or f"idem-{deal_type}-{impressions}-{len(storage._store)}"
     return await _post(
-        storage, "/api/v1/quotes", _quote_body(impressions, deal_type, key=key), **kw
+        storage, "/api/v1/quotes", _quote_body(impressions, deal_type, key, flight), **kw
     )
 
 
@@ -284,7 +287,10 @@ async def test_mcp_request_quote_is_checked_but_holds_nothing(storage):
         assert first.get("quote_id"), first
         assert not storage._store.get(HOLD_KEY)
 
-        assert (await _quote(storage, 3_000_000)).status_code == 200
+        # request_quote takes no flight: it defaults to the next 30 days.
+        today = datetime.utcnow().date()
+        flight = (today.isoformat(), (today + timedelta(days=30)).isoformat())
+        assert (await _quote(storage, 3_000_000, flight=flight)).status_code == 200
         refused = json.loads(await mcp_server.request_quote("ctv-1", "PG", 3_000_000))
 
     assert refused["detail"]["error"] == "insufficient_avails"
@@ -451,3 +457,29 @@ async def test_mcp_from_template_pg_reserves_and_commits_capacity(storage):
 
     assert storage._store[HOLD_KEY][created["deal_id"]]["state"] == "booked"
     assert refused["detail"]["error"] == "insufficient_avails"
+
+
+async def test_only_overlapping_flights_count_against_capacity(storage):
+    march = ("2027-03-01", "2027-03-31")
+    quote_id = (await _quote(storage, 3_000_000, flight=march)).json()["quote"]["quote_id"]
+    assert (await _book(storage, quote_id)).status_code == 200
+    entry = storage._store[HOLD_KEY][quote_id]
+    assert (entry["flight_start"], entry["flight_end"]) == march
+
+    october = await _quote(storage, CAPACITY, flight=("2027-10-01", "2027-10-31"))
+    assert october.status_code == 200, october.text
+
+    overlapping = await _quote(storage, 3_000_000, flight=("2027-03-15", "2027-04-15"))
+    assert overlapping.status_code == 409
+    assert overlapping.json()["detail"]["available_impressions"] == 2_000_000
+
+
+async def test_entries_without_a_flight_overlap_every_flight(storage):
+    storage._store[HOLD_KEY] = {
+        "qt-legacy": {"impressions": 3_000_000, "state": "booked", "until": "2099-01-01T00:00:00Z"}
+    }
+
+    resp = await _quote(storage, 3_000_000, flight=("2027-10-01", "2027-10-31"))
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["available_impressions"] == 2_000_000

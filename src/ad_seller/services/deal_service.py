@@ -708,7 +708,9 @@ async def create_deal_from_template(
     if deal_type_str == "PG":
         from .quote_service import commit_pg_booking
 
-        await commit_pg_booking(storage, product, deal_id, request.impressions, flight_end)
+        await commit_pg_booking(
+            storage, product, deal_id, request.impressions, flight_start, flight_end
+        )
     await storage.set_deal(deal_id, deal_data)
     await _emit_deal_created(deal_data, source="template")
 

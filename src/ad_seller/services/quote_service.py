@@ -16,7 +16,7 @@ import asyncio
 import logging
 import uuid
 import weakref
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Awaitable, Callable, Optional
 
 from fastapi import HTTPException
@@ -122,6 +122,37 @@ def _active_holds(ledger: Any, now: datetime) -> dict[str, dict[str, Any]]:
     return active
 
 
+def _flight_day(value: Any) -> Optional[date]:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _overlapping(
+    ledger: dict[str, dict[str, Any]], flight_start: Any, flight_end: Any
+) -> dict[str, dict[str, Any]]:
+    """Ledger entries whose flight overlaps ``flight_start``..``flight_end``.
+
+    ``maximum_impressions`` is read as a cap per overlapping flight: every
+    hold or booking whose flight shares at least one day with the requested
+    flight counts in full, whatever the overlap length. This is a
+    simplification (no per-day or per-period pacing). Entries without a
+    flight (written before flights were recorded), or a request without
+    one, overlap everything.
+    """
+    start, end = _flight_day(flight_start), _flight_day(flight_end)
+    if start is None or end is None:
+        return dict(ledger)
+    overlapping: dict[str, dict[str, Any]] = {}
+    for entry_id, entry in ledger.items():
+        entry_start = _flight_day(entry.get("flight_start"))
+        entry_end = _flight_day(entry.get("flight_end"))
+        if entry_start is None or entry_end is None or (entry_start <= end and entry_end >= start):
+            overlapping[entry_id] = entry
+    return overlapping
+
+
 def _tracks_capacity(product: Any) -> bool:
     from ..config import get_settings
 
@@ -136,8 +167,8 @@ def _check_pg_capacity(product: Any, ledger: dict[str, dict[str, Any]], impressi
     """Raise 409 ``insufficient_avails`` when ``impressions`` don't fit.
 
     Outstanding PG holds and booked PG volume in ``ledger`` (already pruned
-    and excluding the entry being placed) count against the product's
-    ``maximum_impressions``.
+    to live entries overlapping the requested flight, excluding the entry
+    being placed) count against the product's ``maximum_impressions``.
     """
     committed = sum(int(e.get("impressions") or 0) for e in ledger.values())
     remaining = max(0, product.maximum_impressions - committed)
@@ -162,12 +193,15 @@ async def _reserve_pg_hold(
     impressions: int,
     now: datetime,
     hold_owner: Optional[str],
+    flight_start: Any = None,
+    flight_end: Any = None,
 ) -> None:
     """Check, and for a keyed buyer soft-hold, PG capacity for a quote.
 
     Refuses (409 ``insufficient_avails``) when outstanding PG quotes and
     booked PG volume already leave less than ``impressions`` of the
-    product's ``maximum_impressions``. Only a quote with a ``hold_owner``
+    product's ``maximum_impressions`` over an overlapping flight (see
+    ``_overlapping``). Only a quote with a ``hold_owner``
     (an API-keyed buyer) places a hold: it lasts ``pg_hold_ttl_seconds``
     and one owner may hold at most ``pg_hold_max_buyer_share`` of the cap
     at once (409 ``pg_hold_limit_exceeded``). Anonymous quotes are checked
@@ -182,12 +216,13 @@ async def _reserve_pg_hold(
     key = _inventory_hold_key(product.product_id)
     async with _ledger_lock(product.product_id):
         ledger = _active_holds(await storage.get(key), now)
-        _check_pg_capacity(product, ledger, impressions)
+        overlapping = _overlapping(ledger, flight_start, flight_end)
+        _check_pg_capacity(product, overlapping, impressions)
         if hold_owner is None:
             return
         held_by_owner = sum(
             int(e.get("impressions") or 0)
-            for e in ledger.values()
+            for e in overlapping.values()
             if e.get("state") == "held" and e.get("owner") == hold_owner
         )
         if held_by_owner + impressions > settings.pg_hold_max_buyer_share * (
@@ -210,6 +245,8 @@ async def _reserve_pg_hold(
             "state": "held",
             "until": (now + timedelta(seconds=hold_seconds)).isoformat() + "Z",
             "owner": hold_owner,
+            "flight_start": flight_start,
+            "flight_end": flight_end,
         }
         await storage.set(key, ledger)
 
@@ -219,6 +256,7 @@ async def _commit_pg_entry(
     product_id: str,
     entry_id: str,
     impressions: int,
+    flight_start: Any,
     flight_end: Any,
     get_product: Callable[[], Awaitable[Any]],
 ) -> None:
@@ -242,8 +280,14 @@ async def _commit_pg_entry(
             if not _tracks_capacity(product):
                 return
             entry = {"impressions": impressions}
-            _check_pg_capacity(product, ledger, impressions)
-        ledger[entry_id] = {**entry, "state": "booked", "until": until.isoformat() + "Z"}
+            _check_pg_capacity(product, _overlapping(ledger, flight_start, flight_end), impressions)
+        ledger[entry_id] = {
+            **entry,
+            "state": "booked",
+            "until": until.isoformat() + "Z",
+            "flight_start": flight_start,
+            "flight_end": flight_end,
+        }
         await storage.set(key, ledger)
 
 
@@ -280,13 +324,19 @@ async def commit_pg_hold(
         product_id,
         quote_id,
         int(terms.get("impressions") or 0),
+        terms.get("flight_start"),
         terms.get("flight_end"),
         _product,
     )
 
 
 async def commit_pg_booking(
-    storage: Any, product: Any, booking_id: str, impressions: int, flight_end: Any
+    storage: Any,
+    product: Any,
+    booking_id: str,
+    impressions: int,
+    flight_start: Any,
+    flight_end: Any,
 ) -> None:
     """Reserve and commit PG volume booked without a quote (from-template)."""
     if not _tracks_capacity(product):
@@ -296,7 +346,7 @@ async def commit_pg_booking(
         return product
 
     await _commit_pg_entry(
-        storage, product.product_id, booking_id, impressions, flight_end, _product
+        storage, product.product_id, booking_id, impressions, flight_start, flight_end, _product
     )
 
 
@@ -463,7 +513,14 @@ async def create_quote(
     # the same capacity cannot be quoted twice.
     if is_guaranteed:
         await _reserve_pg_hold(
-            storage, product, quote_id, requested_volume, now=now, hold_owner=hold_owner
+            storage,
+            product,
+            quote_id,
+            requested_volume,
+            now=now,
+            hold_owner=hold_owner,
+            flight_start=flight_start,
+            flight_end=flight_end,
         )
 
     # Persist with 24-hour TTL
