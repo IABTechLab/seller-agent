@@ -282,3 +282,31 @@ async def test_push_rejects_unknown_deal_type(api_client):
     assert resp.status_code == 422
     assert resp.json()["detail"]["error"] == "invalid_deal_type"
     push.assert_not_awaited()
+
+
+@pytest.mark.parametrize("code", ["PG", "PD", "PA"])
+def test_agentcore_direct_deal_uses_the_builder(code, monkeypatch):
+    import json
+    import sys
+    from types import ModuleType, SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    http_main = ModuleType("ad_seller.interfaces.agentcore.http_main")
+    http_main._chat = SimpleNamespace(
+        _products={
+            "prod-1": SimpleNamespace(
+                name="CTV", base_cpm=25.0, floor_cpm=10.0, inventory_type="ctv"
+            )
+        }
+    )
+    http_main._get_chat = AsyncMock()
+    monkeypatch.setitem(sys.modules, "bedrock_agentcore", MagicMock())
+    monkeypatch.setitem(sys.modules, "bedrock_agentcore.runtime", MagicMock())
+    monkeypatch.setitem(sys.modules, "ad_seller.interfaces.agentcore.http_main", http_main)
+    from ad_seller.interfaces.agentcore.crew_tools import CreateDealTool
+
+    deal = json.loads(CreateDealTool()._create_deal_direct("prod-1", code.lower(), 30.0, 5_000))
+
+    assert deal["openrtb_params"] == build_openrtb_deal_params(
+        deal["deal_id"], code, 30.0, guaranteed_impressions=5_000
+    )
