@@ -1,7 +1,7 @@
 # Author: Green Mountain Systems AI Inc.
 # Donated to IAB Tech Lab
 
-"""ALL below-floor openers must COUNTER at the floor, not terminally REJECT
+"""ALL below-floor openers must COUNTER, not terminally REJECT
 (universalized by).
 
 The live S2 proof (docs/reports/S2_NEGOTIATION_LIVE_PROOF in agent_range)
@@ -13,10 +13,12 @@ could structurally never converge.
 Policy (pinned here; approved spec change that removed the former
 0.75x deep-lowball walk-away threshold):
 
-- EVERY below-floor offer, no matter how low, is countered AT the floor —
-  the seller invites the buyer up to its minimum viable price. Expected
-  live shape: buyer opens 25, floor 28 → counter 28; buyer accepts 28.
-  Extreme lowballs (10 vs floor 80; 1 vs floor 28) counter identically.
+- EVERY below-floor offer, no matter how low, is countered on the same
+  capped gap-split path as any other offer, never below the floor (#149:
+  countering AT the floor handed the buyer the seller's reserve). Expected
+  live shape (agency, 35 list → 31.50, floor 28): buyer opens 25 → counter
+  29.93 (one 5% per-round step); buyer accepts 29.93. Extreme lowballs
+  (10 vs floor 80; 1 vs floor 28) counter identically.
 - Nonpositive offers are not valid prices and are rejected.
 - Bounded: repeated identical lowballs terminate within the strategy's
   round bound (counter → … → final_offer → reject), no counter loops.
@@ -65,6 +67,10 @@ from ad_seller.services import negotiation_service  # noqa: E402
 # =============================================================================
 # Fixtures / helpers
 # =============================================================================
+
+# Below-floor counter for the agency buyer on the 35/28 product: 35.00 list
+# -> 31.50 agency price, minus one 5% per-round step (1.575) -> 29.925.
+LOWBALL_COUNTER = 29.93
 
 
 @pytest.fixture
@@ -152,43 +158,43 @@ def client():
 
 
 # =============================================================================
-# (1) Engine policy: below-floor openers counter at the floor
+# (1) Engine policy: below-floor openers counter on the capped path
 # =============================================================================
 
 
+def _agency_100_80(engine, buyer):
+    # Agency tier: 100 list -> 90.00 tier price; 5% per-round cap = 4.50.
+    return engine.start_negotiation(
+        proposal_id="p1",
+        product_id="prod1",
+        buyer_context=buyer,
+        base_price=100.0,
+        floor_price=80.0,
+    )
+
+
 class TestLowballCounterPolicy:
-    def test_below_floor_opener_counters_at_floor(self, engine, agency_buyer):
-        """A near-floor lowball must COUNTER at the floor, not REJECT."""
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=agency_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
+    def test_below_floor_opener_counters_one_capped_step(self, engine, agency_buyer):
+        """A near-floor lowball must COUNTER (one capped step down), not
+        REJECT, and not at the floor."""
+        history = _agency_100_80(engine, agency_buyer)
         rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.COUNTER
-        assert rnd.seller_price == 80.0
+        assert rnd.seller_price == 85.5
 
     def test_counter_round_keeps_negotiation_active(self, engine, agency_buyer):
-        """Recording the floor counter must keep the history active — the
-        buyer's next message continues the same negotiation."""
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=agency_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
+        """Recording the below-floor counter must keep the history active —
+        the buyer's next message continues the same negotiation."""
+        history = _agency_100_80(engine, agency_buyer)
         rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=agency_buyer)
         history = engine.record_round(history, rnd)
         assert history.status == "active"
         assert len(history.rounds) == 1
-        assert history.rounds[0].seller_price == 80.0
+        assert history.rounds[0].seller_price == 85.5
 
-    def test_live_shape_open_25_floor_28_counter_28_then_accept(self, engine, agency_buyer):
-        """The expected live shape: buyer opens 25, floor 28 → counter 28;
-        buyer then offers 28 → ACCEPT at 28."""
+    def test_live_shape_open_25_floor_28_counter_then_accept(self, engine, agency_buyer):
+        """The expected live shape: buyer opens 25 against floor 28 →
+        counter 29.93; buyer then meets the counter → ACCEPT."""
         history = engine.start_negotiation(
             proposal_id="p1",
             product_id="ctv-premium",
@@ -198,34 +204,31 @@ class TestLowballCounterPolicy:
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=25.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.COUNTER
-        assert rnd.seller_price == 28.0
+        assert rnd.seller_price == LOWBALL_COUNTER
         history = engine.record_round(history, rnd)
         assert history.status == "active"
 
-        rnd2 = engine.evaluate_buyer_offer(history, buyer_price=28.0, buyer_context=agency_buyer)
+        rnd2 = engine.evaluate_buyer_offer(
+            history, buyer_price=LOWBALL_COUNTER, buyer_context=agency_buyer
+        )
         assert rnd2.action == NegotiationAction.ACCEPT
-        assert rnd2.seller_price == 28.0
+        assert rnd2.seller_price == LOWBALL_COUNTER
         history = engine.record_round(history, rnd2)
         assert history.status == "accepted"
 
-    def test_extreme_lowball_10_vs_80_counters_at_floor(self, engine, agency_buyer):
+    def test_extreme_lowball_10_vs_80_counters_like_a_near_floor_offer(self, engine, agency_buyer):
         """Spec change per (was test_deep_lowball_still_rejects):
-        even a $10 offer against an $80 floor counters at the floor."""
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=agency_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
+        even a $10 offer against an $80 floor is countered, and gets the
+        same counter as a $75 offer."""
+        history = _agency_100_80(engine, agency_buyer)
         rnd = engine.evaluate_buyer_offer(history, buyer_price=10.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.COUNTER
-        assert rnd.seller_price == 80.0
+        assert rnd.seller_price == 85.5
 
-    def test_extreme_lowball_1_vs_28_counters_at_floor(self, engine, agency_buyer):
+    def test_extreme_lowball_1_vs_28_is_countered(self, engine, agency_buyer):
         """Spec change per (was test_boundary_offer_is_countered,
         which pinned the removed 0.75x threshold): a $1 offer against a $28
-        floor counters at the floor."""
+        floor is countered."""
         history = engine.start_negotiation(
             proposal_id="p1",
             product_id="ctv-premium",
@@ -235,127 +238,74 @@ class TestLowballCounterPolicy:
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=1.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.COUNTER
-        assert rnd.seller_price == 28.0
+        assert rnd.seller_price == LOWBALL_COUNTER
 
     def test_at_or_above_floor_semantics_unchanged(self, engine, agency_buyer):
-        """Offers >= floor keep the existing gap-split counter semantics —
-        the floor-counter branch must not fire for them."""
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=agency_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
-        # Agency → COLLABORATIVE: base 100 → 85 tier-adjusted; gap-split of
-        # (85 - 80) at 50% buyer share → counter 82.5, NOT the floor.
+        """Offers >= floor keep the existing gap-split counter semantics."""
+        history = _agency_100_80(engine, agency_buyer)
+        # Gap-split of (90 - 80) at 50% buyer share = 5.00, capped at 4.50.
         rnd = engine.evaluate_buyer_offer(history, buyer_price=80.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.COUNTER
-        assert rnd.seller_price > 80.0
+        assert rnd.seller_price == 85.5
 
     def test_zero_or_negative_offer_rejects(self, engine, agency_buyer):
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=agency_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
+        history = _agency_100_80(engine, agency_buyer)
         rnd = engine.evaluate_buyer_offer(history, buyer_price=0.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.REJECT
+
+
+def _public_100_80(engine, buyer):
+    # Public tier: 100 list, 3% per-round cap, 8% total cap -> 92 at most.
+    return engine.start_negotiation(
+        proposal_id="p1",
+        product_id="prod1",
+        buyer_context=buyer,
+        base_price=100.0,
+        floor_price=80.0,
+    )
 
 
 class TestLowballRoundBound:
     """Repeated identical lowballs must terminate within the round bound."""
 
-    def test_repeated_lowball_terminates_within_bound(self, engine, public_buyer):
+    @pytest.mark.parametrize("buyer_price", [75.0, 10.0])
+    def test_repeated_lowball_terminates_within_bound(self, engine, public_buyer, buyer_price):
         """PUBLIC/AGGRESSIVE (max 3 rounds): counter, counter, final_offer,
-        then reject — no counter loop."""
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=public_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
+        then reject — no counter loop, and every move stays on the capped
+        path (97, 94, then the 8% total-cap final offer at 92)."""
+        history = _public_100_80(engine, public_buyer)
         max_rounds = history.limits.max_rounds
         actions = []
         # Drive one more evaluation than the bound allows
         for _ in range(max_rounds + 1):
-            rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=public_buyer)
+            rnd = engine.evaluate_buyer_offer(
+                history, buyer_price=buyer_price, buyer_context=public_buyer
+            )
             history = engine.record_round(history, rnd)
             actions.append(rnd.action)
             if rnd.action == NegotiationAction.REJECT:
                 break
 
-        assert actions[-1] == NegotiationAction.REJECT
+        assert actions == [
+            NegotiationAction.COUNTER,
+            NegotiationAction.COUNTER,
+            NegotiationAction.FINAL_OFFER,
+            NegotiationAction.REJECT,
+        ]
         assert history.status == "rejected"
-        # Terminates in at most max_rounds non-terminal moves + 1 reject
-        assert len(actions) <= max_rounds + 1
-        # Every non-terminal move held the floor (no drift below floor)
-        for rnd in history.rounds[:-1]:
-            assert rnd.seller_price == 80.0
+        assert [r.seller_price for r in history.rounds[:-1]] == [97.0, 94.0, 92.0]
 
-    def test_last_allowed_round_is_final_offer(self, engine, public_buyer):
-        """On the strategy's last round the floor counter is a FINAL_OFFER."""
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=public_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
-        for _ in range(history.limits.max_rounds - 1):
-            rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=public_buyer)
-            history = engine.record_round(history, rnd)
-            assert rnd.action == NegotiationAction.COUNTER
-
-        rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=public_buyer)
-        assert rnd.action == NegotiationAction.FINAL_OFFER
-        assert rnd.seller_price == 80.0
-
-    def test_repeated_extreme_lowball_terminates_within_bound(self, engine, public_buyer):
-        """Repeated $10-vs-$80-floor extreme lowballs follow
-        the same bounded shape: counter at floor, FINAL_OFFER at floor on
-        the last round, then reject on exhaustion — no counter loop."""
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=public_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
-        max_rounds = history.limits.max_rounds
-        actions = []
-        for _ in range(max_rounds + 1):
-            rnd = engine.evaluate_buyer_offer(history, buyer_price=10.0, buyer_context=public_buyer)
-            history = engine.record_round(history, rnd)
-            actions.append(rnd.action)
-            if rnd.action == NegotiationAction.REJECT:
-                break
-
-        assert actions[-1] == NegotiationAction.REJECT
-        assert history.status == "rejected"
-        assert len(actions) <= max_rounds + 1
-        # Last allowed round was a FINAL_OFFER; every counter held the floor
-        assert actions[-2] == NegotiationAction.FINAL_OFFER
-        for rnd in history.rounds[:-1]:
-            assert rnd.seller_price == 80.0
-
-    def test_floor_counter_can_still_be_accepted_after_final_offer(self, engine, public_buyer):
-        """After the final floor offer the buyer meeting it still ACCEPTs."""
-        history = engine.start_negotiation(
-            proposal_id="p1",
-            product_id="prod1",
-            buyer_context=public_buyer,
-            base_price=100.0,
-            floor_price=80.0,
-        )
+    def test_final_offer_can_still_be_accepted(self, engine, public_buyer):
+        """After the final offer the buyer meeting it still ACCEPTs."""
+        history = _public_100_80(engine, public_buyer)
         for _ in range(history.limits.max_rounds):
             rnd = engine.evaluate_buyer_offer(history, buyer_price=75.0, buyer_context=public_buyer)
             history = engine.record_round(history, rnd)
+        assert rnd.action == NegotiationAction.FINAL_OFFER
 
-        rnd = engine.evaluate_buyer_offer(history, buyer_price=80.0, buyer_context=public_buyer)
+        rnd = engine.evaluate_buyer_offer(
+            history, buyer_price=rnd.seller_price, buyer_context=public_buyer
+        )
         assert rnd.action == NegotiationAction.ACCEPT
 
 
@@ -412,25 +362,25 @@ def _run_flow(crew_behavior, price=25.0):
 
 
 class TestFlowPathsProduceCounter:
-    def test_fallback_path_counters_below_floor_at_floor(self):
+    def test_fallback_path_counters_below_floor(self):
         """Crew failure → deterministic fallback: below-floor opener yields
-        counter_terms at the floor plus a persistable history."""
+        counter_terms above the floor plus a persistable history."""
         result = _run_flow("raise", price=25.0)
 
         assert result["recommendation"] == "counter"
         assert result["counter_terms"] is not None
-        assert result["counter_terms"]["proposed_price"] == 28.0
+        assert result["counter_terms"]["proposed_price"] == LOWBALL_COUNTER
         assert result["counter_terms"]["action"] == "counter"
 
         history = result.get("_negotiation_history")
         assert history is not None, "counter round was not exposed for persistence"
         assert history["status"] == "active"
-        assert history["rounds"][0]["seller_price"] == 28.0
+        assert history["rounds"][0]["seller_price"] == LOWBALL_COUNTER
         assert history["rounds"][0]["action"] == "counter"
 
     def test_crew_reject_of_counterable_lowball_is_countered(self):
         """Crew path: even when the crew says reject for a below-floor-but-
-        credible opener, the seller must counter at the floor."""
+        credible opener, the seller must counter."""
         from ad_seller.models.flow_state import ProposalDecision, ProposalReviewOutput
 
         review = ProposalReviewOutput(
@@ -443,7 +393,7 @@ class TestFlowPathsProduceCounter:
 
         assert result["recommendation"] == "counter"
         assert result["counter_terms"] is not None
-        assert result["counter_terms"]["proposed_price"] == 28.0
+        assert result["counter_terms"]["proposed_price"] == LOWBALL_COUNTER
         history = result.get("_negotiation_history")
         assert history is not None
         assert history["status"] == "active"
@@ -452,7 +402,7 @@ class TestFlowPathsProduceCounter:
         """Spec change per (was
         test_crew_reject_of_deep_lowball_stays_rejected): a crew reject of
         ANY below-floor offer — even $10 against a $28 floor — upgrades to
-        a counter at the floor."""
+        a counter."""
         from ad_seller.models.flow_state import ProposalDecision, ProposalReviewOutput
 
         review = ProposalReviewOutput(
@@ -465,7 +415,7 @@ class TestFlowPathsProduceCounter:
 
         assert result["recommendation"] == "counter"
         assert result["counter_terms"] is not None
-        assert result["counter_terms"]["proposed_price"] == 28.0
+        assert result["counter_terms"]["proposed_price"] == LOWBALL_COUNTER
         history = result.get("_negotiation_history")
         assert history is not None
         assert history["status"] == "active"
@@ -494,7 +444,7 @@ class TestRestSurface:
     @pytest.mark.asyncio
     async def test_messages_endpoint_counters_below_floor_open(self, client, mock_storage):
         """POST /api/v1/negotiations/messages: a below-floor open must come
-        back as a counter at the floor (28), not a terminal reject."""
+        back as a counter above the floor (28), not a terminal reject."""
         mock_storage._store["proposal:prop-lb1"] = {
             "proposal_id": "prop-lb1",
             "product_id": "ctv-premium-sports",
@@ -524,17 +474,18 @@ class TestRestSurface:
         body = resp.json()
         assert body["status"] == "active"
         assert body["round"]["action"] == "counter"
-        assert body["round"]["seller_price"]["amount_micros"] == 28_000_000
+        # Keyless caller -> PUBLIC tier: 35.00 minus one 3% per-round step.
+        assert body["round"]["seller_price"]["amount_micros"] == 33_950_000
         # Counter round persisted for the buyer's next message
         stored = mock_storage._store["negotiation:prop-lb1"]
         assert stored["status"] == "active"
         assert stored["rounds"][-1]["action"] == "counter"
-        assert stored["rounds"][-1]["seller_price"] == 28.0
+        assert stored["rounds"][-1]["seller_price"] == 33.95
 
     @pytest.mark.asyncio
-    async def test_cold_continuation_buyer_accepts_floor_counter(self, mock_storage):
-        """Round 2 off the PERSISTED history: buyer meets the floor counter
-        and the stored negotiation converges to accepted at 28."""
+    async def test_cold_continuation_buyer_accepts_lowball_counter(self, mock_storage):
+        """Round 2 off the PERSISTED history: buyer meets the counter
+        and the stored negotiation converges to accepted."""
         mock_storage._store["proposal:prop-lb2"] = {
             "proposal_id": "prop-lb2",
             "product_id": "ctv-premium-sports",
@@ -553,15 +504,15 @@ class TestRestSurface:
                 "prop-lb2", buyer_price=25.0, buyer_context=_make_buyer_context()
             )
             assert r1["action"] == "counter"
-            assert r1["seller_price"] == 28.0
+            assert r1["seller_price"] == LOWBALL_COUNTER
             assert r1["status"] == "active"
 
             r2 = await negotiation_service.counter_proposal(
-                "prop-lb2", buyer_price=28.0, buyer_context=_make_buyer_context()
+                "prop-lb2", buyer_price=LOWBALL_COUNTER, buyer_context=_make_buyer_context()
             )
 
         assert r2["action"] == "accept"
-        assert r2["seller_price"] == 28.0
+        assert r2["seller_price"] == LOWBALL_COUNTER
         assert r2["status"] == "accepted"
         assert r2["negotiation_id"] == r1["negotiation_id"]
         assert r2["round_number"] == 2

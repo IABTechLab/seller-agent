@@ -23,9 +23,10 @@ def build_negotiation_engine():
     """Construct the seller's ``NegotiationEngine`` with its standard wiring.
 
     Single source of the engine assembly (default tiered-pricing config +
-    pricing-rules engine + yield optimizer). Both the REST negotiation path
-    (``counter_proposal``) and the chat adapter build the engine here so the
-    negotiation behavior stays identical across surfaces (EP-3.2).
+    pricing-rules engine + yield optimizer). The REST negotiation path
+    (``counter_proposal``), the chat adapter and the proposal flow build the
+    engine here so the negotiation behavior stays identical across surfaces
+    (EP-3.2).
     """
     from ..engines.negotiation_engine import NegotiationEngine
     from ..engines.pricing_rules_engine import PricingRulesEngine

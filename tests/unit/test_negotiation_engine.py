@@ -114,7 +114,7 @@ class TestWalkAway:
 
     def test_below_floor_counters_at_floor(self, engine, agency_buyer):
         """Spec change per (was test_reject_below_floor):
-        a below-floor offer counters at exactly the floor, never rejects."""
+        a below-floor offer is countered (above the floor), never rejected."""
         history = engine.start_negotiation(
             proposal_id="p1",
             product_id="prod1",
@@ -124,7 +124,7 @@ class TestWalkAway:
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=50.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.COUNTER
-        assert rnd.seller_price == 80.0
+        assert history.floor_price < rnd.seller_price < history.base_price
 
     def test_reject_after_max_rounds(self, engine, public_buyer):
         history = engine.start_negotiation(
@@ -272,7 +272,7 @@ class TestMultiRoundConcession:
         )
         rnd = engine.evaluate_buyer_offer(history, buyer_price=10.0, buyer_context=agency_buyer)
         assert rnd.action == NegotiationAction.COUNTER
-        assert rnd.seller_price == 80.0
+        assert history.floor_price < rnd.seller_price < history.base_price
         history = engine.record_round(history, rnd)
         assert history.status == "active"
 

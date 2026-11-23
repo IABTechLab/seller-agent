@@ -125,12 +125,15 @@ class NegotiationEngine:
         1. If buyer_price >= base_price → ACCEPT
         2. If buyer_price <= 0 → REJECT (not a valid offer)
         3. If max_rounds exceeded → REJECT (walk-away)
-        3.5 If buyer_price < floor_price → COUNTER at the floor — invite
-           the buyer up (ALL below-floor offers
-           counter at the floor, no walk-away threshold); FINAL_OFFER on
-           the strategy's last round
         4. If cumulative concession would exceed total_cap → FINAL_OFFER
         5. Otherwise → COUNTER with gap-split, capped by per_round_cap
+
+        A below-floor offer takes steps 4 and 5 like any other offer (ALL
+        valid below-floor offers are countered, no walk-away threshold):
+        the gap-split from the seller's last position, capped per round and
+        in total, never below the floor. Counters therefore depend on the
+        floor only once the capped path reaches it, and a lowball never
+        earns a lower counter than an honest offer.
 
         Args:
             history: Current negotiation state
@@ -170,7 +173,7 @@ class NegotiationEngine:
             )
 
         # 2. Reject nonpositive offers — not a valid price to negotiate.
-        #    Every VALID below-floor offer is countered at the floor in 3.5
+        #    Every VALID below-floor offer is countered in 4/5
         # (no deep-lowball walk-away threshold).
         below_floor = buyer_price < history.floor_price
         if buyer_price <= 0:
@@ -212,53 +215,17 @@ class NegotiationEngine:
                 ),
             )
 
-        # 3.5 Below-floor offer: counter AT the floor — the seller's minimum
-        # viable price — inviting the buyer up (this policy is
-        #     universal for ALL below-floor offers). The floor is
-        #     firm, so the strategy's last round is a FINAL_OFFER; round
-        #     bounding stays with check 3 above.
-        if below_floor:
-            floor_counter = round(history.floor_price, 2)
-            this_round_concession = (
-                max(0.0, (history.base_price - floor_counter) / history.base_price)
-                if history.base_price > 0
-                else 0.0
-            )
-            incremental = max(0.0, this_round_concession - cumulative_concession)
-            is_last_round = round_number == limits.max_rounds
-            return NegotiationRound(
-                round_number=round_number,
-                buyer_price=buyer_price,
-                seller_price=floor_counter,
-                action=(
-                    NegotiationAction.FINAL_OFFER if is_last_round else NegotiationAction.COUNTER
-                ),
-                concession_pct=incremental,
-                cumulative_concession_pct=cumulative_concession + incremental,
-                rationale=(
-                    f"Final offer at our floor price ${floor_counter:.2f} CPM. We cannot go lower."
-                    if is_last_round
-                    else (
-                        f"Buyer offer ${buyer_price:.2f} is below our floor. "
-                        f"Countering at the floor price ${floor_counter:.2f} CPM — "
-                        f"the minimum viable price for this inventory "
-                        f"(round {round_number}/{limits.max_rounds})."
-                    )
-                ),
-                # The counter here IS the floor, so the buyer-facing string
-                # must not state the seller's price in prose at all — the
-                # structured seller_price carries the number without labeling
-                # it. No "floor", no "minimum", no round budget.
-                buyer_rationale=(
-                    f"We cannot accept ${buyer_price:.2f} CPM for this inventory, "
-                    f"and we have moved as far as we can on price."
-                    if is_last_round
-                    else (
-                        f"We cannot accept ${buyer_price:.2f} CPM for this inventory. "
-                        f"We have countered at a price that reflects its value."
-                    )
-                ),
-            )
+        # A below-floor offer is countered on the same capped path as any
+        # other offer. A separate below-floor formula, however it is built
+        # from the floor, lets the buyer solve for the floor from its
+        # counters, and the buyer-facing wording must not differ either or
+        # it tells the buyer which side of the floor an offer fell on. Only
+        # the internal rationale records it.
+        floor_note = (
+            f"Buyer offer ${buyer_price:.2f} is below our floor ${history.floor_price:.2f}. "
+            if below_floor
+            else ""
+        )
 
         # Generate counter price
         counter_price = self._generate_counter(history, buyer_price)
@@ -308,7 +275,7 @@ class NegotiationEngine:
                 concession_pct=final_concession - cumulative_concession,
                 cumulative_concession_pct=final_concession,
                 rationale=(
-                    f"Final offer at ${final_price:.2f} CPM. "
+                    f"{floor_note}Final offer at ${final_price:.2f} CPM. "
                     f"This represents our maximum concession of "
                     f"{limits.total_concession_cap * 100:.0f}%."
                 ),
@@ -326,7 +293,7 @@ class NegotiationEngine:
             concession_pct=incremental_concession,
             cumulative_concession_pct=new_cumulative,
             rationale=(
-                f"Counter at ${counter_price:.2f} CPM "
+                f"{floor_note}Counter at ${counter_price:.2f} CPM "
                 f"({history.strategy.value} strategy, "
                 f"round {round_number}/{limits.max_rounds})."
             ),
