@@ -81,11 +81,16 @@ class ChatInterface:
     # Session management
     # =========================================================================
 
-    async def start_session(self, buyer_context: Optional[BuyerContext] = None) -> Session:
+    async def start_session(
+        self,
+        buyer_context: Optional[BuyerContext] = None,
+        owner_key_id: Optional[str] = None,
+    ) -> Session:
         """Create a new persistent session.
 
         Args:
             buyer_context: Buyer context for the session.
+            owner_key_id: key_id of the API key opening the session, if any.
 
         Returns:
             The created Session.
@@ -103,6 +108,7 @@ class ChatInterface:
         session = Session(
             buyer_identity=buyer_context.identity if buyer_context else BuyerIdentity(),
             buyer_context=buyer_context,
+            owner_key_id=owner_key_id,
             expires_at=datetime.utcnow() + timedelta(seconds=settings.session_ttl_seconds),
         )
         self._current_session = session

@@ -11,15 +11,18 @@ the original endpoint bodies.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
 
-async def create_session(buyer_context: Any) -> dict[str, Any]:
-    """Create a new buyer conversation session."""
+async def create_session(buyer_context: Any, owner_key_id: Optional[str] = None) -> dict[str, Any]:
+    """Create a new buyer conversation session.
+
+    ``owner_key_id`` is the key_id of the API key opening it, if any.
+    """
     from ..interfaces.chat.main import ChatInterface
     from ..storage.factory import get_storage
 
@@ -27,7 +30,7 @@ async def create_session(buyer_context: Any) -> dict[str, Any]:
 
     chat = ChatInterface(storage=storage)
     await chat.initialize()
-    session = await chat.start_session(buyer_context=buyer_context)
+    session = await chat.start_session(buyer_context=buyer_context, owner_key_id=owner_key_id)
 
     return {
         "session_id": session.session_id,
@@ -40,8 +43,13 @@ async def create_session(buyer_context: Any) -> dict[str, Any]:
 async def list_sessions(
     buyer_key: Optional[str] = None,
     status: Optional[str] = None,
+    include: Optional[Callable[[dict[str, Any]], bool]] = None,
 ) -> dict[str, Any]:
-    """List sessions, optionally filtered by buyer identity or status."""
+    """List sessions, optionally filtered by buyer identity or status.
+
+    ``include``, when given, is applied to each raw stored session and
+    drops the ones it rejects.
+    """
     from ..models.session import Session, SessionStatus
     from ..storage.factory import get_storage
 
@@ -54,6 +62,8 @@ async def list_sessions(
 
     results = []
     for data in sessions_data:
+        if include is not None and not include(data):
+            continue
         s = Session(**data)
         # Lazy expiration check
         if s.is_expired() and s.status != SessionStatus.EXPIRED:

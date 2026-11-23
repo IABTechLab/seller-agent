@@ -19,6 +19,7 @@ from httpx import ASGITransport
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app
 from ad_seller.models.api_key import ApiKeyRole
 from ad_seller.models.buyer_identity import BuyerIdentity
+from ad_seller.storage.factory import get_storage
 
 OPERATOR_ROUTES = [
     ("POST", "/api/v1/deals/curated", {"curator_id": "c", "deal_type": "PMP"}),
@@ -50,13 +51,21 @@ PUBLIC_ROUTES = [
 ]
 
 
-def _record(identity=None, role=ApiKeyRole.BUYER):
-    return MagicMock(identity=identity or BuyerIdentity(), role=role)
+def _record(identity=None, role=ApiKeyRole.BUYER, key_id="key-x"):
+    return MagicMock(identity=identity or BuyerIdentity(), role=role, key_id=key_id)
 
 
-OWNER = _record(BuyerIdentity(agency_id="agency-owner"))
-OTHER = _record(BuyerIdentity(agency_id="agency-other"))
-OPERATOR = _record(role=ApiKeyRole.OPERATOR)
+OWNER = _record(BuyerIdentity(agency_id="agency-owner"), key_id="key-owner")
+OTHER = _record(BuyerIdentity(agency_id="agency-other"), key_id="key-other")
+OPERATOR = _record(role=ApiKeyRole.OPERATOR, key_id="key-operator")
+
+
+async def _drop_owner_key_id(session_id):
+    """Rewrite a stored session the way sessions were stored before key ids."""
+    storage = await get_storage()
+    data = await storage.get_session(session_id)
+    data.pop("owner_key_id", None)
+    await storage.set_session(session_id, data)
 
 
 async def _call(method, path, body=None, record=None):
@@ -98,21 +107,64 @@ async def test_audience_match_stays_public():
     assert resp.status_code not in (401, 403)
 
 
+def _session_calls(sid):
+    return [
+        ("GET", f"/sessions/{sid}", None),
+        ("POST", f"/sessions/{sid}/messages", {"message": "hi"}),
+        ("POST", f"/sessions/{sid}/close", None),
+    ]
+
+
+async def _listed(record):
+    resp = await _call("GET", "/sessions", record=record)
+    assert resp.status_code == 200, resp.text
+    return {s["session_id"] for s in resp.json()["sessions"]}
+
+
 class TestSessionOwnership:
-    async def _open(self):
-        resp = await _call("POST", "/sessions", {}, record=OWNER)
+    async def _open(self, record=OWNER):
+        resp = await _call("POST", "/sessions", {}, record=record)
         assert resp.status_code == 200, resp.text
         return resp.json()["session_id"]
 
     async def test_other_buyer_cannot_read_message_or_close(self):
         sid = await self._open()
-        for method, path, body in [
-            ("GET", f"/sessions/{sid}", None),
-            ("POST", f"/sessions/{sid}/messages", {"message": "hi"}),
-            ("POST", f"/sessions/{sid}/close", None),
-        ]:
+        for method, path, body in _session_calls(sid):
             resp = await _call(method, path, body, record=OTHER)
             assert resp.status_code == 404, (path, resp.text)
+
+    async def test_session_belongs_to_the_key_not_the_shared_advertiser(self):
+        key_a = _record(BuyerIdentity(agency_id="ag-1", advertiser_id="adv-1"), key_id="key-a")
+        key_b = _record(BuyerIdentity(agency_id="ag-2", advertiser_id="adv-1"), key_id="key-b")
+        sid = await self._open(key_a)
+
+        assert sid not in await _listed(key_b)
+        for method, path, body in _session_calls(sid):
+            resp = await _call(method, path, body, record=key_b)
+            assert resp.status_code == 404, (path, resp.text)
+        assert sid in await _listed(key_a)
+        assert (await _call("GET", f"/sessions/{sid}", record=key_a)).status_code == 200
+
+    async def test_identity_less_keys_do_not_share_sessions(self):
+        key_c = _record(key_id="key-c")
+        key_d = _record(key_id="key-d")
+        sid = await self._open(key_c)
+
+        assert sid not in await _listed(key_d)
+        for method, path, body in _session_calls(sid):
+            resp = await _call(method, path, body, record=key_d)
+            assert resp.status_code == 404, (path, resp.text)
+        assert sid in await _listed(key_c)
+        assert (await _call("GET", f"/sessions/{sid}", record=key_c)).status_code == 200
+
+    async def test_legacy_keyed_session_falls_back_to_the_pricing_key(self):
+        sid = await self._open()
+        await _drop_owner_key_id(sid)
+
+        assert (await _call("GET", f"/sessions/{sid}", record=OWNER)).status_code == 200
+        assert sid in await _listed(OWNER)
+        assert (await _call("GET", f"/sessions/{sid}", record=OTHER)).status_code == 404
+        assert sid not in await _listed(OTHER)
 
     async def test_owner_and_operator_can_read_and_close(self):
         sid = await self._open()

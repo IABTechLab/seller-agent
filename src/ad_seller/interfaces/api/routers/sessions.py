@@ -19,26 +19,43 @@ from ..schemas import CreateSessionRequest, SessionMessageRequest
 router = APIRouter()
 
 
-async def _owned_session(session_id: str, api_key_record: Any) -> None:
-    """Allow the session's own buyer key or an operator key; 404 otherwise.
+def _opened_with_key(data: dict[str, Any]) -> bool:
+    context = data.get("buyer_context") or {}
+    return bool(data.get("owner_key_id")) or context.get("authentication_method") == "api_key"
 
-    A session opened with an API key belongs to that key's buyer. A session
-    opened anonymously (only possible with ALLOW_ANONYMOUS_BUYER_WRITES) has
-    no owner key, so any caller allowed to write may use it. Not-yours reads
-    as 404, the same as a missing session.
+
+def _key_owns(data: dict[str, Any], api_key_record: Any) -> bool:
+    """Whether the stored session was opened by this API key.
+
+    Sessions record the opening key's ``key_id``. Keys carry optional,
+    non-unique identity fields, so two keys can share a pricing key; only
+    sessions opened with a key before ``owner_key_id`` was recorded fall
+    back to matching the pricing key, and never on the shared ``public``.
+    """
+    if api_key_record is None or not _opened_with_key(data):
+        return False
+    owner_key_id = data.get("owner_key_id")
+    if owner_key_id:
+        return getattr(api_key_record, "key_id", None) == owner_key_id
+    pricing_key = session_service.owner_key(data)
+    caller_key = deps._build_buyer_context(api_key_record=api_key_record).get_pricing_key()
+    return pricing_key != "public" and pricing_key == caller_key
+
+
+async def _owned_session(session_id: str, api_key_record: Any) -> None:
+    """Allow the key that opened the session or an operator key; 404 otherwise.
+
+    A session opened anonymously (only possible with
+    ALLOW_ANONYMOUS_BUYER_WRITES) has no owning key, so any caller allowed
+    to write may use it. Not-yours reads as 404, the same as a missing
+    session.
     """
     if deps._is_operator(api_key_record):
         return
     data = await session_service.get_session_record(session_id)
-    owner = (data or {}).get("buyer_context") or {}
-    if data is not None and owner.get("authentication_method") != "api_key":
+    if data is not None and not _opened_with_key(data):
         return
-    caller_key = (
-        deps._build_buyer_context(api_key_record=api_key_record).get_pricing_key()
-        if api_key_record is not None
-        else None
-    )
-    if data is None or caller_key is None or caller_key != session_service.owner_key(data):
+    if data is None or not _key_owns(data, api_key_record):
         raise HTTPException(status_code=404, detail="Session not found")
 
 
@@ -64,7 +81,10 @@ async def create_session(
         max_access_tier=max_tier,
     )
 
-    return await session_service.create_session(buyer_context=context)
+    return await session_service.create_session(
+        buyer_context=context,
+        owner_key_id=getattr(api_key_record, "key_id", None),
+    )
 
 
 @router.get("/sessions", tags=["Sessions"])
@@ -74,9 +94,14 @@ async def list_sessions(
     api_key_record=Depends(deps._require_api_key_record),
 ):
     """List sessions. Operators may filter by any buyer; buyers see their own."""
-    if not deps._is_operator(api_key_record):
-        buyer_key = deps._build_buyer_context(api_key_record=api_key_record).get_pricing_key()
-    return await session_service.list_sessions(buyer_key=buyer_key, status=status)
+    if deps._is_operator(api_key_record):
+        return await session_service.list_sessions(buyer_key=buyer_key, status=status)
+    # A key's sessions are all indexed under its own pricing key.
+    return await session_service.list_sessions(
+        buyer_key=deps._build_buyer_context(api_key_record=api_key_record).get_pricing_key(),
+        status=status,
+        include=lambda data: _key_owns(data, api_key_record),
+    )
 
 
 @router.get("/sessions/{session_id}", tags=["Sessions"])
