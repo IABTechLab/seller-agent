@@ -420,7 +420,8 @@ async def book_deal(request: Any, catalog: Optional[dict[str, Any]] = None) -> d
     # anything is persisted, so a 409 leaves the quote bookable later.
     from .quote_service import commit_pg_hold
 
-    await commit_pg_hold(storage, quote, catalog)
+    # Booking requires an API key, so the exact remaining volume may be shown.
+    await commit_pg_hold(storage, quote, catalog, disclose_remaining=True)
 
     # Update quote status to "booked" and link deal_id
     quote["status"] = QuoteStatus.BOOKED.value
@@ -708,8 +709,15 @@ async def create_deal_from_template(
     if deal_type_str == "PG":
         from .quote_service import commit_pg_booking
 
+        # Callers are API-keyed (REST) or the operator (MCP).
         await commit_pg_booking(
-            storage, product, deal_id, request.impressions, flight_start, flight_end
+            storage,
+            product,
+            deal_id,
+            request.impressions,
+            flight_start,
+            flight_end,
+            disclose_remaining=True,
         )
     await storage.set_deal(deal_id, deal_data)
     await _emit_deal_created(deal_data, source="template")
@@ -784,14 +792,17 @@ def _build_seller_schain() -> dict[str, Any]:
 
 
 async def bulk_deal_operations(
-    operations: list[Any], catalog: Optional[dict[str, Any]] = None
+    operations: list[Any],
+    catalog: Optional[dict[str, Any]] = None,
+    disclose_remaining: bool = False,
 ) -> list[dict[str, Any]]:
     """Process a batch of deal operations (create/update/cancel).
 
     Each operation is processed independently; returns per-operation
     result dicts (index/action/success/deal_id/error). A create commits PG
     volume through the same ledger as ``book_deal`` (``catalog`` is used to
-    re-check capacity when the quote holds none).
+    re-check capacity when the quote holds none; the exact remaining volume
+    is reported only when ``disclose_remaining``, for an API-keyed caller).
     """
     from ..models.quotes import DealBookingStatus, QuoteStatus
     from ..storage.factory import get_storage
@@ -856,7 +867,7 @@ async def bulk_deal_operations(
                     "notes": op.notes,
                 }
                 try:
-                    await commit_pg_hold(storage, quote, catalog)
+                    await commit_pg_hold(storage, quote, catalog, disclose_remaining)
                 except HTTPException as exc:
                     detail = exc.detail if isinstance(exc.detail, dict) else {}
                     results.append(

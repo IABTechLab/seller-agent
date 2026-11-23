@@ -483,3 +483,40 @@ async def test_entries_without_a_flight_overlap_every_flight(storage):
 
     assert resp.status_code == 409
     assert resp.json()["detail"]["available_impressions"] == 2_000_000
+
+
+async def test_anonymous_callers_are_not_told_the_remaining_capacity(storage):
+    assert (await _quote(storage, 3_000_000)).status_code == 200
+
+    keyed = (await _quote(storage, 3_000_000, key_id="key-b")).json()["detail"]
+    anonymous = (await _quote(storage, 3_000_000, key_id=None)).json()["detail"]
+
+    assert keyed["available_impressions"] == 2_000_000
+    assert anonymous["error"] == "insufficient_avails"
+    assert "available_impressions" not in anonymous
+    assert "2,000,000" not in anonymous["message"]
+
+
+async def test_mcp_quote_and_anonymous_bulk_do_not_disclose_remaining_capacity(storage):
+    quote_id = (await _quote(storage, 3_000_000)).json()["quote"]["quote_id"]
+    storage._store[HOLD_KEY][quote_id]["until"] = "2020-01-01T00:00:00Z"
+    today = datetime.utcnow().date()
+    flight = (today.isoformat(), (today + timedelta(days=30)).isoformat())
+    assert (await _quote(storage, 3_000_000, key_id="key-b", flight=flight)).status_code == 200
+    assert (await _quote(storage, 3_000_000, key_id="key-c")).status_code == 200
+
+    with _mcp(storage) as mcp_server:
+        mcp_detail = json.loads(await mcp_server.request_quote("ctv-1", "PG", 3_000_000))["detail"]
+    bulk = await _post(
+        storage,
+        "/api/v1/deals/bulk",
+        {"operations": [{"action": "create", "quote_id": quote_id}]},
+        key_id=None,
+    )
+
+    assert mcp_detail["error"] == "insufficient_avails"
+    assert "available_impressions" not in mcp_detail
+    assert "2,000,000" not in mcp_detail["message"]
+    error = bulk.json()["results"][0]["error"]
+    assert error.startswith("insufficient_avails")
+    assert "2,000,000" not in error

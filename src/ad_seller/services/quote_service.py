@@ -163,27 +163,47 @@ def _tracks_capacity(product: Any) -> bool:
     )
 
 
-def _check_pg_capacity(product: Any, ledger: dict[str, dict[str, Any]], impressions: int) -> None:
+def _check_pg_capacity(
+    product: Any,
+    ledger: dict[str, dict[str, Any]],
+    impressions: int,
+    disclose_remaining: bool,
+) -> None:
     """Raise 409 ``insufficient_avails`` when ``impressions`` don't fit.
 
     Outstanding PG holds and booked PG volume in ``ledger`` (already pruned
     to live entries overlapping the requested flight, excluding the entry
     being placed) count against the product's ``maximum_impressions``.
+    The exact remaining volume reveals how much other buyers hold or
+    booked, so it is only returned when ``disclose_remaining`` (an
+    identified caller).
     """
     committed = sum(int(e.get("impressions") or 0) for e in ledger.values())
     remaining = max(0, product.maximum_impressions - committed)
-    if impressions > remaining:
+    if impressions <= remaining:
+        return
+    if not disclose_remaining:
         raise HTTPException(
             status_code=409,
             detail={
                 "error": "insufficient_avails",
                 "message": (
-                    f"Only {remaining:,} guaranteed impressions are currently available "
-                    f"for '{product.product_id}'; requested {impressions:,}."
+                    "Not enough guaranteed impressions are currently available for "
+                    f"'{product.product_id}' to fill {impressions:,}."
                 ),
-                "available_impressions": remaining,
             },
         )
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "error": "insufficient_avails",
+            "message": (
+                f"Only {remaining:,} guaranteed impressions are currently available "
+                f"for '{product.product_id}'; requested {impressions:,}."
+            ),
+            "available_impressions": remaining,
+        },
+    )
 
 
 async def _reserve_pg_hold(
@@ -217,7 +237,9 @@ async def _reserve_pg_hold(
     async with _ledger_lock(product.product_id):
         ledger = _active_holds(await storage.get(key), now)
         overlapping = _overlapping(ledger, flight_start, flight_end)
-        _check_pg_capacity(product, overlapping, impressions)
+        _check_pg_capacity(
+            product, overlapping, impressions, disclose_remaining=hold_owner is not None
+        )
         if hold_owner is None:
             return
         held_by_owner = sum(
@@ -259,6 +281,7 @@ async def _commit_pg_entry(
     flight_start: Any,
     flight_end: Any,
     get_product: Callable[[], Awaitable[Any]],
+    disclose_remaining: bool,
 ) -> None:
     """Record ``entry_id`` as booked PG volume until its flight ends.
 
@@ -280,7 +303,12 @@ async def _commit_pg_entry(
             if not _tracks_capacity(product):
                 return
             entry = {"impressions": impressions}
-            _check_pg_capacity(product, _overlapping(ledger, flight_start, flight_end), impressions)
+            _check_pg_capacity(
+                product,
+                _overlapping(ledger, flight_start, flight_end),
+                impressions,
+                disclose_remaining,
+            )
         ledger[entry_id] = {
             **entry,
             "state": "booked",
@@ -292,14 +320,18 @@ async def _commit_pg_entry(
 
 
 async def commit_pg_hold(
-    storage: Any, quote: dict[str, Any], catalog: Optional[dict[str, Any]] = None
+    storage: Any,
+    quote: dict[str, Any],
+    catalog: Optional[dict[str, Any]] = None,
+    disclose_remaining: bool = False,
 ) -> None:
     """Turn a booked PG quote's capacity into a booked commitment.
 
     Called by every quote-booking path before the booking is persisted:
     the entry no longer lapses but stays counted against capacity until
     the flight ends. A quote with no live hold is re-checked (see
-    ``_commit_pg_entry``). ``catalog`` defaults to the static catalog.
+    ``_commit_pg_entry``). ``catalog`` defaults to the static catalog;
+    ``disclose_remaining`` only for an identified (API-keyed) caller.
     """
     from ..config import get_settings
 
@@ -327,6 +359,7 @@ async def commit_pg_hold(
         terms.get("flight_start"),
         terms.get("flight_end"),
         _product,
+        disclose_remaining,
     )
 
 
@@ -337,6 +370,7 @@ async def commit_pg_booking(
     impressions: int,
     flight_start: Any,
     flight_end: Any,
+    disclose_remaining: bool = False,
 ) -> None:
     """Reserve and commit PG volume booked without a quote (from-template)."""
     if not _tracks_capacity(product):
@@ -346,7 +380,14 @@ async def commit_pg_booking(
         return product
 
     await _commit_pg_entry(
-        storage, product.product_id, booking_id, impressions, flight_start, flight_end, _product
+        storage,
+        product.product_id,
+        booking_id,
+        impressions,
+        flight_start,
+        flight_end,
+        _product,
+        disclose_remaining,
     )
 
 
