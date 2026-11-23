@@ -1198,6 +1198,14 @@ async def push_deal_to_buyers(request: Any) -> dict[str, Any]:
 
     # Build IAB Deal object
     deal_type = request.deal_type or (stored_deal or {}).get("deal_type", "PD")
+    if _normalize_deal_type_code(str(deal_type)) is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_deal_type",
+                "message": f"Deal type must be one of: PG, PD, PA. Got: {deal_type}",
+            },
+        )
     price = (
         request.price
         or (stored_deal or {}).get("actual_price_cpm")
