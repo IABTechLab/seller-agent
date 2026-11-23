@@ -515,6 +515,30 @@ class TestDealCRUD:
         rows = list(csv.DictReader(open(deals_csv, newline="", encoding="utf-8")))
         assert rows[0]["deal_type"] == "PD"
 
+    @pytest.mark.parametrize(
+        "deal_type, code, auction_type",
+        [
+            ("programmaticguaranteed", "PG", "3"),
+            ("programmatic_guaranteed", "PG", "3"),
+            ("preferreddeal", "PD", "3"),
+            ("preferred_deal", "PD", "3"),
+            ("privateauction", "PA", "1"),
+            ("private_auction", "PA", "1"),
+        ],
+    )
+    @pytest.mark.parametrize("method", ["create_deal", "book_deal"])
+    async def test_deal_row_auction_type_follows_openrtb(
+        self, client: CSVAdServerClient, data_dir: Path, method, deal_type, code, auction_type
+    ) -> None:
+        """PG/PD are fixed price (3), PA first price (1), for every accepted spelling."""
+        if method == "create_deal":
+            await client.create_deal("DEAL-AT", deal_type=deal_type)
+        else:
+            await client.book_deal("DEAL-AT", "ACME", deal_type=deal_type)
+        deals_csv = data_dir / "deals.csv"
+        rows = list(csv.DictReader(open(deals_csv, newline="", encoding="utf-8")))
+        assert (rows[0]["deal_type"], rows[0]["auction_type"]) == (code, auction_type)
+
     async def test_create_deal_initial_status_active(self, client: CSVAdServerClient) -> None:
         """Newly created deals have ACTIVE status."""
         deal = await client.create_deal("DEAL-STATUS")

@@ -48,6 +48,20 @@ DEAL_TYPE_CSV_TO_MODEL: dict[str, str] = {
 
 DEAL_TYPE_MODEL_TO_CSV: dict[str, str] = {v: k for k, v in DEAL_TYPE_CSV_TO_MODEL.items()}
 
+
+def _csv_deal_and_auction_type(deal_type: str) -> tuple[str, str]:
+    """CSV ``deal_type`` code and OpenRTB ``auction_type`` for any accepted spelling.
+
+    Unknown types keep the upper-cased input and first-price ``1``.
+    """
+    from ..services.deals_api import auction_type_for, deal_type_code
+
+    code = deal_type_code(deal_type)
+    if code is None:
+        return deal_type.upper(), "1"
+    return code, str(auction_type_for(code))
+
+
 INVENTORY_REQUIRED_COLUMNS = {"id", "name", "status"}
 AUDIENCES_REQUIRED_COLUMNS = {"id", "name", "status"}
 
@@ -584,13 +598,7 @@ class CSVAdServerClient(AdServerClient):
         internal_id = self._generate_id("deal")
         now = self._now_iso()
 
-        # Normalize deal_type to CSV abbreviation
-        csv_deal_type = DEAL_TYPE_MODEL_TO_CSV.get(deal_type, deal_type.upper())
-
-        # Determine auction type based on deal type
-        auction_type = "1"  # first-price default
-        if deal_type == "programmatic_guaranteed":
-            auction_type = "3"  # fixed
+        csv_deal_type, auction_type = _csv_deal_and_auction_type(deal_type)
 
         row = {
             "id": internal_id,
@@ -739,8 +747,7 @@ class CSVAdServerClient(AdServerClient):
             "updated_at": now,
         }
 
-        csv_deal_type = DEAL_TYPE_MODEL_TO_CSV.get(deal_type, deal_type.upper())
-        auction_type = "3" if deal_type == "programmatic_guaranteed" else "1"
+        csv_deal_type, auction_type = _csv_deal_and_auction_type(deal_type)
 
         li_row = {
             "id": li_id,
