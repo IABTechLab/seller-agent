@@ -114,6 +114,22 @@ async def test_keyless_proposal_has_no_owner(storage):
     assert resp.json()["detail"]["error"] == "proposal_not_bookable"
 
 
+@pytest.mark.parametrize("identity", [OWNER, BuyerIdentity()])
+async def test_proposal_stored_before_ownership_was_recorded_is_owner_unknown(storage, identity):
+    legacy = _proposal()
+    for field in ("buyer_key", "buyer_auth", "buyer_key_id"):
+        del legacy[field]
+    storage._store["proposal:prop-1"] = legacy
+
+    resp = await _post(storage, identity=identity)
+
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["error"] == "proposal_owner_unknown"
+    assert "Resubmit" in detail["message"]
+    assert "deal" not in storage._store["proposal:prop-1"]
+
+
 async def test_key_sharing_the_owners_advertiser_cannot_book(storage):
     key_a = BuyerIdentity(agency_id="ag-1", advertiser_id="adv-1")
     key_b = BuyerIdentity(agency_id="ag-2", advertiser_id="adv-1")

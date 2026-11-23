@@ -26,6 +26,17 @@ All notable changes to the IAB Tech Lab Seller Agent are documented here.
 
 ### Changed
 
+- Legacy `POST /deals` builds the deal from the caller's own accepted
+  proposal instead of hardcoded demo terms (#128). **Breaking:** it now
+  requires an API key (401 otherwise) and books only proposals submitted by
+  that same key (`key_id`; 409 `proposal_not_bookable`), so proposals
+  submitted without a key can't use it. A pending, timed-out or rejected
+  `proposal_decision` approval returns 409 `proposal_not_accepted` even
+  after an accepted negotiation. **Upgrade:** proposals stored before this
+  release carry no owner and return 409 `proposal_owner_unknown` for every
+  key, operator keys included; buyers resubmit them with `POST /proposals`.
+  Concurrent calls for one proposal return one deal within a single worker
+  process only.
 - Index Exchange SSP connector rewritten against the real `/v3/deals` API
   (create, get, list, update, clone, troubleshoot, seat-ID to DSP
   resolution). Seat IDs that resolve to several DSPs pause for operator

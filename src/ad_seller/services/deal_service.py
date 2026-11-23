@@ -607,6 +607,9 @@ async def generate_deal_from_proposal(
       pricing key (``buyer_key``). Keys get no override here, operator keys
       included. A proposal submitted without a key has no owner and cannot
       be turned into a deal here.
+    - Stored before ownership was recorded (none of ``buyer_key_id``,
+      ``buyer_key``, ``buyer_auth``): 409 ``proposal_owner_unknown``, for
+      every key including operator keys; the buyer resubmits the proposal.
     - Not accepted (the proposal decision, an approval, or an accepted
       negotiation): 409 ``proposal_not_accepted``. A pending, timed-out or
       rejected approval wins over an accepted negotiation.
@@ -634,6 +637,19 @@ async def _generate_deal_from_proposal_locked(
             detail={
                 "error": "proposal_not_found",
                 "message": f"Proposal '{proposal_id}' not found.",
+            },
+        )
+
+    if not any(field in proposal for field in ("buyer_key_id", "buyer_key", "buyer_auth")):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proposal_owner_unknown",
+                "message": (
+                    f"Proposal '{proposal_id}' was stored before the seller recorded which "
+                    "API key submitted it, so it cannot be turned into a deal. Resubmit it "
+                    "with POST /proposals."
+                ),
             },
         )
 
