@@ -17,11 +17,14 @@ import logging
 import uuid
 import weakref
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
+
+# How long a quote stays bookable.
+QUOTE_TTL_SECONDS = 86400
 
 # Deal type wire values accepted by the Deals API.
 DEAL_TYPE_MAP_KEYS = ("PG", "PD", "PA")
@@ -119,58 +122,109 @@ def _active_holds(ledger: Any, now: datetime) -> dict[str, dict[str, Any]]:
     return active
 
 
+def _tracks_capacity(product: Any) -> bool:
+    from ..config import get_settings
+
+    return (
+        product is not None
+        and product.maximum_impressions is not None
+        and get_settings().pg_quote_inventory_hold_enabled
+    )
+
+
+def _check_pg_capacity(product: Any, ledger: dict[str, dict[str, Any]], impressions: int) -> None:
+    """Raise 409 ``insufficient_avails`` when ``impressions`` don't fit.
+
+    Outstanding PG holds and booked PG volume in ``ledger`` (already pruned
+    and excluding the entry being placed) count against the product's
+    ``maximum_impressions``.
+    """
+    committed = sum(int(e.get("impressions") or 0) for e in ledger.values())
+    remaining = max(0, product.maximum_impressions - committed)
+    if impressions > remaining:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "insufficient_avails",
+                "message": (
+                    f"Only {remaining:,} guaranteed impressions are currently available "
+                    f"for '{product.product_id}'; requested {impressions:,}."
+                ),
+                "available_impressions": remaining,
+            },
+        )
+
+
 async def _reserve_pg_hold(
     storage: Any,
     product: Any,
     quote_id: str,
     impressions: int,
-    expires_at: datetime,
     now: datetime,
+    hold_owner: Optional[str],
 ) -> None:
-    """Soft-hold ``impressions`` of a capacity-capped product for a PG quote.
+    """Check, and for a keyed buyer soft-hold, PG capacity for a quote.
 
     Refuses (409 ``insufficient_avails``) when outstanding PG quotes and
     booked PG volume already leave less than ``impressions`` of the
-    product's ``maximum_impressions``. Products without a declared cap
-    have no capacity to hold against and are not tracked.
+    product's ``maximum_impressions``. Only a quote with a ``hold_owner``
+    (an API-keyed buyer) places a hold: it lasts ``pg_hold_ttl_seconds``
+    and one owner may hold at most ``pg_hold_max_buyer_share`` of the cap
+    at once (409 ``pg_hold_limit_exceeded``). Anonymous quotes are checked
+    but hold nothing. Products without a declared cap are not tracked.
     """
     from ..config import get_settings
 
-    if product.maximum_impressions is None or not get_settings().pg_quote_inventory_hold_enabled:
+    if not _tracks_capacity(product):
         return
+    settings = get_settings()
 
     key = _inventory_hold_key(product.product_id)
     async with _ledger_lock(product.product_id):
         ledger = _active_holds(await storage.get(key), now)
-        committed = sum(int(e.get("impressions") or 0) for e in ledger.values())
-        remaining = max(0, product.maximum_impressions - committed)
-        if impressions > remaining:
+        _check_pg_capacity(product, ledger, impressions)
+        if hold_owner is None:
+            return
+        held_by_owner = sum(
+            int(e.get("impressions") or 0)
+            for e in ledger.values()
+            if e.get("state") == "held" and e.get("owner") == hold_owner
+        )
+        if held_by_owner + impressions > settings.pg_hold_max_buyer_share * (
+            product.maximum_impressions
+        ):
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "error": "insufficient_avails",
+                    "error": "pg_hold_limit_exceeded",
                     "message": (
-                        f"Only {remaining:,} guaranteed impressions are currently available "
-                        f"for '{product.product_id}'; requested {impressions:,}."
+                        "This buyer's outstanding PG quotes would hold more of "
+                        f"'{product.product_id}' than one buyer may hold at once. Book "
+                        "or let existing PG quotes lapse, or request fewer impressions."
                     ),
-                    "available_impressions": remaining,
                 },
             )
+        hold_seconds = min(settings.pg_hold_ttl_seconds, QUOTE_TTL_SECONDS)
         ledger[quote_id] = {
             "impressions": impressions,
             "state": "held",
-            "until": expires_at.isoformat() + "Z",
+            "until": (now + timedelta(seconds=hold_seconds)).isoformat() + "Z",
+            "owner": hold_owner,
         }
         await storage.set(key, ledger)
 
 
-async def commit_pg_hold(storage: Any, quote: dict[str, Any]) -> None:
-    """Turn a booked PG quote's soft hold into a booked commitment.
+async def commit_pg_hold(
+    storage: Any, quote: dict[str, Any], catalog: Optional[dict[str, Any]] = None
+) -> None:
+    """Turn a booked PG quote's capacity into a booked commitment.
 
-    Called when the quote is booked: the hold no longer lapses with the
-    quote TTL but stays counted against capacity until the flight ends.
-    A quote whose entry is missing from the ledger is recorded as booked
-    rather than skipped, so booked volume is never left uncounted.
+    Called when the quote is booked, before the booking is persisted: the
+    entry no longer lapses but stays counted against capacity until the
+    flight ends. A quote with no live hold (anonymous, its hold lapsed,
+    or its entry lost) is re-checked against the remaining capacity
+    first and refused with 409 ``insufficient_avails`` if it no longer
+    fits. ``catalog`` defaults to the static product catalog.
     """
     from ..config import get_settings
 
@@ -187,12 +241,18 @@ async def commit_pg_hold(storage: Any, quote: dict[str, Any]) -> None:
         until = datetime.utcnow() + timedelta(days=30)
     key = _inventory_hold_key(product_id)
     async with _ledger_lock(product_id):
-        stored = await storage.get(key)
-        if not isinstance(stored, dict):
-            # No ledger: the product is uncapped, so nothing is tracked.
-            return
-        ledger = _active_holds(stored, datetime.utcnow())
-        entry = ledger.get(quote_id) or {"impressions": int(terms.get("impressions") or 0)}
+        ledger = _active_holds(await storage.get(key), datetime.utcnow())
+        entry = ledger.get(quote_id)
+        if entry is None:
+            if catalog is None:
+                from . import catalog_service
+
+                catalog = await catalog_service.get_static_product_catalog()
+            product = (catalog.get("products") or {}).get(product_id)
+            if not _tracks_capacity(product):
+                return
+            entry = {"impressions": int(terms.get("impressions") or 0)}
+            _check_pg_capacity(product, ledger, entry["impressions"])
         ledger[quote_id] = {**entry, "state": "booked", "until": until.isoformat() + "Z"}
         await storage.set(key, ledger)
 
@@ -201,6 +261,7 @@ async def create_quote(
     request: Any,
     buyer_context: Any,
     catalog: dict[str, Any],
+    hold_owner: Optional[str] = None,
 ) -> dict[str, Any]:
     """Create a non-binding price quote with a 24-hour TTL.
 
@@ -208,6 +269,8 @@ async def create_quote(
         request: ``QuoteRequestModel`` payload.
         buyer_context: resolved ``BuyerContext`` (API key beats body params).
         catalog: static product catalog dict (``{"products": {...}, ...}``).
+        hold_owner: identity of an API-keyed buyer. Only then does a PG
+            quote hold capacity; anonymous PG quotes are only checked.
     """
     from ..engines.pricing_rules_engine import PricingRulesEngine
     from ..models.pricing_tiers import TieredPricingConfig
@@ -311,7 +374,7 @@ async def create_quote(
 
     # Build timestamps
     now = datetime.utcnow()
-    expires_at = now + timedelta(hours=24)
+    expires_at = now + timedelta(seconds=QUOTE_TTL_SECONDS)
 
     # Default flight dates
     flight_start = request.flight_start or now.strftime("%Y-%m-%d")
@@ -353,11 +416,11 @@ async def create_quote(
 
     storage = await get_storage()
 
-    # PG quotes promise guaranteed volume: hold it for the quote's TTL so the
-    # same capacity cannot be quoted twice.
+    # PG quotes promise guaranteed volume: a keyed buyer's quote holds it so
+    # the same capacity cannot be quoted twice.
     if is_guaranteed:
         await _reserve_pg_hold(
-            storage, product, quote_id, requested_volume, expires_at=expires_at, now=now
+            storage, product, quote_id, requested_volume, now=now, hold_owner=hold_owner
         )
 
     # Persist with 24-hour TTL

@@ -9,6 +9,7 @@ fit in what is left is refused with 409 ``insufficient_avails``.
 """
 
 import asyncio
+import json
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -78,14 +79,28 @@ def storage():
     return s
 
 
+def _settings(**overrides):
+    return get_settings().model_copy(
+        update={
+            "approval_required_above_value": None,
+            "approval_gate_enabled": False,
+            **overrides,
+        }
+    )
+
+
 @asynccontextmanager
-async def _client(storage, settings=None, catalog=None):
-    app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
-        identity=BuyerIdentity(agency_id="agency-1")
+async def _client(storage, settings=None, catalog=None, key_id="key-a"):
+    """ASGI client; ``key_id=None`` makes the caller anonymous."""
+    record = (
+        None
+        if key_id is None
+        else MagicMock(identity=BuyerIdentity(agency_id="agency-1"), key_id=key_id)
     )
-    settings = settings or get_settings().model_copy(
-        update={"approval_required_above_value": None, "approval_gate_enabled": False}
-    )
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: record
+    # The per-buyer share cap has its own tests; elsewhere one buyer may
+    # hold the whole product.
+    settings = settings or _settings(pg_hold_max_buyer_share=1.0)
     try:
         with (
             patch(
@@ -108,8 +123,8 @@ async def _client(storage, settings=None, catalog=None):
         app.dependency_overrides.clear()
 
 
-async def _post(storage, path, body, settings=None, catalog=None):
-    async with _client(storage, settings=settings, catalog=catalog) as c:
+async def _post(storage, path, body, **kw):
+    async with _client(storage, **kw) as c:
         return await c.post(path, json=body)
 
 
@@ -206,7 +221,7 @@ async def test_uncapped_products_are_not_tracked(storage):
 
 
 async def test_hold_can_be_disabled(storage):
-    settings = get_settings().model_copy(update={"pg_quote_inventory_hold_enabled": False})
+    settings = _settings(pg_quote_inventory_hold_enabled=False)
     assert (await _quote(storage, 3_000_000, settings=settings)).status_code == 200
     assert (await _quote(storage, 3_000_000, settings=settings)).status_code == 200
 
@@ -237,3 +252,93 @@ async def test_booking_records_a_quote_missing_from_the_ledger(storage):
     assert entry["state"] == "booked"
     assert entry["impressions"] == 2_000_000
     assert kept in storage._store[HOLD_KEY]
+
+
+async def test_anonymous_quote_is_checked_but_holds_nothing(storage):
+    assert (await _quote(storage, CAPACITY, key_id=None)).status_code == 200
+    assert not storage._store.get(HOLD_KEY)
+
+    assert (await _quote(storage, 3_000_000)).status_code == 200
+    refused = await _quote(storage, 3_000_000, key_id=None)
+
+    assert refused.status_code == 409
+    assert refused.json()["detail"]["error"] == "insufficient_avails"
+    assert len(storage._store[HOLD_KEY]) == 1
+
+
+async def test_mcp_request_quote_is_checked_but_holds_nothing(storage):
+    from ad_seller.interfaces import mcp_server
+
+    with (
+        patch(
+            "ad_seller.services.catalog_service.get_static_product_catalog",
+            new=AsyncMock(return_value=_catalog()),
+        ),
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch(
+            "ad_seller.services.rate_card_service.get_rate_card_entries",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        first = json.loads(await mcp_server.request_quote("ctv-1", "PG", CAPACITY))
+        assert first.get("quote_id"), first
+        assert not storage._store.get(HOLD_KEY)
+
+        assert (await _quote(storage, 3_000_000)).status_code == 200
+        refused = json.loads(await mcp_server.request_quote("ctv-1", "PG", 3_000_000))
+
+    assert refused["detail"]["error"] == "insufficient_avails"
+    assert len(storage._store[HOLD_KEY]) == 1
+
+
+async def test_one_buyer_cannot_hold_more_than_its_share(storage):
+    settings = _settings(pg_hold_max_buyer_share=0.5)
+
+    assert (await _quote(storage, 2_000_000, settings=settings)).status_code == 200
+    capped = await _quote(storage, 1_000_000, settings=settings)
+
+    assert capped.status_code == 409
+    assert capped.json()["detail"]["error"] == "pg_hold_limit_exceeded"
+    other = await _quote(storage, 2_000_000, settings=settings, key_id="key-b")
+    assert other.status_code == 200
+
+
+async def test_hold_lapses_before_the_quote_expires(storage):
+    quote = (await _quote(storage, 3_000_000)).json()["quote"]
+
+    until = datetime.fromisoformat(storage._store[HOLD_KEY][quote["quote_id"]]["until"][:-1])
+    assert until <= datetime.utcnow() + timedelta(seconds=3600)
+    assert until < datetime.fromisoformat(quote["expires_at"].replace("Z", "+00:00")).replace(
+        tzinfo=None
+    )
+
+
+async def test_booking_after_the_hold_lapsed_rechecks_capacity(storage):
+    quote_id = (await _quote(storage, 3_000_000)).json()["quote"]["quote_id"]
+    storage._store[HOLD_KEY][quote_id]["until"] = "2020-01-01T00:00:00Z"
+    assert (await _quote(storage, 3_000_000, key_id="key-b")).status_code == 200
+
+    refused = await _book(storage, quote_id)
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["error"] == "insufficient_avails"
+    assert storage._store[f"quote:{quote_id}"]["status"] == "available"
+    assert quote_id not in storage._store[HOLD_KEY]
+
+
+async def test_booking_after_the_hold_lapsed_succeeds_while_capacity_remains(storage):
+    quote_id = (await _quote(storage, 3_000_000)).json()["quote"]["quote_id"]
+    storage._store[HOLD_KEY][quote_id]["until"] = "2020-01-01T00:00:00Z"
+
+    assert (await _book(storage, quote_id)).status_code == 200
+
+    assert storage._store[HOLD_KEY][quote_id]["state"] == "booked"
+
+
+def test_hold_ttl_cannot_exceed_the_quote_ttl():
+    from pydantic import ValidationError
+
+    from ad_seller.config.settings import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(pg_hold_ttl_seconds=86401)

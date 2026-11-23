@@ -248,10 +248,11 @@ async def _resolve_accepted_negotiation(storage: Any, quote_id: str) -> Optional
     return None
 
 
-async def book_deal(request: Any) -> dict[str, Any]:
+async def book_deal(request: Any, catalog: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Book a deal from a previously issued quote (``DealBookingRequestModel``).
 
     Validates the quote, generates a Deal ID, and returns confirmed terms.
+    ``catalog`` is used to re-check PG capacity when the quote holds none.
     This is the commit point — the quote becomes bound. When the request
     carries an ``audience_plan``, the plan is validated against seller
     capabilities, frozen onto the deal record as ``audience_plan_snapshot``,
@@ -415,14 +416,16 @@ async def book_deal(request: Any) -> dict[str, Any]:
             request.quote_id,
         )
 
+    # PG volume is committed (re-checked when the quote holds none) before
+    # anything is persisted, so a 409 leaves the quote bookable later.
+    from .quote_service import commit_pg_hold
+
+    await commit_pg_hold(storage, quote, catalog)
+
     # Update quote status to "booked" and link deal_id
     quote["status"] = QuoteStatus.BOOKED.value
     quote["deal_id"] = deal_id
     await storage.set_quote(request.quote_id, quote, ttl=86400)
-
-    from .quote_service import commit_pg_hold
-
-    await commit_pg_hold(storage, quote)
 
     # Store the deal in deal storage (coexists with proposal-based deals).
     # The snapshot fields land on the persisted record so

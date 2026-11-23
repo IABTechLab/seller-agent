@@ -255,7 +255,12 @@ async def book_deal(
         existing = await deal_service.get_deal(prior)
         return cm.internal_deal_to_response(existing)
 
-    result = await deal_service.book_deal(internal_request)
+    catalog = (
+        await deps.get_product_catalog()
+        if isinstance(quote, dict) and quote.get("deal_type") == "PG"
+        else None
+    )
+    result = await deal_service.book_deal(internal_request, catalog)
 
     try:
         await storage.set(

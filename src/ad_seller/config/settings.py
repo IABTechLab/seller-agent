@@ -240,11 +240,19 @@ class Settings(BaseSettings):
     approval_required_above_value: float = 0.0
 
     # Programmatic Guaranteed quotes hold their impressions against a
-    # capacity-capped product (maximum_impressions) for the quote TTL, and
-    # booked PG volume stays held until the flight ends, so the same
+    # capacity-capped product (maximum_impressions), and booked PG volume
+    # stays held until the flight ends, so the same
     # guaranteed capacity cannot be quoted twice. Products without a cap
     # are not tracked.
     pg_quote_inventory_hold_enabled: bool = True
+    # Only API-keyed buyers' PG quotes hold capacity; anonymous quotes are
+    # checked but hold nothing. A hold lapses after this many seconds even
+    # though the quote stays bookable for its 24 h TTL; booking a quote whose
+    # hold lapsed re-checks capacity. Capped at the quote TTL.
+    pg_hold_ttl_seconds: int = Field(default=3600, gt=0, le=86400)
+    # Largest fraction of a product's maximum_impressions that one buyer
+    # (API key) may hold in outstanding PG quotes at once.
+    pg_hold_max_buyer_share: float = Field(default=0.5, gt=0.0, le=1.0)
 
     # Session Configuration
     session_ttl_seconds: int = 604800  # 7 days
