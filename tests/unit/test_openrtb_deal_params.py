@@ -42,6 +42,7 @@ def test_pg_carries_guaranteed_impressions():
     assert "ext" not in build_openrtb_deal_params("D-1", "PD", 30.0, guaranteed_impressions=1_000)
 
 
+
 @pytest.mark.parametrize("code", ["PG", "PD", "PA"])
 def test_deals_api_path_uses_the_builder(code):
     deal = DealsAPIService().build_deal_object("D-1", code, 20.0, buyer_seat_ids=["seat-9"])
@@ -79,6 +80,8 @@ async def test_proposal_deal_path_uses_the_builder(deal_type, code):
     )
     await flow.generate_openrtb_params()
     assert flow.state.openrtb_deal_params["at"] == EXPECTED_AT[code]
+    if code == "PG":
+        assert flow.state.openrtb_deal_params["ext"] == {"guaranteed": True, "impressions": 500}
 
 
 # Deals booked before the fix stored the reversed ``at``; reads derive it.
