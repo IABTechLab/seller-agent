@@ -97,7 +97,8 @@ def build_openrtb_deal_params(
     generation, Deals API sync). ``at`` follows OpenRTB: PG and PD are
     fixed-price deals (``at=3``, ``bidfloor`` is the deal price); PA is an
     auction (``at=1`` first price, ``bidfloor`` is the floor). ``wseat`` /
-    ``wadomain`` are allow-lists; empty means unrestricted. Raises
+    ``wadomain`` are allow-lists; empty means unrestricted. PG always carries
+    ``ext.guaranteed``, plus ``ext.impressions`` when known. Raises
     ``ValueError`` for a deal type that is not PG, PD or PA.
     """
     code = _require_deal_type_code(deal_type)
@@ -109,8 +110,10 @@ def build_openrtb_deal_params(
         "wseat": list(seat_ids or []),
         "wadomain": list(advertiser_domains or []),
     }
-    if code == "PG" and guaranteed_impressions:
-        params["ext"] = {"guaranteed": True, "impressions": guaranteed_impressions}
+    if code == "PG":
+        params["ext"] = {"guaranteed": True}
+        if guaranteed_impressions:
+            params["ext"]["impressions"] = guaranteed_impressions
     return params
 
 

@@ -42,6 +42,38 @@ def test_pg_carries_guaranteed_impressions():
     assert "ext" not in build_openrtb_deal_params("D-1", "PD", 30.0, guaranteed_impressions=1_000)
 
 
+@pytest.mark.parametrize("impressions", [None, 0])
+def test_pg_is_guaranteed_without_impressions(impressions):
+    params = build_openrtb_deal_params("D-1", "PG", 30.0, guaranteed_impressions=impressions)
+    assert params["ext"] == {"guaranteed": True}
+
+
+async def test_quote_booked_pg_deal_is_guaranteed():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    from ad_seller.services import deal_service
+
+    quote = {
+        "quote_id": "qt-pg",
+        "status": "available",
+        "deal_type": "PG",
+        "product": {"product_id": "ctv-1", "name": "CTV", "inventory_type": "ctv"},
+        "pricing": {"base_cpm": 30.0, "final_cpm": 25.0, "currency": "USD"},
+        "terms": {"impressions": 1000, "flight_start": "2026-04-01", "flight_end": "2026-04-30"},
+        "buyer_tier": "public",
+    }
+    storage = AsyncMock()
+    storage.get_quote = AsyncMock(return_value=quote)
+    with (
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch.object(deal_service, "_resolve_accepted_negotiation", AsyncMock(return_value=None)),
+        patch.object(deal_service, "_emit_deal_created", AsyncMock()),
+    ):
+        deal = await deal_service.book_deal(SimpleNamespace(quote_id="qt-pg", audience_plan=None))
+
+    assert deal["openrtb_params"]["ext"]["guaranteed"] is True
+
 
 @pytest.mark.parametrize("code", ["PG", "PD", "PA"])
 def test_deals_api_path_uses_the_builder(code):
