@@ -170,3 +170,80 @@ async def test_generic_export_derives_auction_type_for_legacy_records(legacy_sto
     got = {d["deal_type"]: d["openrtb_params"]["at"] for d in result["deals"]}
     assert got == EXPECTED_AT
     assert legacy_storage._store["deal:DEMO-LEGACYPG"]["openrtb_params"]["at"] == 1
+
+
+# Push takes deal_type as a free string: every accepted spelling normalizes
+# to one code, so pricing fields and ``at`` agree; unknown types are rejected.
+_SPELLINGS = [
+    ("pd", "PD"),
+    ("pg", "PG"),
+    ("pa", "PA"),
+    ("programmaticguaranteed", "PG"),
+    ("programmatic_guaranteed", "PG"),
+]
+_IAB_TYPE = {"PG": "programmaticguaranteed", "PD": "preferreddeal", "PA": "privateauction"}
+
+
+@pytest.mark.parametrize("deal_type, code", _SPELLINGS)
+def test_builder_normalizes_deal_type_spellings(deal_type, code):
+    params = build_openrtb_deal_params("D-1", deal_type, 20.0, guaranteed_impressions=10)
+    assert params["at"] == EXPECTED_AT[code]
+    assert ("ext" in params) == (code == "PG")
+
+
+@pytest.mark.parametrize("deal_type, code", _SPELLINGS)
+def test_deal_object_pricing_agrees_with_auction_type(deal_type, code):
+    deal = DealsAPIService().build_deal_object("D-1", deal_type, 20.0)
+    assert deal.deal_type == _IAB_TYPE[code]
+    assert deal.openrtb_params["at"] == EXPECTED_AT[code]
+    if code == "PA":
+        assert (deal.floor_price_cpm, deal.fixed_price_cpm) == (20.0, None)
+    else:
+        assert (deal.floor_price_cpm, deal.fixed_price_cpm) == (None, 20.0)
+
+
+def test_unknown_deal_type_is_rejected_by_builders():
+    with pytest.raises(ValueError):
+        build_openrtb_deal_params("D-1", "XYZ", 20.0)
+    with pytest.raises(ValueError):
+        DealsAPIService().build_deal_object("D-1", "XYZ", 20.0)
+
+
+async def _push(api_client, deal_type):
+    from unittest.mock import AsyncMock, patch
+
+    storage = AsyncMock()
+    storage.get_deal = AsyncMock(return_value=None)
+    push = AsyncMock(return_value=[])
+    with (
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch.object(DealsAPIService, "push_deal_to_multiple_buyers", push),
+    ):
+        resp = await api_client.post(
+            "/api/v1/deals/push",
+            json={
+                "deal_id": "D-PUSH",
+                "buyer_urls": ["https://buyer.example.test/deals"],
+                "deal_type": deal_type,
+                "price": 20.0,
+            },
+        )
+    return resp, push
+
+
+@pytest.mark.parametrize("deal_type, code", _SPELLINGS)
+async def test_push_normalizes_deal_type(deal_type, code, api_client):
+    resp, push = await _push(api_client, deal_type)
+    assert resp.status_code == 200
+    deal = push.await_args.args[0]
+    assert deal.deal_type == _IAB_TYPE[code]
+    assert deal.openrtb_params["at"] == EXPECTED_AT[code]
+    assert (deal.fixed_price_cpm is not None) == (code != "PA")
+    assert (deal.floor_price_cpm is not None) == (code == "PA")
+
+
+async def test_push_rejects_unknown_deal_type(api_client):
+    resp, push = await _push(api_client, "XYZ")
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error"] == "invalid_deal_type"
+    push.assert_not_awaited()

@@ -25,6 +25,8 @@ from typing import Any, Optional
 import httpx
 from pydantic import BaseModel
 
+from .deal_service import _normalize_deal_type_code
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,26 +34,33 @@ logger = logging.getLogger(__name__)
 # OpenRTB deal parameters
 # =============================================================================
 
-_DEAL_TYPE_CODES = {
-    "PG": "PG",
-    "PROGRAMMATICGUARANTEED": "PG",
-    "PD": "PD",
-    "PREFERREDDEAL": "PD",
-    "PA": "PA",
-    "PRIVATEAUCTION": "PA",
-}
-
 _AUCTION_TYPE_BY_CODE = {"PG": 3, "PD": 3, "PA": 1}
 
+_IAB_DEAL_TYPE_BY_CODE = {
+    "PG": "programmaticguaranteed",
+    "PD": "preferreddeal",
+    "PA": "privateauction",
+}
 
-def _deal_type_code(deal_type: Any) -> Optional[str]:
-    raw = str(getattr(deal_type, "value", deal_type) or "").upper().replace("_", "")
-    return _DEAL_TYPE_CODES.get(raw)
+
+def deal_type_code(deal_type: Any) -> Optional[str]:
+    """Canonical PG/PD/PA code for any accepted spelling or enum, ``None`` if unknown."""
+    raw = getattr(deal_type, "value", deal_type)
+    if raw is None:
+        return None
+    return _normalize_deal_type_code(str(raw))
+
+
+def _require_deal_type_code(deal_type: Any) -> str:
+    code = deal_type_code(deal_type)
+    if code is None:
+        raise ValueError(f"Unknown deal type {deal_type!r}; expected PG, PD or PA")
+    return code
 
 
 def auction_type_for(deal_type: Any) -> Optional[int]:
     """OpenRTB ``at`` for a deal type: 3 for PG/PD, 1 for PA, ``None`` if unknown."""
-    code = _deal_type_code(deal_type)
+    code = deal_type_code(deal_type)
     return _AUCTION_TYPE_BY_CODE[code] if code else None
 
 
@@ -88,9 +97,10 @@ def build_openrtb_deal_params(
     generation, Deals API sync). ``at`` follows OpenRTB: PG and PD are
     fixed-price deals (``at=3``, ``bidfloor`` is the deal price); PA is an
     auction (``at=1`` first price, ``bidfloor`` is the floor). ``wseat`` /
-    ``wadomain`` are allow-lists; empty means unrestricted.
+    ``wadomain`` are allow-lists; empty means unrestricted. Raises
+    ``ValueError`` for a deal type that is not PG, PD or PA.
     """
-    code = _deal_type_code(deal_type) or "PD"
+    code = _require_deal_type_code(deal_type)
     params: dict[str, Any] = {
         "id": deal_id,
         "bidfloor": price,
@@ -223,26 +233,17 @@ class DealsAPIService:
         """Build an IAB Deal object from seller deal data.
 
         Maps our internal DealOutput format to IAB Deals API v1.0 spec.
+        Raises ``ValueError`` for a deal type that is not PG, PD or PA.
         """
-        # Normalize deal type
-        deal_type_map = {
-            "programmatic_guaranteed": "programmaticguaranteed",
-            "preferred_deal": "preferreddeal",
-            "private_auction": "privateauction",
-            "PG": "programmaticguaranteed",
-            "PD": "preferreddeal",
-            "PA": "privateauction",
-        }
-        normalized_type = deal_type_map.get(deal_type, deal_type)
+        code = _require_deal_type_code(deal_type)
+        normalized_type = _IAB_DEAL_TYPE_BY_CODE[code]
 
         # Pricing based on deal type
-        is_fixed = normalized_type in ("programmaticguaranteed", "preferreddeal")
+        is_fixed = code in ("PG", "PD")
         floor_price = None if is_fixed else price
         fixed_price = price if is_fixed else None
 
-        openrtb = build_openrtb_deal_params(
-            deal_id, normalized_type, price, seat_ids=buyer_seat_ids
-        )
+        openrtb = build_openrtb_deal_params(deal_id, code, price, seat_ids=buyer_seat_ids)
 
         now = datetime.now(timezone.utc).isoformat()
 
