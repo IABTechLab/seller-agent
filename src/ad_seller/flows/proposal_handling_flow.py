@@ -727,7 +727,7 @@ class ProposalHandlingFlow(Flow[ProposalState]):
         """A rejected offer that is really a below-floor opener.
 
         Policy: EVERY valid below-floor offer is
-        countered (above the floor) instead of terminally rejected — there is
+        countered instead of terminally rejected — there is
         no deep-lowball walk-away threshold. Applied to BOTH evaluators —
         a crew reject is normalized exactly like the deterministic
         fallback's counter path. Nonpositive prices are not valid offers.

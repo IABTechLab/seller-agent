@@ -216,13 +216,6 @@ class Settings(BaseSettings):
     min_deal_value: float = 1000.0
     default_price_floor_cpm: float = 10.0
 
-    # Negotiation: share (0-1) of the gap between the product floor and the
-    # seller's last position that the seller keeps when countering a
-    # below-floor offer. Unset uses each strategy's own share
-    # (1 - gap_split_buyer_share), so the counter never lands exactly on
-    # the floor; 0 counters at the floor (the previous behaviour).
-    negotiation_below_floor_counter_share: Optional[float] = Field(default=None, ge=0, le=1)
-
     # Yield Optimization
     yield_optimization_enabled: bool = True
     programmatic_floor_multiplier: float = 1.2

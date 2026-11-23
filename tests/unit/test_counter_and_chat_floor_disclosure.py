@@ -481,7 +481,9 @@ class TestEngineEmitsTwoRationales:
 
     def test_below_floor_final_offer(self):
         round_result, _ = _drive_engine_to(NegotiationAction.FINAL_OFFER, buyer_price=25.0)
-        assert round_result.seller_price > FLOOR_PRICE
+        # The 15% cap on the ~$37.23 agency price lands below this floor, so
+        # the capped path genuinely reaches it: the floor is the final offer.
+        assert round_result.seller_price == FLOOR_PRICE
         _assert_buyer_facing(round_result.buyer_rationale, "the below-floor FINAL_OFFER")
         assert f"{FLOOR_PRICE:.2f}" in round_result.rationale
         assert "floor" in round_result.rationale.lower()

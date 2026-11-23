@@ -20,7 +20,7 @@ Policy pinned here:
 - Requested volume above available with partial availability → COUNTER
   carrying the available volume (``max_impressions``) and consistent
   pricing (the NegotiationEngine's price for the buyer's offer: agreeable
-  prices are kept, below-floor prices counter at the floor), with a
+  prices are kept, below-floor prices get the capped counter), with a
   truthful volume reason.
 - Genuinely zero availability → terminal REJECT (unchanged).
 - Requested volume within availability → semantics unchanged.
@@ -240,7 +240,7 @@ class TestVolumeShortfallCounters:
 
     def test_volume_shortfall_with_below_floor_price_counters_both(self):
         """Volume over available AND price below floor: one counter fixes
-        both — a price above the floor (lowball convention) + available volume."""
+        both — a capped price step (lowball convention) + available volume."""
         result = _run_flow(
             "raise",
             price=25.0,
@@ -250,8 +250,9 @@ class TestVolumeShortfallCounters:
         assert result["recommendation"] == "counter"
         ct = result["counter_terms"]
         assert ct is not None
-        # Agency tier: 35.00 list -> 31.50, countered halfway to the 28 floor.
-        assert ct["proposed_price"] == 29.75
+        # Agency tier: 35.00 list -> 31.50, minus one 5% per-round step; the
+        # 28 floor does not show.
+        assert ct["proposed_price"] == 29.93
         assert ct["max_impressions"] == 800_000
         assert ct["action"] == "counter"
         history = result.get("_negotiation_history")
