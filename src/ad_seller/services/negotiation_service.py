@@ -166,9 +166,15 @@ async def _verify_quote_binding(storage: Any, quote_id: str, buyer_context: Any)
 
 
 async def submit_proposal(
-    request: Any, buyer_context: Any, catalog: dict[str, Any]
+    request: Any,
+    buyer_context: Any,
+    catalog: dict[str, Any],
+    api_key_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Evaluate a submitted proposal.
+
+    ``api_key_id`` is the submitting API key's ``key_id`` (None when
+    keyless); it is stored as the proposal's owner for legacy ``POST /deals``.
 
     Product data now comes from the single cached catalog source (EP-3.3)
     instead of running ProductSetupFlow per request. Returns the response
@@ -226,15 +232,18 @@ async def submit_proposal(
     # surface is reachable cold — without this, POST /api/v1/negotiations/
     # messages 404'd ("Proposal not found") on every fresh negotiation
     # .
-    await storage.set_proposal(
-        proposal_id,
-        {
-            **proposal_data,
-            "proposal_id": proposal_id,
-            "recommendation": result.get("recommendation"),
-            "status": result.get("status"),
-        },
-    )
+    proposal_record = {
+        **proposal_data,
+        "proposal_id": proposal_id,
+        "recommendation": result.get("recommendation"),
+        "status": result.get("status"),
+        # Who submitted it: legacy POST /deals only turns a proposal into
+        # a deal for the API key that submitted it.
+        "buyer_key": buyer_context.get_pricing_key(),
+        "buyer_auth": getattr(buyer_context, "authentication_method", None),
+        "buyer_key_id": api_key_id,
+    }
+    await storage.set_proposal(proposal_id, proposal_record)
     product = catalog["products"].get(request.product_id)
     if product is not None:
         from .catalog_service import serialize_product
@@ -275,6 +284,11 @@ async def submit_proposal(
             },
             flow_state_snapshot=result.get("_flow_state_snapshot", {}),
             proposal_id=proposal_id,
+        )
+        # Legacy POST /deals checks this approval before booking, so a pending
+        # or rejected approval wins over a later accepted negotiation.
+        await storage.set_proposal(
+            proposal_id, {**proposal_record, "approval_id": approval_req.approval_id}
         )
         return {
             "proposal_id": proposal_id,

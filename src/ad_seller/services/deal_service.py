@@ -12,9 +12,11 @@ exactly as the endpoints raised them, and imports of storage/flows/clients
 stay function-level so existing test patch points keep working.
 """
 
+import asyncio
 import hashlib
 import logging
 import uuid
+import weakref
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -554,27 +556,177 @@ async def get_deal_performance(deal_id: str) -> dict[str, Any]:
 # =============================================================================
 
 
-def generate_deal_from_proposal(proposal_id: str) -> dict[str, Any]:
-    """Generate a deal from an accepted proposal (legacy demo flow)."""
+_BOOKABLE_PROPOSAL_STATUSES = ("accepted", "approved")
+
+# Serializes the read-check-mint-store sequence per proposal. Process-local:
+# it does not cover several worker processes, which would need a storage-level
+# compare-and-set on the proposal's ``deal`` slot.
+_proposal_deal_locks: "weakref.WeakValueDictionary[str, asyncio.Lock]" = (
+    weakref.WeakValueDictionary()
+)
+
+
+async def _blocking_approval_status(storage: Any, proposal: dict[str, Any]) -> Optional[str]:
+    """Return the approval status that bars booking ``proposal``, or None.
+
+    A ``proposal_decision`` approval that is pending, timed out or rejected
+    bars booking even when a negotiation on the proposal was accepted. An
+    operator ``counter`` decision is stored as ``rejected`` too, but it hands
+    the proposal back to negotiation, so it does not bar booking.
+    """
+    from ..events.approval import ApprovalGate
+    from ..events.models import ApprovalStatus
+
+    approval_id = proposal.get("approval_id")
+    if not approval_id:
+        # Gated proposals stored before approval_id was recorded.
+        return "pending" if proposal.get("status") == "pending_approval" else None
+
+    gate = ApprovalGate(storage)
+    request = await gate.get_request(approval_id)
+    if request is None:
+        return None
+    if request.status in (ApprovalStatus.PENDING, ApprovalStatus.TIMED_OUT):
+        return request.status.value
+    if request.status == ApprovalStatus.REJECTED:
+        response = await gate.get_response(approval_id)
+        if response is None or response.decision != "counter":
+            return request.status.value
+    return None
+
+
+async def generate_deal_from_proposal(
+    proposal_id: str, buyer_context: Any, api_key_id: Optional[str] = None
+) -> dict[str, Any]:
+    """Generate a deal from a stored, accepted proposal (legacy ``POST /deals``).
+
+    - Unknown proposal: 404 ``proposal_not_found``.
+    - Not submitted by the caller's API key: 409 ``proposal_not_bookable``.
+      Ownership is the submitting key's ``key_id`` recorded at submission
+      (``buyer_key_id``); records without one fall back to the key-derived
+      pricing key (``buyer_key``). Keys get no override here, operator keys
+      included. A proposal submitted without a key has no owner and cannot
+      be turned into a deal here.
+    - Stored before ownership was recorded (none of ``buyer_key_id``,
+      ``buyer_key``, ``buyer_auth``): 409 ``proposal_owner_unknown``, for
+      every key including operator keys; the buyer resubmits the proposal.
+    - Not accepted (the proposal decision, an approval, or an accepted
+      negotiation): 409 ``proposal_not_accepted``. A pending, timed-out or
+      rejected approval wins over an accepted negotiation.
+
+    The deal carries the proposal's terms; an accepted negotiation's agreed
+    price replaces the proposed price. A repeat call, including a concurrent
+    one, returns the deal already generated for the proposal.
+    """
+    lock = _proposal_deal_locks.setdefault(proposal_id, asyncio.Lock())
+    async with lock:
+        return await _generate_deal_from_proposal_locked(proposal_id, buyer_context, api_key_id)
+
+
+async def _generate_deal_from_proposal_locked(
+    proposal_id: str, buyer_context: Any, api_key_id: Optional[str]
+) -> dict[str, Any]:
     from ..flows import DealGenerationFlow
+    from ..storage.factory import get_storage
+
+    storage = await get_storage()
+    proposal = await storage.get_proposal(proposal_id)
+    if not isinstance(proposal, dict):
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "proposal_not_found",
+                "message": f"Proposal '{proposal_id}' not found.",
+            },
+        )
+
+    if not any(field in proposal for field in ("buyer_key_id", "buyer_key", "buyer_auth")):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proposal_owner_unknown",
+                "message": (
+                    f"Proposal '{proposal_id}' was stored before the seller recorded which "
+                    "API key submitted it, so it cannot be turned into a deal. Resubmit it "
+                    "with POST /proposals."
+                ),
+            },
+        )
+
+    keyed_caller = getattr(buyer_context, "authentication_method", None) == "api_key"
+    owner_key_id = proposal.get("buyer_key_id")
+    if owner_key_id:
+        owned = keyed_caller and api_key_id is not None and api_key_id == owner_key_id
+    else:
+        owned = (
+            keyed_caller
+            and proposal.get("buyer_auth") == "api_key"
+            and proposal.get("buyer_key") == buyer_context.get_pricing_key()
+        )
+    if not owned:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proposal_not_bookable",
+                "message": f"Proposal '{proposal_id}' was not submitted by this API key.",
+            },
+        )
+
+    if isinstance(proposal.get("deal"), dict):
+        return proposal["deal"]
+
+    approval_status = await _blocking_approval_status(storage, proposal)
+    if approval_status is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proposal_not_accepted",
+                "message": (
+                    f"Proposal '{proposal_id}' has a '{approval_status}' approval; only "
+                    "approved proposals can be turned into deals."
+                ),
+            },
+        )
+
+    price = proposal.get("accepted_price", proposal.get("price"))
+    accepted = proposal.get("status") in _BOOKABLE_PROPOSAL_STATUSES
+    negotiation = await storage.get_negotiation(proposal_id)
+    if isinstance(negotiation, dict) and negotiation.get("status") == "accepted":
+        rounds = negotiation.get("rounds") or []
+        agreed = rounds[-1].get("seller_price") if rounds else None
+        if agreed is not None:
+            price, accepted = agreed, True
+    if not accepted:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "proposal_not_accepted",
+                "message": (
+                    f"Proposal '{proposal_id}' is '{proposal.get('status')}'; only accepted "
+                    "or approved proposals can be turned into deals."
+                ),
+            },
+        )
 
     flow = DealGenerationFlow()
     result = flow.generate_deal(
         proposal_id=proposal_id,
         proposal_data={
             "status": "accepted",
-            "deal_type": "preferred_deal",
-            "price": 15.0,
-            "product_id": "display",
-            "impressions": 1000000,
-            "start_date": "2026-01-01",
-            "end_date": "2026-03-31",
+            "deal_type": proposal.get("deal_type"),
+            "price": price,
+            "product_id": proposal.get("product_id"),
+            "impressions": proposal.get("impressions"),
+            "start_date": proposal.get("start_date"),
+            "end_date": proposal.get("end_date"),
+            "buyer_id": proposal.get("buyer_id") or "",
         },
     )
 
     if not result.get("deal_id"):
         raise HTTPException(status_code=400, detail="Failed to generate deal")
 
+    await storage.set_proposal(proposal_id, {**proposal, "deal": result})
     return result
 
 
