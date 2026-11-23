@@ -12,8 +12,10 @@ patch points (e.g. ``ad_seller.storage.factory.get_storage``) keep
 working, mirroring the original endpoint bodies.
 """
 
+import asyncio
 import logging
 import uuid
+import weakref
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -78,6 +80,23 @@ def _inventory_hold_key(product_id: str) -> str:
     return f"inventory_hold:{product_id}"
 
 
+# Every read-modify-write of a product's ledger runs under its lock so
+# concurrent quotes/bookings cannot overwrite each other's entries or both
+# claim the same remaining capacity. The lock is process-local: with several
+# worker processes the race remains until the storage layer offers a
+# compare-and-set (upstream PR #132 proposes ``storage.compare_and_set``; the
+# first write of a ledger would also need create-if-absent).
+_ledger_locks: "weakref.WeakValueDictionary[str, asyncio.Lock]" = weakref.WeakValueDictionary()
+
+
+def _ledger_lock(product_id: str) -> asyncio.Lock:
+    lock = _ledger_locks.get(product_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _ledger_locks[product_id] = lock
+    return lock
+
+
 def _active_holds(ledger: Any, now: datetime) -> dict[str, dict[str, Any]]:
     """Unexpired entries of a product's hold ledger.
 
@@ -121,27 +140,28 @@ async def _reserve_pg_hold(
         return
 
     key = _inventory_hold_key(product.product_id)
-    ledger = _active_holds(await storage.get(key), now)
-    committed = sum(int(e.get("impressions") or 0) for e in ledger.values())
-    remaining = max(0, product.maximum_impressions - committed)
-    if impressions > remaining:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "insufficient_avails",
-                "message": (
-                    f"Only {remaining:,} guaranteed impressions are currently available "
-                    f"for '{product.product_id}'; requested {impressions:,}."
-                ),
-                "available_impressions": remaining,
-            },
-        )
-    ledger[quote_id] = {
-        "impressions": impressions,
-        "state": "held",
-        "until": expires_at.isoformat() + "Z",
-    }
-    await storage.set(key, ledger)
+    async with _ledger_lock(product.product_id):
+        ledger = _active_holds(await storage.get(key), now)
+        committed = sum(int(e.get("impressions") or 0) for e in ledger.values())
+        remaining = max(0, product.maximum_impressions - committed)
+        if impressions > remaining:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "insufficient_avails",
+                    "message": (
+                        f"Only {remaining:,} guaranteed impressions are currently available "
+                        f"for '{product.product_id}'; requested {impressions:,}."
+                    ),
+                    "available_impressions": remaining,
+                },
+            )
+        ledger[quote_id] = {
+            "impressions": impressions,
+            "state": "held",
+            "until": expires_at.isoformat() + "Z",
+        }
+        await storage.set(key, ledger)
 
 
 async def commit_pg_hold(storage: Any, quote: dict[str, Any]) -> None:
@@ -149,24 +169,32 @@ async def commit_pg_hold(storage: Any, quote: dict[str, Any]) -> None:
 
     Called when the quote is booked: the hold no longer lapses with the
     quote TTL but stays counted against capacity until the flight ends.
+    A quote whose entry is missing from the ledger is recorded as booked
+    rather than skipped, so booked volume is never left uncounted.
     """
+    from ..config import get_settings
+
     product_id = (quote.get("product") or {}).get("product_id")
     quote_id = quote.get("quote_id")
     if quote.get("deal_type") != "PG" or not product_id or not quote_id:
         return
-    key = _inventory_hold_key(product_id)
-    ledger = await storage.get(key)
-    if not isinstance(ledger, dict) or quote_id not in ledger:
+    if not get_settings().pg_quote_inventory_hold_enabled:
         return
-    flight_end = (quote.get("terms") or {}).get("flight_end")
+    terms = quote.get("terms") or {}
     try:
-        until = datetime.fromisoformat(str(flight_end)) + timedelta(days=1)
+        until = datetime.fromisoformat(str(terms.get("flight_end"))) + timedelta(days=1)
     except ValueError:
         until = datetime.utcnow() + timedelta(days=30)
-    ledger = _active_holds(ledger, datetime.utcnow())
-    ledger[quote_id] = {**ledger.get(quote_id, {}), "state": "booked"}
-    ledger[quote_id]["until"] = until.isoformat() + "Z"
-    await storage.set(key, ledger)
+    key = _inventory_hold_key(product_id)
+    async with _ledger_lock(product_id):
+        stored = await storage.get(key)
+        if not isinstance(stored, dict):
+            # No ledger: the product is uncapped, so nothing is tracked.
+            return
+        ledger = _active_holds(stored, datetime.utcnow())
+        entry = ledger.get(quote_id) or {"impressions": int(terms.get("impressions") or 0)}
+        ledger[quote_id] = {**entry, "state": "booked", "until": until.isoformat() + "Z"}
+        await storage.set(key, ledger)
 
 
 async def create_quote(

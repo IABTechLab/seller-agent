@@ -167,7 +167,7 @@ MANAGER_LLM_MODEL=llama3
 | `DEFAULT_CURRENCY` | `str` | `"USD"` | Default currency for pricing |
 | `MIN_DEAL_VALUE` | `float` | `1000.0` | Minimum deal value |
 | `DEFAULT_PRICE_FLOOR_CPM` | `float` | `10.0` | Global default price floor (CPM) |
-| `PG_QUOTE_INVENTORY_HOLD_ENABLED` | `bool` | `true` | Programmatic Guaranteed quotes soft-hold their impressions against a product's `maximum_impressions` for the quote TTL (booked PG volume stays held until the flight ends); a PG quote that exceeds the remaining capacity is refused with 409 `insufficient_avails`. Uncapped products are not tracked |
+| `PG_QUOTE_INVENTORY_HOLD_ENABLED` | `bool` | `true` | Programmatic Guaranteed quotes soft-hold their impressions against a product's `maximum_impressions` for the quote TTL (booked PG volume stays held until the flight ends); a PG quote that exceeds the remaining capacity is refused with 409 `insufficient_avails`. Uncapped products are not tracked. Ledger updates are serialized per product with a process-local lock, so with several worker processes concurrent PG quotes can still oversell until the storage layer offers a compare-and-set |
 
 ## Yield Optimization
 

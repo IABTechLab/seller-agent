@@ -8,7 +8,9 @@ commitment that lasts until the flight ends, and a PG quote that does not
 fit in what is left is refused with 409 ``insufficient_avails``.
 """
 
+import asyncio
 import sys
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -53,9 +55,20 @@ def _catalog(maximum_impressions=CAPACITY):
 @pytest.fixture
 def storage():
     store = {}
+
+    # Real storage backends yield to the event loop on every call; without
+    # that, concurrent requests in a test could never interleave.
+    async def _get(k):
+        await asyncio.sleep(0)
+        return store.get(k)
+
+    async def _set(k, v, ttl=None):
+        await asyncio.sleep(0)
+        store[k] = v
+
     s = AsyncMock()
-    s.get = AsyncMock(side_effect=lambda k: store.get(k))
-    s.set = AsyncMock(side_effect=lambda k, v, ttl=None: store.__setitem__(k, v))
+    s.get = AsyncMock(side_effect=_get)
+    s.set = AsyncMock(side_effect=_set)
     s.get_quote = AsyncMock(side_effect=lambda q: store.get(f"quote:{q}"))
     s.set_quote = AsyncMock(side_effect=lambda q, d, ttl=86400: store.__setitem__(f"quote:{q}", d))
     s.get_deal = AsyncMock(side_effect=lambda d: store.get(f"deal:{d}"))
@@ -65,7 +78,8 @@ def storage():
     return s
 
 
-async def _post(storage, path, body, settings=None, catalog=None):
+@asynccontextmanager
+async def _client(storage, settings=None, catalog=None):
     app.dependency_overrides[_get_optional_api_key_record] = lambda: MagicMock(
         identity=BuyerIdentity(agency_id="agency-1")
     )
@@ -89,23 +103,39 @@ async def _post(storage, path, body, settings=None, catalog=None):
             async with httpx.AsyncClient(
                 transport=ASGITransport(app=app), base_url="http://test"
             ) as c:
-                return await c.post(path, json=body)
+                yield c
     finally:
         app.dependency_overrides.clear()
 
 
+async def _post(storage, path, body, settings=None, catalog=None):
+    async with _client(storage, settings=settings, catalog=catalog) as c:
+        return await c.post(path, json=body)
+
+
+def _quote_body(impressions, deal_type="PG", key="idem-quote"):
+    return {
+        "idempotency_key": key,
+        "product_id": "ctv-1",
+        "deal_type": deal_type,
+        "impressions": impressions,
+        "flight_start": "2027-01-01",
+        "flight_end": "2027-01-31",
+    }
+
+
 async def _quote(storage, impressions, deal_type="PG", key=None, **kw):
+    key = key or f"idem-{deal_type}-{impressions}-{len(storage._store)}"
+    return await _post(
+        storage, "/api/v1/quotes", _quote_body(impressions, deal_type, key=key), **kw
+    )
+
+
+async def _book(storage, quote_id, **kw):
     return await _post(
         storage,
-        "/api/v1/quotes",
-        {
-            "idempotency_key": key or f"idem-{deal_type}-{impressions}-{len(storage._store)}",
-            "product_id": "ctv-1",
-            "deal_type": deal_type,
-            "impressions": impressions,
-            "flight_start": "2027-01-01",
-            "flight_end": "2027-01-31",
-        },
+        "/api/v1/deals",
+        {"idempotency_key": f"idem-book-{quote_id}", "quote_id": quote_id},
         **kw,
     )
 
@@ -179,3 +209,31 @@ async def test_hold_can_be_disabled(storage):
     settings = get_settings().model_copy(update={"pg_quote_inventory_hold_enabled": False})
     assert (await _quote(storage, 3_000_000, settings=settings)).status_code == 200
     assert (await _quote(storage, 3_000_000, settings=settings)).status_code == 200
+
+
+async def test_concurrent_quotes_neither_oversell_nor_drop_holds(storage):
+    async with _client(storage) as c:
+        responses = await asyncio.gather(
+            *(
+                c.post("/api/v1/quotes", json=_quote_body(2_000_000, key=f"idem-race-{i}"))
+                for i in range(10)
+            )
+        )
+
+    accepted = [r.json()["quote"]["quote_id"] for r in responses if r.status_code == 200]
+    assert len(accepted) == 2
+    assert all(r.status_code in (200, 409) for r in responses)
+    assert set(storage._store[HOLD_KEY]) == set(accepted)
+
+
+async def test_booking_records_a_quote_missing_from_the_ledger(storage):
+    kept = (await _quote(storage, 1_000_000)).json()["quote"]["quote_id"]
+    lost = (await _quote(storage, 2_000_000)).json()["quote"]["quote_id"]
+    del storage._store[HOLD_KEY][lost]
+
+    assert (await _book(storage, lost)).status_code == 200, "booking failed"
+
+    entry = storage._store[HOLD_KEY][lost]
+    assert entry["state"] == "booked"
+    assert entry["impressions"] == 2_000_000
+    assert kept in storage._store[HOLD_KEY]
