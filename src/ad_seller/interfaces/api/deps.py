@@ -160,6 +160,7 @@ async def _verified_buyer_context(
     seat_id: Optional[str] = None,
     api_key_record: Optional[Any] = None,
     agent_url: Optional[str] = None,
+    audit_blocked_only: bool = False,
 ):
     """Build a BuyerContext with the trust-tier ceiling VERIFIED (EP-5.2).
 
@@ -184,6 +185,11 @@ async def _verified_buyer_context(
 
     Args:
         endpoint: Audit label for the calling path (e.g. "POST /api/v1/quotes").
+        audit_blocked_only: When True, persist the ``VerifiedTrust`` record
+            only for blocked agents (kept as security events); unknown,
+            registered, approved and preferred outcomes are not recorded.
+            Anonymous read-only routes pass True: any caller can send any
+            ``agent_url`` there, and each record is a new storage row.
     """
     from ...models.buyer_identity import AccessTier
     from ...storage.factory import get_storage
@@ -205,16 +211,18 @@ async def _verified_buyer_context(
             agent_url=agent_url,
         )
         # Persist the auditable verification outcome (fail-closed store).
-        store = TrustVerificationStore(await get_storage())
-        await store.record_verification(
-            verdict,
-            agent_url=agent_url,
-            claimed_tier=claimed_context.effective_tier.value,
-            effective_ceiling=tier.value if tier is not None else None,
-            endpoint=endpoint,
-        )
+        is_blocked = agent is not None and agent.is_blocked
+        if not audit_blocked_only or is_blocked:
+            store = TrustVerificationStore(await get_storage())
+            await store.record_verification(
+                verdict,
+                agent_url=agent_url,
+                claimed_tier=claimed_context.effective_tier.value,
+                effective_ceiling=tier.value if tier is not None else None,
+                endpoint=endpoint,
+            )
 
-        if agent is not None and agent.is_blocked:
+        if is_blocked:
             raise HTTPException(
                 status_code=403,
                 detail="Agent is blocked. Contact the seller operator for access.",
