@@ -178,6 +178,8 @@ curl -X DELETE http://localhost:8000/auth/api-keys/{key_id} \
 
 Revoked keys immediately return HTTP 401 on use.
 
+Sessions don't follow key rotation. A session belongs to the key that opened it, matched on `key_id`, not on buyer identity (see [Session ownership](#session-ownership)). A rotated or replacement key starts with no sessions and gets 404 on the old key's sessions, even if it has the same seat, agency and advertiser. Finish or close sessions before retiring a key, or open new sessions with the new key. Keyed sessions created before `owner_key_id` was recorded still fall back to matching the buyer identity until they expire (`SESSION_TTL_SECONDS`, 7 days by default).
+
 ## Access Tiers
 
 Access tiers control pricing visibility, discount eligibility, and negotiation access for **buyer** keys:
