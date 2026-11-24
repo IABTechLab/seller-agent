@@ -340,12 +340,66 @@ class TestDiscoveryTrustAudit:
 
         assert await _trust_keys(storage) == []
 
-    async def test_anonymous_discovery_with_registered_agent_still_audits(
+    @pytest.mark.parametrize(
+        "trust_status",
+        [TrustStatus.REGISTERED, TrustStatus.APPROVED, TrustStatus.PREFERRED],
+    )
+    async def test_anonymous_discovery_with_trusted_agent_writes_no_audit(
+        self, client_factory, storage, registry, wired, trust_status
+    ):
+        await _register(registry, trust_status)
+
+        for _ in range(5):
+            async with client_factory(None) as c:
+                resp = await c.post(
+                    "/discovery",
+                    json={"query": "how much does CTV cost?", "agent_url": AGENT_URL},
+                )
+            assert resp.status_code == 200, resp.text
+
+        assert await _trust_keys(storage) == []
+
+    async def test_anonymous_pricing_with_approved_agent_writes_no_audit(
         self, client_factory, storage, registry, wired
     ):
-        await _register(registry, TrustStatus.REGISTERED)
+        await _register(registry, TrustStatus.APPROVED)
 
-        async with client_factory(None) as c:
+        for _ in range(3):
+            async with client_factory(None) as c:
+                resp = await c.post(
+                    "/pricing",
+                    json={"product_id": "ctv-premium-sports", "agent_url": AGENT_URL},
+                )
+            assert resp.status_code == 200, resp.text
+
+        assert await _trust_keys(storage) == []
+
+    @pytest.mark.parametrize(
+        ("path", "body"),
+        [
+            ("/discovery", {"query": "how much does CTV cost?"}),
+            ("/pricing", {"product_id": "ctv-premium-sports"}),
+        ],
+    )
+    async def test_anonymous_read_with_blocked_agent_still_audits(
+        self, client_factory, storage, registry, wired, path, body
+    ):
+        await _register(registry, TrustStatus.BLOCKED)
+
+        for _ in range(3):
+            async with client_factory(None) as c:
+                resp = await c.post(path, json={**body, "agent_url": AGENT_URL})
+            assert resp.status_code == 403, resp.text
+
+        records = [k for k in await _trust_keys(storage) if k.startswith("verified_trust:")]
+        assert len(records) == 3
+
+    async def test_keyed_discovery_with_approved_agent_still_audits(
+        self, client_factory, storage, registry, wired
+    ):
+        await _register(registry, TrustStatus.APPROVED)
+
+        async with client_factory(_agency_key_record()) as c:
             resp = await c.post(
                 "/discovery",
                 json={"query": "how much does CTV cost?", "agent_url": AGENT_URL},
