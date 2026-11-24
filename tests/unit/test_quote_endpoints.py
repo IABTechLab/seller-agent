@@ -38,6 +38,9 @@ from httpx import ASGITransport  # noqa: E402
 
 from ad_seller.interfaces.api.main import _get_optional_api_key_record, app  # noqa: E402
 
+# Exercises the anonymous PUBLIC-tier path, which is opt-in.
+pytestmark = pytest.mark.usefixtures("anonymous_buyer_writes")
+
 # =============================================================================
 # Helpers
 # =============================================================================

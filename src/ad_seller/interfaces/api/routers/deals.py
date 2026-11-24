@@ -273,6 +273,8 @@ async def book_deal(
 async def agentic_audience_match(request: AgenticAudienceMatchRequest):
     """Match a buyer-supplied agentic `AudienceRef` against this seller.
 
+    Public by design: a stateless score that stores nothing.
+
     Per proposal §5.7 + §6 row 11. Returns a match score and quality bucket.
     The score is mock-quality (deterministic from sha256 of `identifier`);
     the real embedding-similarity model is Epic 2 (E2-2).
@@ -443,9 +445,12 @@ async def get_deal_performance(deal_id: str):
 @router.post("/api/v1/deals/bulk", tags=["Bulk Operations"], response_model=BulkDealResponse)
 async def bulk_deal_operations(
     request: BulkDealRequest,
-    api_key_record=Depends(deps._get_optional_api_key_record),
+    _operator=Depends(deps._require_operator_api_key_record),
 ):
     """Process a batch of deal operations (create/update/cancel).
+
+    Operator-only: operations act on any quote or deal by id, with none of
+    the ownership, tier or approval checks ``POST /api/v1/deals`` applies.
 
     Enables the Deal Library buyer agent to efficiently manage multiple
     deals in a single request. Each operation is processed independently
@@ -480,8 +485,15 @@ async def push_deal_to_buyers(
 
 
 @router.get("/api/v1/deals/{deal_id}/buyer-status", tags=["Deal Booking"])
-async def get_deal_buyer_status(deal_id: str, buyer_url: str):
+async def get_deal_buyer_status(
+    deal_id: str,
+    buyer_url: str,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Query a buyer for their acceptance status of a deal.
+
+    Operator-only, like ``POST /api/v1/deals/push``: the seller calls the
+    caller-supplied ``buyer_url``.
 
     Polls the buyer's deal status endpoint to check if the deal
     has been approved, rejected, or is ready to serve.
@@ -506,8 +518,14 @@ async def distribute_deal_via_ssp(
 
 
 @router.get("/api/v1/deals/{deal_id}/ssp-troubleshoot", tags=["Deal Booking"])
-async def troubleshoot_deal_via_ssp(deal_id: str, ssp_name: str):
+async def troubleshoot_deal_via_ssp(
+    deal_id: str,
+    ssp_name: str,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
     """Troubleshoot a deal via SSP diagnostics.
+
+    Operator-only, like ``POST /api/v1/deals/distribute``.
 
     Calls the SSP's troubleshooting tool (e.g., PubMatic's
     deal_troubleshooting) to diagnose performance issues.
@@ -545,8 +563,11 @@ async def register_curator(
 
 
 @router.post("/api/v1/deals/curated", tags=["Curators"], status_code=201)
-async def create_curated_deal(request: CuratedDealRequest):
-    """Create a deal with curator overlay.
+async def create_curated_deal(
+    request: CuratedDealRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
+):
+    """Create a deal with curator overlay. Operator-only.
 
     The curator's fee is added on top of the publisher's base price.
     The curator appears as a node in the deal's schain. The buyer
@@ -564,9 +585,9 @@ async def create_curated_deal(request: CuratedDealRequest):
 async def migrate_deal(
     deal_id: str,
     request: DealMigrationRequest,
-    api_key_record=Depends(deps._get_optional_api_key_record),
+    _operator=Depends(deps._require_operator_api_key_record),
 ):
-    """Migrate (replace) an existing deal with a new one.
+    """Migrate (replace) an existing deal with a new one. Operator-only.
 
     Creates a replacement deal with parent_deal_id lineage pointing
     to the old deal, then deprecates the old deal. The buyer's Deal
@@ -581,8 +602,9 @@ async def migrate_deal(
 async def deprecate_deal(
     deal_id: str,
     request: DealDeprecationRequest,
+    _operator=Depends(deps._require_operator_api_key_record),
 ):
-    """Deprecate a deal with reason and optional replacement.
+    """Deprecate a deal with reason and optional replacement. Operator-only.
 
     Marks the deal as deprecated rather than cancelled — preserving
     the history that this deal was intentionally sunset. If a

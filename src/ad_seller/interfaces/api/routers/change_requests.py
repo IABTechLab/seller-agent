@@ -18,7 +18,7 @@ router = APIRouter()
 @router.post("/api/v1/change-requests", tags=["Change Requests"])
 async def create_change_request(
     request: CreateChangeRequestModel,
-    _auth: None = Depends(deps._get_optional_api_key_record),
+    _auth: None = Depends(deps._buyer_write_api_key_record),
 ):
     """Submit a change request for an existing order.
 

@@ -61,7 +61,8 @@ from ad_seller.interfaces.api.main import (  # noqa: E402
 from ad_seller.models.flow_state import ExecutionStatus  # noqa: E402
 from ad_seller.services import negotiation_service  # noqa: E402
 
-pytestmark = pytest.mark.asyncio
+# Also exercises the anonymous PUBLIC-tier path, which is opt-in.
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("anonymous_buyer_writes")]
 
 
 # =============================================================================

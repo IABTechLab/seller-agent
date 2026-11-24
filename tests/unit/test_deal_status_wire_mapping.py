@@ -245,8 +245,11 @@ class TestGetDealCreatedOutsideQuotePath:
         assert resp.json()["deal"]["status"] == "booked"
 
     async def test_bulk_created_deal_is_readable_as_booked(self, client, mock_storage):
+        from ad_seller.interfaces.api.deps import _require_operator_api_key_record
+
         quote = _available_quote()
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        app.dependency_overrides[_require_operator_api_key_record] = lambda: object()
 
         with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
             bulk = await client.post(

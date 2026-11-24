@@ -167,6 +167,7 @@ MANAGER_LLM_MODEL=llama3
 | `DEFAULT_CURRENCY` | `str` | `"USD"` | Default currency for pricing |
 | `MIN_DEAL_VALUE` | `float` | `1000.0` | Minimum deal value |
 | `DEFAULT_PRICE_FLOOR_CPM` | `float` | `10.0` | Global default price floor (CPM) |
+| `ALLOW_ANONYMOUS_BUYER_WRITES` | `bool` | `false` | Let callers without an API key use quotes, proposals, negotiation, sessions, orders and change requests (REST and the matching MCP tools). Off: those routes answer 401 `authentication_required`. A compatibility switch, not a pricing control: see [Authentication](../api/authentication.md#buyer-write-surface) |
 
 ## Yield Optimization
 

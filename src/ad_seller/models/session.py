@@ -67,6 +67,9 @@ class Session(BaseModel):
     # Buyer identity
     buyer_identity: BuyerIdentity = Field(default_factory=BuyerIdentity)
     buyer_context: Optional[BuyerContext] = None
+    # key_id of the API key that opened the session (None: opened without
+    # one, or before this field was recorded).
+    owner_key_id: Optional[str] = None
 
     # Conversation
     messages: list[SessionMessage] = Field(default_factory=list)

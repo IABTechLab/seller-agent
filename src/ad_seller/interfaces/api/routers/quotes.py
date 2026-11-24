@@ -27,7 +27,7 @@ router = APIRouter()
 @router.post("/api/v1/quotes", tags=["Quotes"])
 async def create_quote(
     request: QuoteRequest,
-    api_key_record=Depends(deps._get_optional_api_key_record),
+    api_key_record=Depends(deps._buyer_write_api_key_record),
 ) -> QuoteResponse:
     """Request a non-binding price quote from the seller.
 

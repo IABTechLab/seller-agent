@@ -34,6 +34,9 @@ from ad_seller.models.change_request import (  # noqa: E402
     validate_change_request,
 )
 
+# Exercises the anonymous PUBLIC-tier path, which is opt-in.
+pytestmark = pytest.mark.usefixtures("anonymous_buyer_writes")
+
 # =============================================================================
 # Fixtures
 # =============================================================================
