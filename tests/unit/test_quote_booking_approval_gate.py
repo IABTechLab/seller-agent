@@ -708,3 +708,98 @@ class TestFromTemplateGate:
 
         assert booked["status"] == "confirmed", booked
         assert _deals(storage) == [f"deal:{booked['deal_id']}"]
+
+
+def _audience_plan(plan_id="sha256:synthetic-plan-a", primary_id="3-7"):
+    return {
+        "schema_version": "1",
+        "audience_plan_id": plan_id,
+        "primary": {
+            "type": "standard",
+            "identifier": primary_id,
+            "taxonomy": "iab-audience",
+            "version": "1.1",
+            "source": "explicit",
+            "confidence": None,
+            "compliance_context": None,
+        },
+        "constraints": [
+            {
+                "type": "contextual",
+                "identifier": "IAB1-2",
+                "taxonomy": "iab-content",
+                "version": "3.1",
+                "source": "resolved",
+                "confidence": 0.92,
+                "compliance_context": None,
+            }
+        ],
+        "extensions": [],
+        "exclusions": [],
+        "rationale": "Synthetic plan",
+    }
+
+
+async def _book_with_plan(client, storage, settings, plan, key):
+    body = {"idempotency_key": key, "quote_id": QUOTE_ID}
+    if plan is not None:
+        body["audience_plan"] = plan
+    with (
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch("ad_seller.config.get_settings", return_value=settings),
+        patch("ad_seller.events.helpers.emit_event", new_callable=AsyncMock),
+    ):
+        async with client as c:
+            return await c.post("/api/v1/deals", json=body)
+
+
+class TestAudiencePlanApproval:
+    async def test_approval_records_the_audience_selection(self, client, storage):
+        settings = _settings(approval_required_above_value=250_000)
+
+        held = await _book_with_plan(client, storage, settings, _audience_plan(), "idem-a1")
+
+        assert held.status_code == 202, held.text
+        audience = storage._store[f"approval:{held.json()['approval_id']}"]["context"]["terms"][
+            "audience"
+        ]
+        assert audience["audience_plan_id"] == "sha256:synthetic-plan-a"
+        assert audience["refs"]["primary"] == "standard:iab-audience@1.1:3-7"
+        assert audience["refs"]["constraints"] == ["contextual:iab-content@3.1:IAB1-2"]
+        assert "3-7 (standard, iab-audience 1.1)" in audience["summary"]
+
+    async def test_unchanged_audience_plan_books_after_approval(self, client, storage):
+        settings = _settings(approval_required_above_value=250_000)
+        held = (
+            await _book_with_plan(client, storage, settings, _audience_plan(), "idem-a1")
+        ).json()
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+
+        resp = await _book_with_plan(_fresh(client), storage, settings, _audience_plan(), "idem-a2")
+
+        assert resp.status_code == 200, resp.text
+        snapshot = resp.json()["audience_plan_snapshot"]
+        assert snapshot["audience_plan_id"] == "sha256:synthetic-plan-a"
+        assert snapshot["primary"]["identifier"] == "3-7"
+
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            pytest.param(_audience_plan(primary_id="3-8"), id="same-plan-id-changed-ref"),
+            pytest.param(_audience_plan(plan_id="sha256:synthetic-plan-b"), id="other-plan-id"),
+            pytest.param(None, id="plan-dropped"),
+        ],
+    )
+    async def test_changed_audience_selection_needs_fresh_approval(self, client, storage, changed):
+        settings = _settings(approval_required_above_value=250_000)
+        held = (
+            await _book_with_plan(client, storage, settings, _audience_plan(), "idem-a1")
+        ).json()
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+
+        resp = await _book_with_plan(_fresh(client), storage, settings, changed, "idem-a2")
+
+        assert resp.status_code == 202, resp.text
+        assert resp.json()["approval_id"] != held["approval_id"]
+        assert _deals(storage) == []
+        assert storage._store[f"quote:{QUOTE_ID}"]["status"] == "available"

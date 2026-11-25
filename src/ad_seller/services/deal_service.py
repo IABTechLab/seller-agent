@@ -258,6 +258,49 @@ def _quote_booking_terms(quote: dict[str, Any]) -> tuple[float, int, float]:
     return final_cpm, impressions, final_cpm * impressions / 1000.0
 
 
+_AUDIENCE_ROLES = ("constraints", "extensions", "exclusions")
+
+
+def _audience_ref_key(ref: dict[str, Any]) -> str:
+    return (
+        f"{ref.get('type') or ''}:{ref.get('taxonomy') or ''}@{ref.get('version') or ''}:"
+        f"{ref.get('identifier') or ''}"
+    )
+
+
+def _audience_ref_label(ref: dict[str, Any]) -> str:
+    taxonomy = " ".join(str(p) for p in (ref.get("taxonomy"), ref.get("version")) if p)
+    detail = ", ".join(p for p in (ref.get("type"), taxonomy) if p)
+    return f"{ref.get('identifier') or '?'} ({detail})" if detail else ref.get("identifier") or "?"
+
+
+def _audience_booking_terms(plan: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """The audience selection a booking approval covers, or ``None`` without a plan.
+
+    Holds the plan id and every ref by role (type, taxonomy, version,
+    identifier), so a re-submit with the same plan id but a different
+    audience ref no longer matches the approved terms. Ref order within a
+    role does not matter; rationale, source and confidence are not part of
+    the selection. ``summary`` is the operator-readable form.
+    """
+    if not plan:
+        return None
+    primary = plan.get("primary") or None
+    refs: dict[str, Any] = {"primary": _audience_ref_key(primary) if primary else None}
+    labels = [f"primary {_audience_ref_label(primary)}"] if primary else []
+    for role in _AUDIENCE_ROLES:
+        role_refs = [r for r in plan.get(role) or [] if isinstance(r, dict)]
+        refs[role] = sorted(_audience_ref_key(r) for r in role_refs)
+        if role_refs:
+            labels.append(f"{role} " + ", ".join(sorted(map(_audience_ref_label, role_refs))))
+    plan_id = plan.get("audience_plan_id") or ""
+    return {
+        "audience_plan_id": plan_id,
+        "refs": refs,
+        "summary": f"Plan {plan_id or '(no id)'}: " + ("; ".join(labels) or "no audience refs"),
+    }
+
+
 def _booking_approval_required(gross_value: float, proposal_led: bool) -> bool:
     """Whether booking a quote must wait for a human approval.
 
@@ -365,7 +408,11 @@ async def _consume_approval(storage: Any, approval: Any, deal_id: str) -> None:
 
 
 async def _gate_quote_booking(
-    storage: Any, quote_id: str, quote: dict[str, Any], negotiation: Optional[dict[str, Any]]
+    storage: Any,
+    quote_id: str,
+    quote: dict[str, Any],
+    negotiation: Optional[dict[str, Any]],
+    audience_plan: Optional[dict[str, Any]] = None,
 ) -> Optional[dict[str, Any]]:
     """Hold a gated quote booking for approval.
 
@@ -375,6 +422,9 @@ async def _gate_quote_booking(
     after the decision. A rejected booking is a 409. An approval granted
     for different terms (the negotiated price moved after the decision)
     does not carry over: a fresh request is raised for the new terms.
+    The terms include the audience selection when the booking carries an
+    ``audience_plan`` (``_audience_booking_terms``), so changing the plan
+    after approval also needs a fresh approval.
 
     Every path that books a quote (``book_deal``, bulk create) shares the
     per-quote approval index, so an approval raised through one path is
@@ -389,11 +439,15 @@ async def _gate_quote_booking(
     if not _booking_approval_required(gross_value, proposal_led):
         return None
 
+    terms: dict[str, Any] = {"final_cpm": final_cpm, "impressions": impressions}
+    audience = _audience_booking_terms(audience_plan)
+    if audience is not None:
+        terms["audience"] = audience
     held_id, _approved = await _apply_booking_gate(
         storage,
         index_key=_booking_approval_key(quote_id),
         flow_id=f"booking-{quote_id}",
-        terms={"final_cpm": final_cpm, "impressions": impressions},
+        terms=terms,
         context={
             "quote_id": quote_id,
             "product_id": (quote.get("product") or {}).get("product_id"),
@@ -586,7 +640,9 @@ async def _book_quote(request: Any) -> dict[str, Any]:
 
     # Approval gate: the same human-in-the-loop rules POST /proposals
     # enforces, applied at the price actually being booked.
-    pending = await _gate_quote_booking(storage, request.quote_id, quote, negotiation)
+    pending = await _gate_quote_booking(
+        storage, request.quote_id, quote, negotiation, request.audience_plan
+    )
     if pending is not None:
         return pending
 
