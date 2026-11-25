@@ -803,3 +803,92 @@ class TestAudiencePlanApproval:
         assert resp.json()["approval_id"] != held["approval_id"]
         assert _deals(storage) == []
         assert storage._store[f"quote:{QUOTE_ID}"]["status"] == "available"
+
+
+def _frozen_utc(moment):
+    from ad_seller.services import deal_service
+
+    class _Frozen(datetime):
+        @classmethod
+        def utcnow(cls):
+            return moment
+
+    return patch.object(deal_service, "datetime", _Frozen)
+
+
+def _template_client_for(key_id):
+    from ad_seller.models.api_key import ApiKeyRole
+
+    app.dependency_overrides[_get_optional_api_key_record] = lambda: SimpleNamespace(
+        key_id=key_id,
+        role=ApiKeyRole.BUYER,
+        identity=BuyerIdentity(agency_id="agency-1", agency_name="Agency One"),
+    )
+    return lambda: httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+class TestTemplateFlightDates:
+    async def test_omitted_dates_book_the_approved_dates_across_a_utc_day_boundary(
+        self, template_client, storage
+    ):
+        settings = _settings(approval_required_above_value=1000)
+        with _frozen_utc(datetime(2027, 3, 10, 23, 50)):
+            held = await _template_rest(template_client, storage, settings)
+        assert held.status_code == 202, held.text
+        held = held.json()
+        assert (held["flight_start"], held["flight_end"]) == ("2027-03-10", "2027-04-09")
+        terms = storage._store[f"approval:{held['approval_id']}"]["context"]["terms"]
+        assert (terms["flight_start"], terms["flight_end"]) == ("2027-03-10", "2027-04-09")
+        await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+
+        with _frozen_utc(datetime(2027, 3, 11, 0, 10)):
+            booked = await _template_rest(_template_client_for("k-reissued"), storage, settings)
+
+        assert booked.status_code == 201, booked.text
+        deal = booked.json()
+        assert (deal["flight_start"], deal["flight_end"]) == ("2027-03-10", "2027-04-09")
+        approval = storage._store[f"approval:{held['approval_id']}"]
+        assert approval["status"] == "consumed"
+        assert approval["deal_id"] == deal["deal_id"]
+        assert approval["context"]["terms"]["flight_start"] == "2027-03-10"
+
+    async def test_pending_resubmit_on_the_next_day_reuses_the_request(
+        self, template_client, storage
+    ):
+        settings = _settings(approval_required_above_value=1000)
+        with _frozen_utc(datetime(2027, 3, 10, 23, 50)):
+            first = (await _template_rest(template_client, storage, settings)).json()
+        with _frozen_utc(datetime(2027, 3, 11, 0, 10)):
+            second = (await _template_rest(template_client, storage, settings)).json()
+
+        assert second["approval_id"] == first["approval_id"]
+        assert second["flight_start"] == "2027-03-10"
+
+    @pytest.mark.parametrize(
+        "approved_body, resubmitted_body",
+        [
+            pytest.param(
+                {**TEMPLATE_BODY, "flight_start": "2027-03-10", "flight_end": "2027-04-09"},
+                {**TEMPLATE_BODY, "flight_start": "2027-03-11", "flight_end": "2027-04-09"},
+                id="explicit-start-changed",
+            ),
+            pytest.param(
+                TEMPLATE_BODY,
+                {**TEMPLATE_BODY, "flight_end": "2027-04-30"},
+                id="omitted-then-explicit-end",
+            ),
+        ],
+    )
+    async def test_changed_explicit_date_needs_fresh_approval(
+        self, template_client, storage, approved_body, resubmitted_body
+    ):
+        settings = _settings(approval_required_above_value=1000)
+        with _frozen_utc(datetime(2027, 3, 10, 12, 0)):
+            held = (await _template_rest(template_client, storage, settings, approved_body)).json()
+            await ApprovalGate(storage).submit_decision(held["approval_id"], "approve", "operator")
+            resp = await _template_rest(template_client, storage, settings, resubmitted_body)
+
+        assert resp.status_code == 202, resp.text
+        assert resp.json()["approval_id"] != held["approval_id"]
+        assert _deals(storage) == []
+        assert storage._store[f"approval:{held['approval_id']}"]["status"] == "approved"

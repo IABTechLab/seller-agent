@@ -233,7 +233,14 @@ Every path that books a deal applies the same gate:
   tool: a held request answers 202 (the MCP tool returns the same body).
   The approval is tied to the priced terms (buyer, product, deal type, CPM,
   impressions and flight dates as sent); re-submitting the same request after
-  approval books one deal, and the approval is then consumed.
+  approval books one deal, and the approval is then consumed. When the
+  request omits `flight_start` or `flight_end`, the dates are resolved (today
+  in UTC, for 30 days) when the approval is raised, stored in its `terms` and
+  returned in the 202 body. A re-submit that still omits them books those
+  approved dates, even on a later UTC day. Explicit dates are part of the
+  request as sent, so a re-submit that adds or changes one raises a new
+  request (202), even when it repeats the approved date. `buyer` is the pricing key, so another key with
+  the same identity (or another public-tier key) re-submits the same request.
 
 Concurrent bookings of one quote (for example several buyer re-submits after
 an approval) mint exactly one deal; the others get a 409

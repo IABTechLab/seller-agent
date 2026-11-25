@@ -399,6 +399,24 @@ async def _apply_booking_gate(
     return approval.approval_id, None
 
 
+async def _live_approval_terms(storage: Any, index_key: str) -> Optional[dict[str, Any]]:
+    """Terms of the pending or approved request under ``index_key``, if any."""
+    from ..events.approval import ApprovalGate
+    from ..events.models import ApprovalStatus
+
+    approval_id = await storage.get(index_key)
+    if not isinstance(approval_id, str):
+        return None
+    approval = await ApprovalGate(storage).get_request(approval_id)
+    if approval is None or approval.status not in (
+        ApprovalStatus.PENDING,
+        ApprovalStatus.APPROVED,
+    ):
+        return None
+    terms = approval.context.get("terms")
+    return terms if isinstance(terms, dict) else None
+
+
 async def _consume_approval(storage: Any, approval: Any, deal_id: str) -> None:
     from ..events.models import ApprovalStatus
 
@@ -954,14 +972,21 @@ async def create_deal_from_template(
     now = datetime.utcnow()
     deal_id = f"DEMO-{uuid.uuid4().hex[:12].upper()}"
 
+    # Default flight when the request omits dates: starts today (UTC) for 30 days.
+    flight_start = request.flight_start or now.strftime("%Y-%m-%d")
+    flight_end = request.flight_end or (now + timedelta(days=30)).strftime("%Y-%m-%d")
+
     # Approval gate: the same rules quote booking applies, at the priced
     # terms. With no quote to hang the approval on, it is indexed by the
-    # terms themselves (buyer, product, deal type, CPM, volume, flight), so
-    # the buyer re-submitting the same request after approval books it.
+    # request itself (buyer, product, deal type, CPM, volume, and the flight
+    # dates as sent), so the buyer re-submitting the same request after
+    # approval books it. Omitted dates are resolved when the approval is
+    # raised and stored in its terms; a re-submit that still omits them
+    # books those approved dates, not the dates of the day it arrives.
     approved = None
     gross_value = final_cpm * (request.impressions or 0) / 1000.0
     if _booking_approval_required(gross_value, proposal_led=False):
-        terms = {
+        request_terms = {
             "buyer": buyer_context.get_pricing_key(),
             "product_id": request.product_id,
             "deal_type": deal_type_str,
@@ -971,12 +996,19 @@ async def create_deal_from_template(
             "flight_end": request.flight_end,
         }
         fingerprint = hashlib.sha256(
-            json.dumps(terms, sort_keys=True, default=str).encode("utf-8")
+            json.dumps(request_terms, sort_keys=True, default=str).encode("utf-8")
         ).hexdigest()[:32]
+        index_key = f"approval_index:template_booking:{fingerprint}"
         async with _booking_lock(f"template:{fingerprint}"):
+            if not (request.flight_start and request.flight_end):
+                live = await _live_approval_terms(storage, index_key)
+                if live is not None:
+                    flight_start = request.flight_start or live.get("flight_start") or flight_start
+                    flight_end = request.flight_end or live.get("flight_end") or flight_end
+            terms = {**request_terms, "flight_start": flight_start, "flight_end": flight_end}
             held_id, approved = await _apply_booking_gate(
                 storage,
-                index_key=f"approval_index:template_booking:{fingerprint}",
+                index_key=index_key,
                 flow_id=f"template-booking-{fingerprint}",
                 terms=terms,
                 context={
@@ -1000,6 +1032,8 @@ async def create_deal_from_template(
                 "approval_id": held_id,
                 "product_id": request.product_id,
                 "deal_type": deal_type_str,
+                "flight_start": flight_start,
+                "flight_end": flight_end,
                 "message": (
                     "This deal requires seller approval. Re-submit the same request "
                     "once it is approved."
@@ -1007,9 +1041,6 @@ async def create_deal_from_template(
             }
 
     # Auto-book: generate deal directly (skip separate quote step)
-    flight_start = request.flight_start or now.strftime("%Y-%m-%d")
-    flight_end = request.flight_end or (now + timedelta(days=30)).strftime("%Y-%m-%d")
-
     deal_data = {
         "deal_id": deal_id,
         "deal_type": deal_type_str,
