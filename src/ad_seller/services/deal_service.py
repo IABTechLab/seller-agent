@@ -252,7 +252,10 @@ async def book_deal(request: Any) -> dict[str, Any]:
     """Book a deal from a previously issued quote (``DealBookingRequestModel``).
 
     Validates the quote, generates a Deal ID, and returns confirmed terms.
-    This is the commit point — the quote becomes bound. When the request
+    This is the commit point — the quote becomes bound and the deal is
+    stored as ``confirmed`` (``booked`` on the wire, the same status a
+    template or bulk booking gets), so the buyer can target the Deal ID
+    straight away. When the request
     carries an ``audience_plan``, the plan is validated against seller
     capabilities, frozen onto the deal record as ``audience_plan_snapshot``,
     and the forensic hash is logged via ``ad_seller.audience.booking``.
@@ -372,7 +375,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
     deal = DealBookingResponse(
         deal_id=deal_id,
         deal_type=quote["deal_type"],
-        status=DealBookingStatus.PROPOSED,
+        status=DealBookingStatus.CONFIRMED,
         quote_id=request.quote_id,
         product=QuoteProductInfo(**quote["product"]),
         pricing=QuotePricing(**quote["pricing"]),
@@ -430,7 +433,13 @@ async def book_deal(request: Any) -> dict[str, Any]:
 
 
 async def get_deal(deal_id: str) -> dict[str, Any]:
-    """Get the current status of a deal (lazy expiry for 'proposed')."""
+    """Get the current status of a deal (lazy expiry for 'proposed').
+
+    Only ``proposed`` deals expire here. Quote bookings stored before they
+    were recorded as ``confirmed`` are still ``proposed`` and keep that
+    behaviour; a booked (``confirmed``) deal does not lapse at
+    ``expires_at``.
+    """
     from ..storage.factory import get_storage
 
     storage = await get_storage()
