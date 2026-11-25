@@ -75,11 +75,56 @@ async def test_quote_booked_pg_deal_is_guaranteed():
     assert deal["openrtb_params"]["ext"]["guaranteed"] is True
 
 
+@pytest.mark.parametrize("code", ["PG", "PD"])
+async def test_quote_booked_deal_carries_quoted_impressions_in_store_and_export(code):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    from ad_seller.services import deal_service
+
+    quote = {
+        "quote_id": f"qt-{code}",
+        "status": "available",
+        "deal_type": code,
+        "product": {"product_id": "ctv-1", "name": "CTV", "inventory_type": "ctv"},
+        "pricing": {"base_cpm": 30.0, "final_cpm": 25.0, "currency": "USD"},
+        "terms": {"impressions": 500_000, "flight_start": "2026-04-01", "flight_end": "2026-04-30"},
+        "buyer_tier": "public",
+    }
+    store: dict = {}
+    storage = AsyncMock()
+    storage.get_quote = AsyncMock(return_value=quote)
+    storage.set_deal = AsyncMock(side_effect=lambda did, d: store.__setitem__(did, d))
+    storage.list_deals = AsyncMock(side_effect=lambda: list(store.values()))
+    with (
+        patch("ad_seller.storage.factory.get_storage", return_value=storage),
+        patch.object(deal_service, "_resolve_accepted_negotiation", AsyncMock(return_value=None)),
+        patch.object(deal_service, "_emit_deal_created", AsyncMock()),
+    ):
+        deal = await deal_service.book_deal(
+            SimpleNamespace(quote_id=f"qt-{code}", audience_plan=None)
+        )
+        exported = await deal_service.export_deals(format="generic")
+
+    stored = store[deal["deal_id"]]["openrtb_params"]
+    exported_params = exported["deals"][0]["openrtb_params"]
+    if code == "PG":
+        assert stored["ext"] == {"guaranteed": True, "impressions": 500_000}
+        assert exported_params["ext"] == {"guaranteed": True, "impressions": 500_000}
+    else:
+        assert "ext" not in stored and "ext" not in exported_params
+
+
 @pytest.mark.parametrize("code", ["PG", "PD", "PA"])
 def test_deals_api_path_uses_the_builder(code):
     deal = DealsAPIService().build_deal_object("D-1", code, 20.0, buyer_seat_ids=["seat-9"])
     assert deal.openrtb_params["at"] == EXPECTED_AT[code]
     assert deal.openrtb_params["wseat"] == ["seat-9"]
+
+
+def test_deals_api_pg_push_carries_impressions():
+    deal = DealsAPIService().build_deal_object("D-1", "PG", 20.0, impressions=500_000)
+    assert deal.openrtb_params["ext"] == {"guaranteed": True, "impressions": 500_000}
 
 
 @pytest.mark.parametrize(

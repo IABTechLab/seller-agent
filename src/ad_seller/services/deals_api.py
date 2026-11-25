@@ -246,7 +246,9 @@ class DealsAPIService:
         floor_price = None if is_fixed else price
         fixed_price = price if is_fixed else None
 
-        openrtb = build_openrtb_deal_params(deal_id, code, price, seat_ids=buyer_seat_ids)
+        openrtb = build_openrtb_deal_params(
+            deal_id, code, price, seat_ids=buyer_seat_ids, guaranteed_impressions=impressions
+        )
 
         now = datetime.now(timezone.utc).isoformat()
 

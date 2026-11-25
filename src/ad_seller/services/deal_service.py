@@ -390,6 +390,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
             quote["deal_type"],
             quote["pricing"]["final_cpm"],
             currency=quote["pricing"].get("currency") or "USD",
+            guaranteed_impressions=(quote.get("terms") or {}).get("impressions"),
         ),
         created_at=now.isoformat() + "Z",
     )
