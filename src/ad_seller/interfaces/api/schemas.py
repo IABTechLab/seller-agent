@@ -553,6 +553,10 @@ class BulkDealOperationResult(BaseModel):
     success: bool
     deal_id: Optional[str] = None
     error: Optional[str] = None
+    # Set to "pending_approval" (with approval_id) when the approval gate
+    # holds a create; nothing is booked and the op can be re-submitted.
+    status: Optional[str] = None
+    approval_id: Optional[str] = None
 
 
 class BulkDealResponse(BaseModel):

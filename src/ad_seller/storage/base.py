@@ -22,6 +22,15 @@ def negotiation_by_quote_key(quote_id: str) -> str:
     return f"negotiation_by_quote:{quote_id}"
 
 
+def proposal_approval_key(proposal_id: str) -> str:
+    """Key of the pointer from a proposal to its ``proposal_decision`` approval.
+
+    Written when ``POST /proposals`` holds the proposal for a human, so
+    booking a quote negotiated from that proposal can honour the decision.
+    """
+    return f"approval_index:proposal:{proposal_id}"
+
+
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
 

@@ -276,6 +276,9 @@ async def submit_proposal(
             flow_state_snapshot=result.get("_flow_state_snapshot", {}),
             proposal_id=proposal_id,
         )
+        from ..storage.base import proposal_approval_key
+
+        await storage.set(proposal_approval_key(proposal_id), approval_req.approval_id)
         return {
             "proposal_id": proposal_id,
             "recommendation": result["recommendation"],

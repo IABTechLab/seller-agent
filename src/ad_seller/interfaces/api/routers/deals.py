@@ -18,6 +18,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from iab_agentic_primitives.primitives import DealStatus
 from iab_agentic_primitives.protocol import DealBookingRequest, DealBookingResponse
 
@@ -116,6 +117,13 @@ async def book_deal(
     (403 ``buyer_mismatch`` / ``buyer_tier_mismatch`` otherwise). A quote
     priced at the PUBLIC tier (no identity asserted at quote time) has
     nothing buyer-specific to steal, so any authenticated buyer may book it.
+
+    **Approval gate:** a booking whose gross value (final CPM x
+    impressions / 1000) reaches ``APPROVAL_REQUIRED_ABOVE_VALUE``, or that
+    the opt-in gate covers, is held for a human decision: HTTP 202 with
+    ``status: pending_approval`` and an ``approval_id``, no deal minted.
+    Re-submit the booking after approval; a rejected booking is a 409
+    ``booking_rejected``.
 
     **Idempotency (FD-12):** the request carries a required
     ``idempotency_key``. A replay with a key already used for an identical
@@ -256,6 +264,11 @@ async def book_deal(
         return cm.internal_deal_to_response(existing)
 
     result = await deal_service.book_deal(internal_request)
+    if result.get("status") == "pending_approval":
+        # Held by the approval gate: no deal exists yet and nothing is
+        # recorded under the idempotency key, so the buyer re-submits the
+        # same booking once the operator has decided.
+        return JSONResponse(status_code=202, content=result)
 
     try:
         await storage.set(
@@ -371,6 +384,10 @@ async def create_deal_from_template(
     against the floor price, and auto-books the deal if acceptable.
 
     Returns 201 with the created deal on success.
+    Returns 202 ``pending_approval`` with an ``approval_id`` when the
+    approval gate holds the booking (same rules as ``POST /api/v1/deals``);
+    nothing is minted, and re-submitting the same request after approval
+    books it. A rejected booking is a 409 ``booking_rejected``.
     Returns 422 when max_cpm is below the seller's floor price, including
     the seller's minimum price in the response.
     Returns 401 for unauthenticated requests.
@@ -411,6 +428,8 @@ async def create_deal_from_template(
     )
 
     deal_data = await deal_service.create_deal_from_template(request, context, catalog)
+    if deal_data.get("status") == "pending_approval":
+        return JSONResponse(status_code=202, content=deal_data)
 
     return DealFromTemplateResponse(
         deal_id=deal_data["deal_id"],
