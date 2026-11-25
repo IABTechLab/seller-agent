@@ -115,7 +115,7 @@ class TestBookingEmitsDealCreated:
             events[0],
             source="quote",
             deal_type=quote["deal_type"],
-            status="proposed",
+            status="confirmed",
             product_id="ctv-premium-sports",
             quote_id=quote["quote_id"],
         )

@@ -147,6 +147,27 @@ Registry reads are public; mutations require an operator credential.
 | GET | `/api/v1/deals` | List stored deals (operator; optional wire-status filter) |
 | GET | `/api/v1/deals/{deal_id}` | Get the current status of a deal |
 
+### Deal status
+
+`deal.status` uses the shared `DealStatus` vocabulary from
+`iab-agentic-primitives`. When a booking clears, `POST /api/v1/deals` returns
+`status: "booked"`. The Deal ID is then committed: the buyer can add it to
+its DSP and target it, using `openrtb_params` and `activation_instructions`.
+Quote bookings, template bookings and bulk creates all return `booked`.
+`GET /api/v1/deals/{deal_id}` reports the same value, and the TTD, DV360 and
+Xandr exports list the deal as active.
+
+| Wire `status` | Meaning |
+|---------------|---------|
+| `booked` | Booking committed; the Deal ID is live and ready to target |
+| `proposed` | Legacy: quote bookings stored before they were recorded as booked. Lapses to `expired` once `expires_at` passes |
+| `expired` | A `proposed` deal whose `expires_at` passed before it was booked |
+| `cancelled` | Cancelled or deprecated by the seller |
+
+Inside the seller, a booked deal is stored as `confirmed`.
+`internal_deal_status_to_wire` maps it to `booked`. A booked deal does not
+lapse at `expires_at`.
+
 ## Orders
 
 | Method | Path | Summary |

@@ -272,7 +272,7 @@ class TestDealService:
             deal = await deal_service.book_deal(request)
 
         assert deal["deal_id"].startswith("DEMO-")
-        assert deal["status"] == "proposed"
+        assert deal["status"] == "confirmed"
         assert deal["quote_id"] == quote["quote_id"]
         assert mock_storage._store[f"quote:{quote['quote_id']}"]["status"] == "booked"
         assert mock_storage._store[f"deal:{deal['deal_id']}"]["deal_id"] == deal["deal_id"]

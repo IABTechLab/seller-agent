@@ -157,7 +157,7 @@ class TestBookDeal:
         # Shared DealBookingResponse envelope wraps the Deal primitive.
         data = resp.json()["deal"]
         assert data["deal_id"].startswith("DEMO-")
-        assert data["status"] == "proposed"
+        assert data["status"] == "booked"
         assert data["quote_id"] == quote["quote_id"]
         assert data["pricing"]["final_cpm"]["amount_micros"] == 28_260_000
         assert data["pricing"]["base_cpm"]["amount_micros"] == 35_000_000
@@ -199,7 +199,7 @@ class TestBookDeal:
         deal_id = resp.json()["deal"]["deal_id"]
         stored_deal = mock_storage._store[f"deal:{deal_id}"]
         assert stored_deal["deal_id"] == deal_id
-        assert stored_deal["status"] == "proposed"
+        assert stored_deal["status"] == "confirmed"
 
     async def test_pa_deal_sets_auction_type_3(self, client, mock_storage):
         quote = _make_available_quote(deal_type="PA")
@@ -581,6 +581,83 @@ class TestGetDeal:
 
         assert resp.status_code == 200
         assert resp.json()["deal"]["status"] == "active"
+
+
+# =============================================================================
+# Booked status: a quote booking is live as soon as it clears
+# =============================================================================
+
+
+class TestQuoteBookingIsBooked:
+    """A cleared quote booking is ``booked`` on the wire (``confirmed`` in
+    storage), the same as a template or bulk booking, instead of being left
+    at ``proposed`` with nothing ever moving it on."""
+
+    async def _book(self, client, mock_storage):
+        quote = _make_available_quote()
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-booked", "quote_id": quote["quote_id"]},
+            )
+        assert resp.status_code == 200
+        return resp.json()["deal"]
+
+    async def test_read_back_reports_booked(self, client, mock_storage):
+        deal = await self._book(client, mock_storage)
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.get(f"/api/v1/deals/{deal['deal_id']}")
+
+        assert resp.status_code == 200
+        assert resp.json()["deal"]["status"] == "booked"
+
+    async def test_booked_deal_does_not_lapse_at_expires_at(self, client, mock_storage):
+        deal = await self._book(client, mock_storage)
+        stored = mock_storage._store[f"deal:{deal['deal_id']}"]
+        stored["expires_at"] = (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z"
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.get(f"/api/v1/deals/{deal['deal_id']}")
+
+        assert resp.json()["deal"]["status"] == "booked"
+        assert mock_storage._store[f"deal:{deal['deal_id']}"]["status"] == "confirmed"
+
+    async def test_booked_deal_exports_as_active_to_dsps(self, client, mock_storage):
+        from ad_seller.services import deal_service
+
+        deal = await self._book(client, mock_storage)
+        mock_storage.list_deals = AsyncMock(
+            return_value=[mock_storage._store[f"deal:{deal['deal_id']}"]]
+        )
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            ttd = await deal_service.export_deals("ttd")
+            dv360 = await deal_service.export_deals("dv360")
+            xandr = await deal_service.export_deals("xandr")
+
+        assert ttd["deals"][0]["Status"] == "Active"
+        assert dv360["deals"][0]["status"] == "ACCEPTED"
+        assert xandr["deals"][0]["active"] is True
+
+    async def test_booked_filter_lists_quote_bookings(self, client, mock_storage):
+        from ad_seller.interfaces.api import deps
+
+        deal = await self._book(client, mock_storage)
+        mock_storage.list_deals = AsyncMock(
+            return_value=[mock_storage._store[f"deal:{deal['deal_id']}"]]
+        )
+        app.dependency_overrides[deps._require_operator_api_key_record] = lambda: (
+            _advertiser_key_record()
+        )
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.get("/api/v1/deals", params={"status": "booked"})
+
+        assert resp.status_code == 200, resp.text
+        assert [d["deal"]["deal_id"] for d in resp.json()["deals"]] == [deal["deal_id"]]
 
 
 # =============================================================================
