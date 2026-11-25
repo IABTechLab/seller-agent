@@ -368,6 +368,7 @@ async def book_deal(request: Any) -> dict[str, Any]:
     deal_expires = now + timedelta(days=30)
 
     from ..models.quotes import QuotePricing, QuoteProductInfo, QuoteTerms
+    from .deals_api import build_openrtb_deal_params
 
     deal = DealBookingResponse(
         deal_id=deal_id,
@@ -384,13 +385,13 @@ async def book_deal(request: Any) -> dict[str, Any]:
             "dv360": f"In DV360, add deal {deal_id} under Inventory > My Inventory > Deals",
             "xandr": f"In Xandr, navigate to Deals and enter Deal ID: {deal_id}",
         },
-        openrtb_params={
-            "id": deal_id,
-            "bidfloor": quote["pricing"]["final_cpm"],
-            "bidfloorcur": "USD",
-            "at": 3 if quote["deal_type"] == "PA" else 1,
-            "wseat": [],
-        },
+        openrtb_params=build_openrtb_deal_params(
+            deal_id,
+            quote["deal_type"],
+            quote["pricing"]["final_cpm"],
+            currency=quote["pricing"].get("currency") or "USD",
+            guaranteed_impressions=(quote.get("terms") or {}).get("impressions"),
+        ),
         created_at=now.isoformat() + "Z",
     )
 
@@ -1006,10 +1007,23 @@ async def export_deals(format: str = "generic", status: Optional[str] = None) ->
         }
     else:
         # Generic format
+        from .deals_api import with_derived_auction_type
+
+        deals = [
+            {
+                **d,
+                "openrtb_params": with_derived_auction_type(
+                    d["openrtb_params"], d.get("deal_type")
+                ),
+            }
+            if d.get("openrtb_params")
+            else d
+            for d in all_deals
+        ]
         return {
             "format": "generic",
-            "deals": all_deals,
-            "count": len(all_deals),
+            "deals": deals,
+            "count": len(deals),
         }
 
 
@@ -1033,6 +1047,14 @@ async def push_deal_to_buyers(request: Any) -> dict[str, Any]:
 
     # Build IAB Deal object
     deal_type = request.deal_type or (stored_deal or {}).get("deal_type", "PD")
+    if _normalize_deal_type_code(str(deal_type)) is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_deal_type",
+                "message": f"Deal type must be one of: PG, PD, PA. Got: {deal_type}",
+            },
+        )
     price = (
         request.price
         or (stored_deal or {}).get("actual_price_cpm")

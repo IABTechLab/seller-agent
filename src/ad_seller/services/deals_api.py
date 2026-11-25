@@ -25,7 +25,96 @@ from typing import Any, Optional
 import httpx
 from pydantic import BaseModel
 
+from .deal_service import _normalize_deal_type_code
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# OpenRTB deal parameters
+# =============================================================================
+
+_AUCTION_TYPE_BY_CODE = {"PG": 3, "PD": 3, "PA": 1}
+
+_IAB_DEAL_TYPE_BY_CODE = {
+    "PG": "programmaticguaranteed",
+    "PD": "preferreddeal",
+    "PA": "privateauction",
+}
+
+
+def deal_type_code(deal_type: Any) -> Optional[str]:
+    """Canonical PG/PD/PA code for any accepted spelling or enum, ``None`` if unknown."""
+    raw = getattr(deal_type, "value", deal_type)
+    if raw is None:
+        return None
+    return _normalize_deal_type_code(str(raw))
+
+
+def _require_deal_type_code(deal_type: Any) -> str:
+    code = deal_type_code(deal_type)
+    if code is None:
+        raise ValueError(f"Unknown deal type {deal_type!r}; expected PG, PD or PA")
+    return code
+
+
+def auction_type_for(deal_type: Any) -> Optional[int]:
+    """OpenRTB ``at`` for a deal type: 3 for PG/PD, 1 for PA, ``None`` if unknown."""
+    code = deal_type_code(deal_type)
+    return _AUCTION_TYPE_BY_CODE[code] if code else None
+
+
+def with_derived_auction_type(
+    params: Optional[dict[str, Any]], deal_type: Any
+) -> Optional[dict[str, Any]]:
+    """Return stored OpenRTB params with ``at`` derived from the deal type.
+
+    Deals booked before the auction-type fix stored the reversed ``at``.
+    Reads report the value the deal type implies without rewriting storage;
+    params for an unknown deal type are returned unchanged.
+    """
+    if not params:
+        return params
+    at = auction_type_for(deal_type)
+    if at is None or params.get("at") == at:
+        return params
+    return {**params, "at": at}
+
+
+def build_openrtb_deal_params(
+    deal_id: str,
+    deal_type: Any,
+    price: float,
+    *,
+    currency: str = "USD",
+    seat_ids: Optional[list[str]] = None,
+    advertiser_domains: Optional[list[str]] = None,
+    guaranteed_impressions: Optional[int] = None,
+) -> dict[str, Any]:
+    """OpenRTB 2.x ``imp.pmp.deals[]`` parameters for a seller deal.
+
+    Single source for every deal path (quote booking, proposal deal
+    generation, Deals API sync). ``at`` follows OpenRTB: PG and PD are
+    fixed-price deals (``at=3``, ``bidfloor`` is the deal price); PA is an
+    auction (``at=1`` first price, ``bidfloor`` is the floor). ``wseat`` /
+    ``wadomain`` are allow-lists; empty means unrestricted. PG always carries
+    ``ext.guaranteed``, plus ``ext.impressions`` when known. Raises
+    ``ValueError`` for a deal type that is not PG, PD or PA.
+    """
+    code = _require_deal_type_code(deal_type)
+    params: dict[str, Any] = {
+        "id": deal_id,
+        "bidfloor": price,
+        "bidfloorcur": currency,
+        "at": _AUCTION_TYPE_BY_CODE[code],
+        "wseat": list(seat_ids or []),
+        "wadomain": list(advertiser_domains or []),
+    }
+    if code == "PG":
+        params["ext"] = {"guaranteed": True}
+        if guaranteed_impressions:
+            params["ext"]["impressions"] = guaranteed_impressions
+    return params
 
 
 # =============================================================================
@@ -147,32 +236,19 @@ class DealsAPIService:
         """Build an IAB Deal object from seller deal data.
 
         Maps our internal DealOutput format to IAB Deals API v1.0 spec.
+        Raises ``ValueError`` for a deal type that is not PG, PD or PA.
         """
-        # Normalize deal type
-        deal_type_map = {
-            "programmatic_guaranteed": "programmaticguaranteed",
-            "preferred_deal": "preferreddeal",
-            "private_auction": "privateauction",
-            "PG": "programmaticguaranteed",
-            "PD": "preferreddeal",
-            "PA": "privateauction",
-        }
-        normalized_type = deal_type_map.get(deal_type, deal_type)
+        code = _require_deal_type_code(deal_type)
+        normalized_type = _IAB_DEAL_TYPE_BY_CODE[code]
 
         # Pricing based on deal type
-        is_fixed = normalized_type in ("programmaticguaranteed", "preferreddeal")
+        is_fixed = code in ("PG", "PD")
         floor_price = None if is_fixed else price
         fixed_price = price if is_fixed else None
 
-        # OpenRTB params
-        openrtb = {
-            "id": deal_id,
-            "bidfloor": price,
-            "bidfloorcur": "USD",
-            "at": 3 if is_fixed else 1,  # 3=fixed, 1=first-price auction
-        }
-        if buyer_seat_ids:
-            openrtb["wseat"] = buyer_seat_ids
+        openrtb = build_openrtb_deal_params(
+            deal_id, code, price, seat_ids=buyer_seat_ids, guaranteed_impressions=impressions
+        )
 
         now = datetime.now(timezone.utc).isoformat()
 

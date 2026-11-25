@@ -53,6 +53,8 @@ from iab_agentic_primitives.protocol import (
 )
 from iab_agentic_primitives.protocol.errors import ErrorCode, ErrorDetail
 
+from ...services.deals_api import with_derived_auction_type
+
 # ---------------------------------------------------------------------------
 # Scalar helpers
 # ---------------------------------------------------------------------------
@@ -384,7 +386,9 @@ def internal_deal_to_shared_deal(data: dict[str, Any]) -> Deal:
         seller_id=data.get("seller_id"),
         expires_at=_parse_dt(data.get("expires_at")),
         activation_instructions=data.get("activation_instructions", {}) or {},
-        openrtb_params=_openrtb_to_shared(data.get("openrtb_params")),
+        openrtb_params=_openrtb_to_shared(
+            with_derived_auction_type(data.get("openrtb_params"), data["deal_type"])
+        ),
         created_at=_parse_dt(data.get("created_at")) or datetime.now(),
     )
 

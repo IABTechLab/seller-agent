@@ -163,22 +163,15 @@ class DealGenerationFlow(Flow[DealGenerationState]):
 
         deal = self.state.deal_output
 
-        # OpenRTB 2.5 compatible deal parameters
-        self.state.openrtb_deal_params = {
-            "id": deal.deal_id,
-            "bidfloor": deal.floor_price or deal.price,
-            "bidfloorcur": deal.currency,
-            "at": 1 if deal.deal_type == DealType.PRIVATE_AUCTION else 3,  # 1=first-price, 3=fixed
-            "wseat": [],  # Allowed buyer seats (empty = all)
-            "wadomain": [],  # Allowed advertiser domains
-        }
+        from ..services.deals_api import build_openrtb_deal_params
 
-        # Add PG-specific fields
-        if deal.deal_type == DealType.PROGRAMMATIC_GUARANTEED:
-            self.state.openrtb_deal_params["ext"] = {
-                "guaranteed": True,
-                "impressions": deal.guaranteed_impressions,
-            }
+        self.state.openrtb_deal_params = build_openrtb_deal_params(
+            deal.deal_id,
+            deal.deal_type,
+            deal.floor_price or deal.price,
+            currency=deal.currency,
+            guaranteed_impressions=deal.guaranteed_impressions,
+        )
 
     @listen(generate_openrtb_params)
     async def register_deal(self) -> None:

@@ -201,7 +201,7 @@ class TestBookDeal:
         assert stored_deal["deal_id"] == deal_id
         assert stored_deal["status"] == "proposed"
 
-    async def test_pa_deal_sets_auction_type_3(self, client, mock_storage):
+    async def test_pa_deal_sets_first_price_auction_type(self, client, mock_storage):
         quote = _make_available_quote(deal_type="PA")
         mock_storage._store[f"quote:{quote['quote_id']}"] = quote
         _authenticate()
@@ -213,7 +213,39 @@ class TestBookDeal:
             )
 
         assert resp.status_code == 200
+        assert resp.json()["deal"]["openrtb_params"]["at"] == 1
+
+    @pytest.mark.parametrize("deal_type", ["PG", "PD"])
+    async def test_fixed_price_deal_sets_fixed_auction_type(self, client, mock_storage, deal_type):
+        quote = _make_available_quote(deal_type=deal_type)
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 200
         assert resp.json()["deal"]["openrtb_params"]["at"] == 3
+
+    async def test_openrtb_currency_follows_quote_currency(self, client, mock_storage):
+        quote = _make_available_quote()
+        quote["pricing"]["currency"] = "EUR"
+        mock_storage._store[f"quote:{quote['quote_id']}"] = quote
+        _authenticate()
+
+        with patch("ad_seller.storage.factory.get_storage", return_value=mock_storage):
+            resp = await client.post(
+                "/api/v1/deals",
+                json={"idempotency_key": "idem-book", "quote_id": quote["quote_id"]},
+            )
+
+        assert resp.status_code == 200
+        deal_id = resp.json()["deal"]["deal_id"]
+        assert mock_storage._store[f"deal:{deal_id}"]["openrtb_params"]["bidfloorcur"] == "EUR"
+        assert resp.json()["deal"]["openrtb_params"]["bidfloor"]["currency"] == "EUR"
 
     # Error cases
 
