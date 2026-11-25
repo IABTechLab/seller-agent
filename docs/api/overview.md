@@ -147,6 +147,28 @@ Registry reads are public; mutations require an operator credential.
 | GET | `/api/v1/deals` | List stored deals (operator; optional wire-status filter) |
 | GET | `/api/v1/deals/{deal_id}` | Get the current status of a deal |
 
+### OpenRTB `ext` on PG deals
+
+A PG deal's OpenRTB parameters carry `ext: {"guaranteed": true, "impressions": N}`,
+with `impressions` taken from the quote, proposal or pushed deal when it sets a count.
+PD and PA deals have no `ext`.
+
+Where `ext` appears:
+
+| Output | `ext` |
+|--------|-------|
+| Stored deal record | Yes |
+| `GET /api/v1/deals/export?format=generic` (and the MCP `export_deals` tool) | Yes |
+| Legacy `POST /deals` response | Yes |
+| `POST /api/v1/deals/push` (IAB Deal object `openrtb_params`) | Yes |
+| `POST /api/v1/deals` booking response | No |
+| `GET /api/v1/deals` and `GET /api/v1/deals/{deal_id}` | No |
+
+The last two use the shared `DealBookingResponse` from `iab-agentic-primitives`,
+whose `OpenRTBParams` has no `ext` field, so `ext` is dropped there. The
+guaranteed count is still on those responses as `deal.terms.impressions`.
+Carrying `ext` there needs an `ext` field on the shared `OpenRTBParams`.
+
 ## Orders
 
 | Method | Path | Summary |
